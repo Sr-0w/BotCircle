@@ -33,11 +33,11 @@ export async function listAgentRows(): Promise<AgentRow[]> {
   return rows.map(normalize);
 }
 
-export async function findAgentByName(name: string): Promise<AgentRow | null> {
+export async function findAgentByName(name: string, excludingId?: string): Promise<AgentRow | null> {
   const [row] = await db()
     .select()
     .from(schema.agents)
-    .where(and(sql`lower(${schema.agents.name}) = lower(${name.trim()})`, eq(schema.agents.archived, false)));
+    .where(and(sql`lower(${schema.agents.name}) = lower(${name.trim()})`, eq(schema.agents.archived, false), excludingId ? ne(schema.agents.id, excludingId) : undefined));
   return row ? normalize(row) : null;
 }
 

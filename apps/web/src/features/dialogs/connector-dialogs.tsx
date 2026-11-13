@@ -59,7 +59,7 @@ function guessPreset(email: string): string {
 }
 
 /** Connexion d'un compte mail. Le mot de passe va directement au moteur, chiffré. */
-export function MailDialog({ connector, requestedBy, initialPreset, onClose }: { initialPreset?: "custom"; connector?: ConnectorDTO; requestedBy?: string; onClose: () => void }) {
+export function MailDialog({ connector, requestedBy, handoffId, initialPreset, onClose }: { initialPreset?: "custom"; connector?: ConnectorDTO; requestedBy?: string; handoffId?: string; onClose: () => void }) {
   const existing = connector?.config as MailConfig | undefined;
   const [email, setEmail] = useState(existing?.email ?? "");
   const [displayName, setDisplayName] = useState(existing?.displayName ?? "");
@@ -101,7 +101,7 @@ export function MailDialog({ connector, requestedBy, initialPreset, onClose }: {
         await api.updateConnector(connector.id, { config, secrets: password ? { password } : undefined, name: email });
         toast.success(t("Compte mis à jour"));
       } else {
-        await api.createConnector({ name: email.trim(), kind: "mail", config, secrets: { password }, requestedBy });
+        await api.createConnector({ name: email.trim(), kind: "mail", config, secrets: { password }, requestedBy, handoffId });
         toast.success(t("{v0} est connecté", { v0: email }));
       }
       onClose();
@@ -231,7 +231,7 @@ function Status({ label, value }: { label: string; value: string }) {
 
 type SecretRow = { key: string; value: string };
 
-export function McpDialog({ connector, requestedBy, onClose }: { connector?: ConnectorDTO; requestedBy?: string; onClose: () => void }) {
+export function McpDialog({ connector, requestedBy, handoffId, onClose }: { connector?: ConnectorDTO; requestedBy?: string; handoffId?: string; onClose: () => void }) {
   const cfg = connector?.config as McpConfig | undefined;
   const [name, setName] = useState(connector?.name ?? "");
   const [transport, setTransport] = useState<McpConfig["transport"]>(cfg?.transport ?? "http");
@@ -254,7 +254,7 @@ export function McpDialog({ connector, requestedBy, onClose }: { connector?: Con
       const secretMap = Object.fromEntries(secrets.filter((s) => s.key.trim()).map((s) => [s.key.trim(), s.value]));
       const res = connector
         ? await api.updateConnector(connector.id, { name, config, approval, secrets: secretMap })
-        : await api.createConnector({ name: name.trim(), kind: "mcp", config, approval, secrets: secretMap, requestedBy });
+        : await api.createConnector({ name: name.trim(), kind: "mcp", config, approval, secrets: secretMap, requestedBy, handoffId });
       if (res.status === "error") toast.error(t("Connexion impossible : {error}", { error: res.lastError }));
       else toast.success(t("{v0} connecté · {v1} outil(s)", { v0: res.name, v1: res.tools.length }));
       onClose();

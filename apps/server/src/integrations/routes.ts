@@ -1,4 +1,5 @@
 import { enqueue } from '../jobs/queue.ts';
+import { resumeSetupHandoff } from '../team/handoff.ts';
 import { getAgent } from '../agents/repo.ts';
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
@@ -24,8 +25,8 @@ export function integrationRoutes() {
     return c.json({ apps: await oauthApps(appOrigin(c)) });
   });
   app.post('/oauth/start', async (c) => {
-    const body = z.object({ provider, permissions: z.array(z.string()).min(1).max(12), connectorId: z.string().optional(), requestedBy: z.string().optional() }).strict().parse(await c.req.json());
-    const result = await oauth.begin(body.provider, body.permissions, appOrigin(c), body.connectorId, body.requestedBy);
+    const body = z.object({ provider, permissions: z.array(z.string()).min(1).max(12), connectorId: z.string().optional(), requestedBy: z.string().optional(), handoffId: z.string().optional() }).strict().parse(await c.req.json());
+    const result = await oauth.begin(body.provider, body.permissions, appOrigin(c), body.connectorId, body.requestedBy, body.handoffId);
     setCookie(c, result.cookieName, result.cookie, { httpOnly: true, secure: appOrigin(c).startsWith('https:'), sameSite: 'Lax', path: '/api/integrations/oauth/callback', maxAge: 600 });
     return c.json({ url: result.url, expiresAt: result.expiresAt });
   });
@@ -39,7 +40,11 @@ export function integrationRoutes() {
       await updateConnector(result.connector.id, { tools: availableOperations(result.connector.config as IntegrationConfig).map((o) => ({ name: o.id, description: o.name })) });
       if (result.requestedBy) {
         const agent = await getAgent(result.requestedBy);
-        if (agent && !agent.archived) await enqueue('agent.wake', { agentId: agent.id, event: { type: 'system', title: 'Nouvelle connexion' }, text: `${result.connector.name} est connecté. Reprends la tâche qui nécessitait cette connexion. Les écritures attendent toujours la validation de l’utilisateur.`, depth: 0 }, { agentId: agent.id });
+        if (agent && !agent.archived) {
+          const text = `${result.connector.name} est connecté. Reprends la tâche qui nécessitait cette connexion. Les écritures attendent toujours la validation de l’utilisateur.`;
+          if (result.handoffId) await resumeSetupHandoff(agent.id, 'connection', result.handoffId, text);
+          else await enqueue('agent.wake', { agentId: agent.id, event: { type: 'system', title: 'Nouvelle connexion' }, text, depth: 0 }, { agentId: agent.id });
+        }
       }
       // No token, code, account contents or state are exposed to window.opener.
       return c.html(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>BotCircle — connexion établie</title><body><p>Connexion établie. Tu peux fermer cet onglet.</p><script>if(window.opener){window.opener.postMessage({type:'opendots:oauth',ok:true},${JSON.stringify(result.origin)});window.close()}</script></body></html>`);

@@ -1,3 +1,4 @@
+import { trackUserCard } from '../team/handoff.ts';
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ToolContext } from '../agents/tools.ts';
@@ -19,9 +20,11 @@ export function secureLoginTools(ctx: ToolContext): ToolSet {
       }).strict(),
       execute: async ({ url, reason }) => {
         try {
-          const row = await requestSecureLogin({ agentId: ctx.agent.id, conversationId: ctx.conversationId, taskId: ctx.taskId ?? null, url, reason });
+          const row = await requestSecureLogin({ agentId: ctx.agent.id, conversationId: ctx.conversationId, taskId: ctx.taskId ?? null, url, reason }, ctx.delegation);
           if (ctx.taskId) await waitForUser(ctx.taskId, `Connexion requise sur ${row.origin}`);
-          return { ok: true as const, status: 'waiting_for_secure_login', loginId: row.id, origin: row.origin, note: 'The user is signing in themselves. Your computer tools are suspended until they hand control back. Stop now and wait; you will be told the outcome.' };
+          const output = { ok: true as const, status: 'waiting_for_secure_login', loginId: row.id, origin: row.origin, note: 'The user is signing in themselves. Your computer tools are suspended until they hand control back. Stop now and wait; you will be told the outcome.' };
+          await trackUserCard(ctx, { kind: 'secure_login', detail: `Il te demande de te connecter sur ${row.origin}.`, tool: 'request_secure_login', output });
+          return output;
         } catch (error) {
           if (error instanceof SecureLoginError) return { ok: false as const, status: 'rejected', error: error.message };
           throw error;

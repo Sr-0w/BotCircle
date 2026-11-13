@@ -13,7 +13,7 @@ const ENDPOINTS = {
   github: { authorize: 'https://github.com/login/oauth/authorize', token: 'https://github.com/login/oauth/access_token', identity: 'https://api.github.com/user' },
 } satisfies Record<OAuthProvider, { authorize: string; token: string; identity: string }>;
 type Client = { clientId: string; clientSecret: string };
-type Pending = { owner: string; provider: IntegrationProvider; permissions: string[]; scopes: string[]; client: Client; verifier: string; cookie: string; redirect: string; origin: string; expires: number; connectorId?: string; requestedBy?: string };
+type Pending = { owner: string; provider: IntegrationProvider; permissions: string[]; scopes: string[]; client: Client; verifier: string; cookie: string; redirect: string; origin: string; expires: number; connectorId?: string; requestedBy?: string; handoffId?: string };
 const hash = (s: string) => createHash('sha256').update(s).digest('base64url');
 const splitScopes = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
@@ -45,7 +45,7 @@ export class OAuthManager {
   private refreshing = new Map<string, Promise<string>>();
   constructor(private transport: typeof fetch = (...args) => fetch(...args), private now = () => Date.now()) {}
 
-  async begin(provider: IntegrationProvider, permissions: string[], origin: string, connectorId?: string, requestedBy?: string) {
+  async begin(provider: IntegrationProvider, permissions: string[], origin: string, connectorId?: string, requestedBy?: string, handoffId?: string) {
     const urlOrigin = new URL(origin);
     if (urlOrigin.origin !== origin || (urlOrigin.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(urlOrigin.hostname))) throw new ConnectorError('OAuth nécessite HTTPS, sauf sur localhost.');
     const spec = integrationSpec(provider);
@@ -61,7 +61,7 @@ export class OAuthManager {
     if (this.pending.size >= 100) throw new ConnectorError('Trop de connexions en cours. Réessaie plus tard.');
     const state = randomBytes(32).toString('base64url'), verifier = randomBytes(32).toString('base64url'), cookie = randomBytes(32).toString('base64url');
     const redirect = `${origin}/api/integrations/oauth/callback/${spec.oauth}`;
-    this.pending.set(hash(state), { owner: accountKey(), provider, permissions: [...new Set(permissions)], scopes, client, verifier, cookie: hash(cookie), redirect, origin, expires: this.now() + 600_000, connectorId, requestedBy });
+    this.pending.set(hash(state), { owner: accountKey(), provider, permissions: [...new Set(permissions)], scopes, client, verifier, cookie: hash(cookie), redirect, origin, expires: this.now() + 600_000, connectorId, requestedBy, handoffId });
     const url = new URL(ENDPOINTS[spec.oauth].authorize);
     for (const [k, v] of Object.entries({ client_id: client.clientId, redirect_uri: redirect, response_type: 'code', scope: scopes.join(' '), state, code_challenge: hash(verifier), code_challenge_method: 'S256' })) url.searchParams.set(k, v);
     if (spec.oauth === 'google') { url.searchParams.set('access_type', 'offline'); url.searchParams.set('prompt', 'consent'); }
@@ -88,7 +88,7 @@ export class OAuthManager {
     if (!row) row = await createConnector({ name: `${spec.name} — ${account.email ?? account.label}`, kind: 'integration', config, approval: 'ask' });
     await replaceConnectorSecrets(row.id, { access_token: tokens.access_token, ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : old.client_id === entry.client.clientId && old.refresh_token ? { refresh_token: old.refresh_token } : {}), client_id: entry.client.clientId, expires_at: String(tokens.expires_in ? this.now() + tokens.expires_in * 1000 : 0) });
     await updateConnector(row.id, { config, enabled: true, status: 'ok', lastError: null, approval: 'ask' });
-    return { connector: (await getConnector(row.id))!, origin: entry.origin, requestedBy: entry.requestedBy };
+    return { connector: (await getConnector(row.id))!, origin: entry.origin, requestedBy: entry.requestedBy, handoffId: entry.handoffId };
   }
 
   async identity(provider: OAuthProvider, token: string) {

@@ -1,10 +1,11 @@
 import { sendInstruction, taskByWorkConversation } from '../tasks/service.ts';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, exists } from 'drizzle-orm';
 import type { ApprovalDTO, ApprovalStatus } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
 import { publish } from '../bus.ts';
 import { log } from '../journal.ts';
 import { enqueue } from '../jobs/queue.ts';
+import { cancelApprovalHandoff, openHandoff, resumeReferencedHandoff, withDelegationSummary, type TeamDelegation } from '../team/handoff.ts';
 import { errorMessage, newId } from '../util.ts';
 import { getConnector } from '../connectors/repo.ts';
 
@@ -48,7 +49,9 @@ export async function createApproval(input: {
   action: string;
   summary: string;
   input: unknown;
+  delegation?: TeamDelegation | null;
 }): Promise<Row> {
+  const { delegation } = input;
   const service = await serviceOf(input.action, input.input);
   const row = {
     service,
@@ -57,13 +60,16 @@ export async function createApproval(input: {
     conversationId: input.conversationId,
     toolCallId: input.toolCallId ?? null,
     action: input.action,
-    summary: input.summary,
+    summary: withDelegationSummary(delegation, input.summary),
     input: input.input as object,
   };
-  await db().insert(schema.approvals).values(row);
-  const created = (await getApproval(row.id))!;
+  const created = await db().transaction(async (tx) => {
+    const [approval] = await tx.insert(schema.approvals).values(row).returning();
+    if (delegation) await openHandoff({ agentId: input.agentId, kind: 'approval', refId: row.id, delegation }, tx);
+    return approval;
+  });
   publish({ type: 'approval.changed', approval: toApprovalDTO(created) });
-  await log(input.agentId, 'approval.requested', `Validation demandée : ${input.summary}`, { approvalId: row.id });
+  await log(input.agentId, 'approval.requested', `Validation demandée : ${row.summary}`, { approvalId: row.id });
   return created;
 }
 
@@ -115,15 +121,23 @@ export class ApprovalError extends Error {}
 export async function resolveApproval(
   id: string,
   decision: 'approve' | 'reject',
-  opts: { by: 'ui' | 'conversation'; notifyAgent: boolean },
+  opts: { by: 'ui' | 'conversation'; notifyAgent: boolean } | { by: 'agent'; teamMessageId: string },
 ): Promise<Row> {
+  if (opts.by === 'agent' && decision !== 'reject') throw new ApprovalError('Seul l’utilisateur peut valider cette action.');
+  const editableDraft = opts.by === 'agent' ? and(eq(schema.approvals.action, 'mail.send'), exists(
+    db().select({ id: schema.teamHandoffs.id }).from(schema.teamHandoffs).where(and(
+      eq(schema.teamHandoffs.kind, 'approval'), eq(schema.teamHandoffs.refId, id),
+      eq(schema.teamHandoffs.teamMessageId, opts.teamMessageId), eq(schema.teamHandoffs.status, 'pending'),
+    )),
+  )) : undefined;
   // Transition atomique pending → approved/rejected : une seule exécution possible.
   const claimed = await db()
     .update(schema.approvals)
     .set({ status: decision === 'approve' ? 'approved' : 'rejected', resolvedAt: new Date(), resolvedBy: opts.by })
-    .where(and(eq(schema.approvals.id, id), eq(schema.approvals.status, 'pending')))
+    .where(and(eq(schema.approvals.id, id), eq(schema.approvals.status, 'pending'), editableDraft))
     .returning();
   if (!claimed.length) {
+    if (opts.by === 'agent') throw new ApprovalError('Ce brouillon ne peut pas être remplacé dans cet échange.');
     const existing = await getApproval(id);
     if (!existing) throw new ApprovalError('Demande de validation introuvable.');
     throw new ApprovalError(`Cette demande a déjà été traitée (statut : ${existing.status}).`);
@@ -147,6 +161,11 @@ export async function resolveApproval(
     }
   }
 
+  if (opts.by === 'agent') {
+    await cancelApprovalHandoff(id, opts.teamMessageId);
+    return row;
+  }
+
   const task = await taskByWorkConversation(row.conversationId);
   if (task) {
     // Demandée par un worker : la décision est versée à sa tâche, qui reprend d'elle-même.
@@ -156,13 +175,16 @@ export async function resolveApproval(
     if (task.status === 'waiting_for_user' || task.status === 'paused' || task.status === 'running' || task.status === 'queued') await sendInstruction(task.id, verdict).catch(() => {});
     return row;
   }
-  if (opts.notifyAgent) {
-    const outcome =
-      row.status === 'executed'
-        ? `L'utilisateur a approuvé et l'action a été exécutée avec succès. Résultat : ${JSON.stringify(row.result)}`
-        : row.status === 'failed'
-          ? `L'utilisateur a approuvé mais l'exécution a échoué : ${row.error}`
-          : `L'utilisateur a refusé cette action. Ne la réessaie pas sans nouvelle demande.`;
+  const outcome =
+    row.status === 'executed'
+      ? `L'utilisateur a approuvé et l'action a été exécutée avec succès. Résultat : ${JSON.stringify(row.result)}`
+      : row.status === 'failed'
+        ? `L'utilisateur a approuvé mais l'exécution a échoué : ${row.error}`
+        : `L'utilisateur a refusé cette action. Ne la réessaie pas sans nouvelle demande.`;
+  // Une validation née d'un échange entre compagnons reprend ce fil, à la profondeur d'origine.
+  // Personne d'autre que l'utilisateur ne peut l'avoir décidée.
+  const [handoff] = await resumeReferencedHandoff(row.agentId, 'approval', row.id, outcome);
+  if (!handoff && opts.notifyAgent) {
     await enqueue(
       'agent.wake',
       {

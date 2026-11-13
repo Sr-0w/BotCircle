@@ -4,14 +4,15 @@ import { and, eq, isNotNull, lte } from 'drizzle-orm';
 import type { MessageMetadata } from '@opendots/shared';
 import { config } from '../config.ts';
 import { db, schema } from '../db/client.ts';
-import { enqueue, PermanentJobError, registerJobHandler } from '../jobs/queue.ts';
+import { enqueue, kick, PermanentJobError, registerJobHandler } from '../jobs/queue.ts';
 import { log } from '../journal.ts';
 import { getTimezone, isPaused } from '../settings.ts';
 import { computeNextRun, getActivity, recordRun, type ActivityRow } from '../activities/repo.ts';
 import { getAgent, mainConversationId } from '../agents/repo.ts';
-import { runTurn } from '../agents/turn.ts';
+import { runTurn, type TurnResult } from '../agents/turn.ts';
+import { completeHandoff, holdForUser, type TeamResumeWake } from '../team/handoff.ts';
 import { fetchPage } from '../tools/web.ts';
-import { countThreadMessages, getTeamMessage, postTeamNote, updateTeamMessage } from '../team/service.ts';
+import { countThreadMessages, getTeamMessage, postTeamNote, updateTeamMessage, type TeamMessageRow } from '../team/service.ts';
 import { decideReply, shouldWakeSender } from '../team/policy.ts';
 import { saveMessage } from '../conversations/repo.ts';
 import { publish } from '../bus.ts';
@@ -34,6 +35,8 @@ interface WakePayload {
   event: NonNullable<MessageMetadata['event']>;
   text: string;
   depth: number;
+  /** Reprise d'un échange entre compagnons, à la profondeur d'origine. */
+  teamResume?: TeamResumeWake;
 }
 
 
@@ -52,6 +55,24 @@ export function registerLifeHandlers() {
       await enqueue('agent.wake', p, { agentId: p.agentId, runAt: new Date(Date.now() + 60_000) });
       return;
     }
+    if (p.teamResume) {
+      const resume = p.teamResume;
+      const tm = await getTeamMessage(resume.teamMessageId);
+      if (!tm || tm.toAgentId !== p.agentId || tm.status === 'answered') return;
+      const result = await runTurn(tm.toAgentId, tm.conversationId, {
+        kind: 'team',
+        teamMessageId: tm.id,
+        fromAgentId: tm.fromAgentId,
+        expectsReply: tm.expectsReply,
+        depth: tm.depth,
+        continuation: p.text,
+      }).done;
+      await completeHandoff(resume.handoffId);
+      if (await holdForUser(tm, result.text)) return;
+      if (result.error) throw await reportTeamFailure(tm, result.error);
+      await deliverTeamResult(tm, result, { continued: true });
+      return;
+    }
     // A thread set aside by /clear does not come back to life: the result arrives in the current thread, as new
     // information, without the old messages.
     const target = p.conversationId ? await getConversation(p.conversationId) : null;
@@ -64,91 +85,22 @@ export function registerLifeHandlers() {
 
   registerJobHandler('team.deliver', async ({ teamMessageId }: { teamMessageId: string }) => {
     const tm = await getTeamMessage(teamMessageId);
-    if (!tm || tm.status === 'answered' || tm.status === 'done') return;
+    if (!tm || tm.status === 'answered' || tm.status === 'done' || tm.status === 'waiting_for_user') return;
     await updateTeamMessage(tm.id, { status: 'processing' });
-    const from = await getAgent(tm.fromAgentId);
-    const to = await getAgent(tm.toAgentId);
-    const fromName = from?.name ?? 'un compagnon';
-    const toName = to?.name ?? 'un compagnon';
     // Trace visible dans le fil principal du destinataire : « Message reçu de … ».
     await postTeamNote(tm.toAgentId, tm.fromAgentId, 'agent_message', 'Message reçu de', tm.content, `msg_rcv_${tm.id}`);
 
     const trigger = { kind: 'team', teamMessageId: tm.id, fromAgentId: tm.fromAgentId, expectsReply: tm.expectsReply, depth: tm.depth } as const;
     let result = await runTurn(tm.toAgentId, tm.conversationId, trigger).done;
-    let decision = result.noReply ? ({ kind: 'no_reply' } as const) : decideReply(result.text);
-    // Garantie déterministe : un message qui attend une réponse en obtient une (ou un refus explicite).
+    if (await holdForUser(tm, result.text)) return;
+    const decision = result.noReply ? ({ kind: 'no_reply' } as const) : decideReply(result.text);
+    // Une carte suspend cet échange et interdit de relancer le modèle prématurément.
     if (!result.error && tm.expectsReply && decision.kind === 'missing') {
       result = await runTurn(tm.toAgentId, tm.conversationId, { ...trigger, nudge: true }).done;
-      decision = result.noReply ? { kind: 'no_reply' } : decideReply(result.text);
+      if (await holdForUser(tm, result.text)) return;
     }
-    if (result.error) {
-      await updateTeamMessage(tm.id, { status: 'failed', reply: result.error });
-      // L'échec se voit aussi chez le destinataire : sans cela, il semble n'avoir rien fait.
-      await postTeamNote(tm.toAgentId, tm.fromAgentId, 'agent_message', 'Échec du traitement du message de', truncate(result.error, 300), `msg_fail_${tm.id}`);
-      await postTeamNote(tm.fromAgentId, tm.toAgentId, 'agent_reply', 'Échec de la réponse de', `${toName} n'a pas pu traiter ton message : ${truncate(result.error, 300)}`, `msg_err_${tm.id}`);
-      throw new Error(result.error);
-    }
-    const replyText = decision.kind === 'reply' ? decision.text : '';
-    await updateTeamMessage(tm.id, { status: 'answered', reply: replyText || null, answeredAt: new Date() });
-    publish({ type: 'team.changed', conversationId: tm.conversationId });
-
-    // Dans le fil principal du destinataire, sa réponse est un vrai message de lui (une bulle,
-    // en réponse au message reçu) : l'utilisateur lit ce que le compagnon a dit, pas une notice.
-    // S'il a déjà tenu l'utilisateur au courant lui-même (text_user), on ne répète pas sa réponse.
-    if (decision.kind === 'reply' && result.toldUser) {
-      /* rien à ajouter */
-    } else if (decision.kind === 'reply') {
-      try {
-        await saveMessage(
-          await mainConversationId(tm.toAgentId),
-          {
-            id: `msg_ans_${tm.id}`,
-            role: 'assistant',
-            parts: [{ type: 'text', text: replyText }],
-            metadata: {
-              kind: 'chat',
-              agentId: tm.toAgentId,
-              autonomous: true,
-              createdAt: new Date().toISOString(),
-              replyTo: { messageId: `msg_rcv_${tm.id}`, preview: truncate(tm.content, 180), role: 'user' },
-            },
-          },
-          { author: 'agent', agentId: tm.toAgentId },
-        );
-      } catch {
-        /* déjà enregistré (nouvelle tentative du job) */
-      }
-    } else {
-      await postTeamNote(tm.toAgentId, tm.fromAgentId, 'agent_message', 'Message traité, sans réponse à', `Aucune réponse nécessaire au message de ${fromName}.`, `msg_ans_${tm.id}`);
-    }
-
-    if (!tm.expectsReply) return;
-    const threadCount = await countThreadMessages(tm.conversationId);
-    const wake = shouldWakeSender({ expectsReply: tm.expectsReply, decision, depth: tm.depth, maxDepth: config.maxTeamDepth, threadCount });
-    if (wake) {
-      await enqueue(
-        'agent.wake',
-        {
-          agentId: tm.fromAgentId,
-          conversationId: tm.replyToConversationId ?? undefined,
-          event: { type: 'agent_reply', title: `Réponse de ${toName}`, fromAgentId: tm.toAgentId },
-          text:
-            `${toName} a répondu à ton message.\n\nTon message : ${truncate(tm.content, 1500)}\n\n` +
-            `Sa réponse :\n${replyText}\n\nPoursuis ta tâche, puis informe l'utilisateur en quelques phrases de cette réponse et de la suite.`,
-          depth: tm.depth + 1,
-        } satisfies WakePayload,
-        { agentId: tm.fromAgentId, dedupeKey: `reply:${tm.id}` },
-      );
-    } else {
-      // Pas de réveil (pas de réponse, limite de profondeur ou de fil) : l'utilisateur est quand même prévenu.
-      const body =
-        decision.kind === 'reply'
-          ? `${toName} a répondu à ton message.\n\nTon message : ${truncate(tm.content, 1500)}\n\nSa réponse :\n${replyText}\n\nPoursuis ta tâche`
-          : decision.kind === 'no_reply'
-            ? `${toName} a lu ton message et a indiqué qu'aucune réponse n'était nécessaire.`
-            : `${toName} n'a pas formulé de réponse à ton message.`;
-      await postTeamNote(tm.fromAgentId, tm.toAgentId, 'agent_reply', 'Réponse de', body, `msg_rep_${tm.id}`);
-    }
+    if (result.error) throw await reportTeamFailure(tm, result.error);
+    await deliverTeamResult(tm, result);
   });
 
   // Worker d'une tâche en arrière-plan. Ne lève jamais : l'issue est portée par l'état de la tâche.
@@ -171,6 +123,90 @@ export function registerLifeHandlers() {
     if (!act || !act.enabled || !act.watch) return;
     await checkWatch(act);
   });
+}
+
+async function reportTeamFailure(tm: TeamMessageRow, error: string) {
+  await updateTeamMessage(tm.id, { status: 'failed', reply: error });
+  publish({ type: 'team.changed', conversationId: tm.conversationId });
+  const toName = (await getAgent(tm.toAgentId))?.name ?? 'un compagnon';
+  await postTeamNote(tm.toAgentId, tm.fromAgentId, 'agent_message', 'Échec du traitement du message de', truncate(error, 300), `msg_fail_${tm.id}`);
+  await postTeamNote(tm.fromAgentId, tm.toAgentId, 'agent_reply', 'Échec de la réponse de', `${toName} n'a pas pu traiter ton message : ${truncate(error, 300)}`, `msg_err_${tm.id}`);
+  return new Error(error);
+}
+
+/**
+ * Après une réponse (ou une reprise post-validation), prévient le compagnon
+ * qui a délégué et celui qui a agi. La profondeur transmise est celle du message,
+ * plus un pour le relais suivant — jamais remise à zéro.
+ */
+export async function deliverTeamResult(tm: TeamMessageRow, result: TurnResult, opts: { continued?: boolean } = {}) {
+  const fromName = (await getAgent(tm.fromAgentId))?.name ?? 'un compagnon';
+  const toName = (await getAgent(tm.toAgentId))?.name ?? 'un compagnon';
+  const decision = result.noReply ? ({ kind: 'no_reply' } as const) : decideReply(result.text);
+  const replyText = decision.kind === 'reply' ? decision.text : '';
+  const final = { status: 'answered', reply: replyText || null, answeredAt: new Date() } as const;
+  // Dans le fil principal du destinataire, sa réponse est un vrai message de lui (une bulle,
+  // en réponse au message reçu) : l'utilisateur lit ce que le compagnon a dit, pas une notice.
+  // S'il a déjà tenu l'utilisateur au courant lui-même (text_user), on ne répète pas sa réponse.
+  if (decision.kind === 'reply' && result.toldUser && !opts.continued) {
+    /* rien à ajouter */
+  } else if (decision.kind === 'reply') {
+    try {
+      await saveMessage(
+        await mainConversationId(tm.toAgentId),
+        {
+          id: `msg_ans_${tm.id}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: replyText }],
+          metadata: {
+            kind: 'chat',
+            agentId: tm.toAgentId,
+            autonomous: true,
+            createdAt: new Date().toISOString(),
+            replyTo: { messageId: `msg_rcv_${tm.id}`, preview: truncate(tm.content, 180), role: 'user' },
+          },
+        },
+        { author: 'agent', agentId: tm.toAgentId },
+      );
+    } catch {
+      /* déjà enregistré (nouvelle tentative du job) */
+    }
+  } else {
+    await postTeamNote(tm.toAgentId, tm.fromAgentId, 'agent_message', 'Message traité, sans réponse à', `Aucune réponse nécessaire au message de ${fromName}.`, `msg_ans_${tm.id}`);
+  }
+  const threadCount = await countThreadMessages(tm.conversationId);
+  const wake = shouldWakeSender({ expectsReply: tm.expectsReply, decision, depth: tm.depth, maxDepth: config.maxTeamDepth, threadCount });
+  await db().transaction(async (tx) => {
+    await tx.update(schema.teamMessages).set(final).where(eq(schema.teamMessages.id, tm.id));
+    if (wake) await enqueue(
+      'agent.wake',
+      {
+        agentId: tm.fromAgentId,
+        conversationId: tm.replyToConversationId ?? undefined,
+        event: { type: 'agent_reply', title: `Réponse de ${toName}`, fromAgentId: tm.toAgentId },
+        text:
+          `${toName} a répondu à ton message.\n\nTon message : ${truncate(tm.content, 1500)}\n\n` +
+          `Sa réponse :\n${replyText}\n\nPoursuis ta tâche, puis informe l'utilisateur en quelques phrases de cette réponse et de la suite.`,
+        depth: tm.depth + 1,
+      } satisfies WakePayload,
+      { agentId: tm.fromAgentId, dedupeKey: `reply:${tm.id}` },
+      tx,
+    );
+  });
+  publish({ type: 'team.changed', conversationId: tm.conversationId });
+  if (wake) {
+    kick();
+    return { woke: true, depth: tm.depth + 1 };
+  }
+  if (!tm.expectsReply && !opts.continued) return { woke: false, depth: tm.depth };
+  const body =
+    decision.kind === 'reply'
+      ? `${toName} a répondu à ton message.\n\nTon message : ${truncate(tm.content, 1500)}\n\nSa réponse :\n${replyText}\n\nPoursuis ta tâche`
+      : decision.kind === 'no_reply'
+        ? `${toName} a lu ton message et a indiqué qu'aucune réponse n'était nécessaire.`
+        : `${toName} n'a pas formulé de réponse à ton message.`;
+  await postTeamNote(tm.fromAgentId, tm.toAgentId, 'agent_reply', 'Réponse de', body, `msg_rep_${tm.id}`);
+  return { woke: false, depth: tm.depth };
 }
 
 /** Vérification déterministe d'une surveillance, sans LLM. */

@@ -107,6 +107,8 @@ export interface SettingsDTO {
   timezone: string;
   paused: boolean;
   turnStepLimit: number | null;
+  teamTurnStepLimit: number;
+  teamTurnTimeoutSec: number;
   search: { provider: "auto" | "mwmbl" | "searxng"; url: string | null };
   shell: ShellSettingsDTO;
 }
@@ -223,12 +225,12 @@ export const api = {
   desktop: (agentId: string) => request<DesktopStatus>('GET', `/computer/desktop?agentId=${agentId}`),
   desktopPermissions: () => request<Record<string, DesktopPermissions>>('GET', '/computer/desktop/permissions'),
   setDesktopPermissions: (agentId: string, permissions: DesktopPermissions) => request<DesktopPermissions>('PUT', `/computer/desktop/permissions/${agentId}`, permissions),
-  startDesktop: (agentId: string, notify = false) => request<DesktopStatus>('POST', `/computer/desktop/start?agentId=${agentId}`, { notify }),
+  startDesktop: (agentId: string, notify = false, handoffId?: string) => request<DesktopStatus>('POST', `/computer/desktop/start?agentId=${agentId}`, { notify, handoffId }),
   stopDesktop: (agentId: string) => request<DesktopStatus>('POST', `/computer/desktop/stop?agentId=${agentId}`),
   desktopControl: (agentId: string, enabled: boolean) => request<{ok: boolean}>('POST', `/computer/desktop/control?agentId=${agentId}`, { enabled }),
   integrationCatalog: () => request<{ entries: IntegrationCatalogEntry[]; apps: OAuthAppDTO[] }>('GET', '/integrations/catalog'),
   saveOAuthApp: (provider: OAuthProvider, clientId: string, clientSecret?: string) => request<{ apps: OAuthAppDTO[] }>('PUT', `/integrations/oauth/apps/${provider}`, { clientId, clientSecret }),
-  startOAuth: (provider: IntegrationProvider, permissions: string[], connectorId?: string, requestedBy?: string) => request<{ url: string; expiresAt: number }>('POST', '/integrations/oauth/start', { provider, permissions, connectorId, requestedBy }),
+  startOAuth: (provider: IntegrationProvider, permissions: string[], connectorId?: string, requestedBy?: string, handoffId?: string) => request<{ url: string; expiresAt: number }>('POST', '/integrations/oauth/start', { provider, permissions, connectorId, requestedBy, handoffId }),
   testIntegration: (id: string) => request<{ ok: boolean; connector: ConnectorDTO }>('POST', `/integrations/${id}/test`),
   disconnectIntegration: (id: string, revoke = false) => request<{ ok: boolean; warning?: string }>('POST', `/integrations/${id}/disconnect`, { revoke }),
   me: () => request<{ account: Account | null; registrationOpen: boolean }>('GET', '/auth/me'),
@@ -336,6 +338,7 @@ export const api = {
     secrets?: Record<string, string>;
     approval?: "ask" | "auto";
     requestedBy?: string;
+    handoffId?: string;
   }) => request<ConnectorDTO>("POST", "/connectors", input),
   updateConnector: (
     id: string,

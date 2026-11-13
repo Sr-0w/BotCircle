@@ -1,3 +1,4 @@
+import { mirrorApproval } from '../team/handoff.ts';
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { getAgent } from '../agents/repo.ts';
@@ -59,10 +60,11 @@ export function sshTools(ctx: ToolContext): ToolSet {
           if (matches.length > 1) return { ok: false as const, status: 'ambiguous', error: `Plusieurs machines correspondent (${matches.map((m) => m.name).join(', ')}) : demande à l'utilisateur laquelle.` };
           const row = matches[0];
           if (row.approval === 'ask') {
-            const approval = await createApproval({ agentId: ctx.agent.id, conversationId: ctx.conversationId, toolCallId: options.toolCallId, action: 'ssh.exec', summary: `SSH ${row.name} (${row.username}@${row.host}) · $ ${truncate(command, 300)}`, input: { connectionId: row.id, command, agentId: ctx.agent.id, timeoutMs: timeout_seconds ? timeout_seconds * 1000 : undefined } });
+            const approval = await createApproval({ agentId: ctx.agent.id, conversationId: ctx.conversationId, toolCallId: options.toolCallId, action: 'ssh.exec', summary: `SSH ${row.name} (${row.username}@${row.host}) · $ ${truncate(command, 300)}`, input: { connectionId: row.id, command, agentId: ctx.agent.id, timeoutMs: timeout_seconds ? timeout_seconds * 1000 : undefined }, delegation: ctx.delegation });
+            await mirrorApproval(ctx, approval, { tool: 'ssh_execute' });
             return { ok: true, status: 'pending_approval', approvalId: approval.id, summary: approval.summary, note: "Commande préparée mais PAS exécutée : elle attend la validation de l'utilisateur. Ne dis pas qu'elle est faite." };
           }
-          return await run(row, ctx.agent.id, command, timeout_seconds ? timeout_seconds * 1000 : undefined, ctx.abortSignal);
+          return await run(row, ctx.agent.id, command, timeout_seconds ? timeout_seconds * 1000 : undefined, ctx.teamTurn ? options.abortSignal : ctx.abortSignal);
         } catch (error) { return { ok: false as const, error: errorMessage(error) }; }
       },
     }),

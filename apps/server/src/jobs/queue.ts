@@ -1,5 +1,5 @@
 import { and, eq, lt, sql } from 'drizzle-orm';
-import { db, schema } from '../db/client.ts';
+import { db, schema, type DB } from '../db/client.ts';
 import { config } from '../config.ts';
 import { accountKey } from '../auth/context.ts';
 import { log } from '../journal.ts';
@@ -28,8 +28,9 @@ export async function enqueue(
   type: string,
   payload: unknown,
   opts: { agentId?: string | null; runAt?: Date; dedupeKey?: string; maxAttempts?: number } = {},
+  transaction?: Pick<DB, 'insert'>,
 ): Promise<boolean> {
-  const res = await db()
+  const res = await (transaction ?? db())
     .insert(schema.jobs)
     .values({
       type,
@@ -41,7 +42,7 @@ export async function enqueue(
     })
     .onConflictDoNothing()
     .returning({ id: schema.jobs.id });
-  if (res.length) kick();
+  if (res.length && !transaction) kick();
   return res.length > 0;
 }
 

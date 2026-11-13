@@ -1,3 +1,4 @@
+import { openHandoff, resumeReferencedHandoff, type TeamDelegation } from '../team/handoff.ts';
 import { and, desc, eq, lt } from 'drizzle-orm';
 import type { SecureLoginDTO, SecureLoginStatus } from '@opendots/shared';
 import { publish } from '../bus.ts';
@@ -61,16 +62,30 @@ export async function listSecureLogins(filter: { pending?: boolean } = {}): Prom
   return (filter.pending ? rows.where(eq(schema.secureLogins.status, 'pending')) : rows).orderBy(desc(schema.secureLogins.createdAt)).limit(50);
 }
 
-export async function requestSecureLogin(input: { agentId: string; conversationId: string; taskId?: string | null; url: string; reason: string }): Promise<SecureLoginRow> {
+export async function requestSecureLogin(input: { agentId: string; conversationId: string; taskId?: string | null; url: string; reason: string }, delegation?: TeamDelegation | null): Promise<SecureLoginRow> {
   const { origin, url } = checkLoginUrl(input.url);
-  const existing = await pendingSecureLogin(input.agentId);
-  if (existing) return existing; // une seule connexion à la fois par compagnon : la carte déjà affichée reste la bonne
-  const row = { id: newId('sl'), agentId: input.agentId, conversationId: input.conversationId, taskId: input.taskId ?? null, origin, url, reason: input.reason.slice(0, 500) };
-  await db().insert(schema.secureLogins).values(row);
+  const { created, fresh } = await db().transaction(async (tx) => {
+    const [existing] = await tx.select().from(schema.secureLogins)
+      .where(and(eq(schema.secureLogins.agentId, input.agentId), eq(schema.secureLogins.status, 'pending')))
+      .orderBy(desc(schema.secureLogins.createdAt)).limit(1).for('update');
+    if (existing) {
+      if (delegation && existing.url !== url) throw new SecureLoginError('Une autre connexion sécurisée est déjà en cours.');
+      if (delegation) {
+        const [linked] = await tx.select({ id: schema.teamHandoffs.id }).from(schema.teamHandoffs)
+          .where(and(eq(schema.teamHandoffs.kind, 'secure_login'), eq(schema.teamHandoffs.refId, existing.id), eq(schema.teamHandoffs.teamMessageId, delegation.teamMessageId)));
+        if (!linked) await openHandoff({ agentId: input.agentId, kind: 'secure_login', refId: existing.id, delegation }, tx);
+      }
+      return { created: existing, fresh: false };
+    }
+    const row = { id: newId('sl'), agentId: input.agentId, conversationId: input.conversationId, taskId: input.taskId ?? null, origin, url, reason: input.reason.slice(0, 500) };
+    const [created] = await tx.insert(schema.secureLogins).values(row).returning();
+    if (delegation) await openHandoff({ agentId: input.agentId, kind: 'secure_login', refId: row.id, delegation }, tx);
+    return { created, fresh: true };
+  });
+  if (!fresh) return created;
   // Le contrôle du modèle est coupé AVANT que la carte n'apparaisse : pas de fenêtre où il verrait la saisie.
   await withDesktopAgent(input.agentId, () => setHumanControl(true));
-  const created = (await getSecureLogin(row.id))!;
-  await log(input.agentId, 'secure_login.requested', `Connexion requise sur ${origin}`, { loginId: row.id });
+  await log(input.agentId, 'secure_login.requested', `Connexion requise sur ${origin}`, { loginId: created.id });
   publish({ type: 'secure_login.changed', login: toSecureLoginDTO(created) });
   return created;
 }
@@ -100,7 +115,8 @@ export async function resolveSecureLogin(id: string, status: Exclude<SecureLogin
   const text = `Secure sign-in on ${row.origin}: status = ${status}. ${OUTCOME[status]}`;
   const task = row.taskId ? await getTask(row.taskId) : null;
   if (task && ['waiting_for_user', 'paused', 'running', 'queued'].includes(task.status)) await sendInstruction(task.id, text).catch(() => {});
-  else if (!row.taskId) await enqueue('agent.wake', { agentId: row.agentId, conversationId: row.conversationId, event: { type: 'system', title: `Connexion : ${new URL(row.origin).host}` }, text, depth: 0 }, { agentId: row.agentId });
+  const resumed = await resumeReferencedHandoff(row.agentId, 'secure_login', row.id, text);
+  if (!row.taskId && !resumed.some((handoff) => handoff.pairConversationId === row.conversationId)) await enqueue('agent.wake', { agentId: row.agentId, conversationId: row.conversationId, event: { type: 'system', title: `Connexion : ${new URL(row.origin).host}` }, text, depth: 0 }, { agentId: row.agentId });
   return row;
 }
 

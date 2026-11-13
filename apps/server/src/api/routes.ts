@@ -34,7 +34,8 @@ import { connectorMentionables } from '../agents/mentions.ts';
 import { AVATAR_PRESETS, resolveAvatar } from '../agents/avatars.ts';
 import { applyAvatar, restoreAvatar } from '../agents/avatar-actions.ts';
 import { getActiveStream } from '../agents/streams.ts';
-import { getConversation, listTeamThreads, pairConversationId, limitAround, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
+import { getConversation, listTeamThreads, pairConversationId, limitAround, loadMessages, resolveReply, saveMessage, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
+import { finishedTextStream, resumeReferencedHandoff, resumeSetupHandoff } from '../team/handoff.ts';
 import {
   checkModel,
   listOllamaModels,
@@ -46,6 +47,8 @@ import {
   getDefaultModel,
   getOpenRouterKey,
   getSetting,
+  getTeamTurnStepLimit,
+  getTeamTurnTimeoutMs,
   getTimezone,
   getTurnStepLimit,
   isPaused,
@@ -59,7 +62,7 @@ import { enqueue } from '../jobs/queue.ts';
 import { ApprovalError, listApprovals, resolveApproval } from '../approvals/service.ts';
 import { forget, listMemories, listSharedMemories, remember, updateMemory } from '../memory/repo.ts';
 import { listJournal, log } from '../journal.ts';
-import { errorMessage, KeyedMutex } from '../util.ts';
+import { errorMessage, KeyedMutex, newId } from '../util.ts';
 import { createSkill, deleteSkill, listSkills, SkillError, toSkillDTO, updateSkill } from '../skills/repo.ts';
 import { ConnectorError, createConnector, deleteConnector, getConnector, listConnectors, toConnectorDTO, updateConnector } from '../connectors/repo.ts';
 import { closeMcpClient, refreshMcpConnector } from '../connectors/mcp.ts';
@@ -222,6 +225,8 @@ export function createApi() {
       timezone: await getTimezone(),
       paused: await isPaused(),
       turnStepLimit: await getTurnStepLimit(),
+      teamTurnStepLimit: await getTeamTurnStepLimit(),
+      teamTurnTimeoutSec: Math.round((await getTeamTurnTimeoutMs()) / 1000),
       search: await getSearchSettings(),
       shell: await getShellSettings(),
     });
@@ -236,6 +241,8 @@ export function createApi() {
         timezone: z.string().optional(),
         paused: z.boolean().optional(),
         turnStepLimit: z.number().int().positive().nullable().optional(),
+        teamTurnStepLimit: z.number().int().min(1).max(40).nullable().optional(),
+        teamTurnTimeoutSec: z.number().int().min(60).max(1800).multipleOf(60).nullable().optional(),
         search: z
           .object({
             provider: z.enum(['auto', 'mwmbl', 'searxng']),
@@ -274,6 +281,8 @@ export function createApi() {
     if (body.ollamaUrl !== undefined) await setSetting('ollama.url', body.ollamaUrl?.trim() || null);
     if (body.timezone) await setSetting('user.timezone', body.timezone);
     if (body.turnStepLimit !== undefined) await setSetting('engine.turnStepLimit', body.turnStepLimit);
+    if (body.teamTurnStepLimit !== undefined) await setSetting('engine.teamTurnStepLimit', body.teamTurnStepLimit);
+    if (body.teamTurnTimeoutSec !== undefined) await setSetting('engine.teamTurnTimeoutSec', body.teamTurnTimeoutSec);
     if (body.paused !== undefined) {
       await setSetting('engine.paused', body.paused);
       await log(null, 'engine.paused', body.paused ? 'Activités autonomes suspendues' : 'Activités autonomes reprises');
@@ -430,6 +439,16 @@ export function createApi() {
       const { row, summary } = await answerRequest(answer.requestId, answer.answers ?? {});
       finalParts = [{ type: 'text', text: summary }];
       metadata.answer = { requestId: row.id, answers: row.answers ?? {} };
+      const [handoff] = await resumeReferencedHandoff(agent.id, 'question', row.id, `L'utilisateur a répondu au formulaire :\n${summary}`);
+      if (handoff) {
+        const messageId = String(message.id).slice(0, 64);
+        await saveMessage(conversationId, { id: messageId, role: 'user', parts: finalParts, metadata: { ...metadata, kind: 'chat', createdAt: new Date().toISOString() } }, { author: 'user' });
+        const peer = await getAgent(handoff.fromAgentId);
+        const note = `J’ai ta réponse. Je reprends la tâche demandée par ${peer?.name ?? 'ton compagnon'}.`;
+        const noteId = newId('msg');
+        await saveMessage(conversationId, { id: noteId, role: 'assistant', parts: [{ type: 'text', text: note }], metadata: { kind: 'chat', agentId: agent.id, createdAt: new Date().toISOString() } }, { author: 'agent', agentId: agent.id });
+        return createUIMessageStreamResponse({ stream: finishedTextStream(conversationId, noteId, note) });
+      }
     }
     const { stream } = runTurn(agent.id, conversationId, {
       kind: 'user',
@@ -664,8 +683,12 @@ export function createApi() {
   });
 
   /** Réveille le compagnon qui avait demandé la connexion. */
-  async function notifyRequester(agentId: string | undefined, text: string) {
+  async function notifyRequester(agentId: string | undefined, text: string, handoffId?: string) {
     if (!agentId || !(await getAgent(agentId))) return;
+    if (handoffId) {
+      await resumeSetupHandoff(agentId, 'connection', handoffId, text);
+      return;
+    }
     await enqueue(
       'agent.wake',
       { agentId, event: { type: 'system', title: 'Nouvelle connexion' }, text: `${text}\nReprends la tâche qui nécessitait cette connexion et confirme en une ou deux phrases à l'utilisateur ce que tu vas faire.`, depth: 0 },
@@ -694,6 +717,7 @@ export function createApi() {
         secrets: z.record(z.string(), z.string()).optional(),
         approval: z.enum(['ask', 'auto']).optional(),
         requestedBy: z.string().optional(),
+        handoffId: z.string().optional(),
       })
       .parse(await c.req.json());
     if (body.kind === 'mail') {
@@ -705,7 +729,7 @@ export function createApi() {
       await updateConnector(row.id, { status: 'ok' });
       void pollAccount((await getConnector(row.id))!).catch(() => {});
       await log(null, 'connector.created', `Compte mail connecté : ${config.email}`);
-      await notifyRequester(body.requestedBy, `L'utilisateur a connecté le compte mail ${config.email} (id ${row.id}).`);
+      await notifyRequester(body.requestedBy, `L'utilisateur a connecté le compte mail ${config.email} (id ${row.id}).`, body.handoffId);
       return c.json(toConnectorDTO((await getConnector(row.id))!));
     }
     const config = mcpConfigSchema.parse(body.config);
@@ -713,7 +737,7 @@ export function createApi() {
     const row = await createConnector({ name: body.name, kind: 'mcp', config, secrets: body.secrets, approval: body.approval ?? 'ask' });
     const refreshed = await refreshMcpConnector(row.id);
     await log(null, 'connector.created', `Connecteur ajouté : ${row.name}`);
-    if (refreshed.status === 'ok') await notifyRequester(body.requestedBy, `L'utilisateur a ajouté le connecteur MCP « ${row.name} ».`);
+    if (refreshed.status === 'ok') await notifyRequester(body.requestedBy, `L'utilisateur a ajouté le connecteur MCP « ${row.name} ».`, body.handoffId);
     return c.json(toConnectorDTO(refreshed));
   });
 

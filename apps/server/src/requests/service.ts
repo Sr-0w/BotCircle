@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, notExists } from 'drizzle-orm';
 import type { AskQuestion, UserRequestDTO } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
 import { publish } from '../bus.ts';
 import { newId } from '../util.ts';
+import { openHandoff, type TeamDelegation } from '../team/handoff.ts';
 
 /** Demandes structurées (informations, choix) adressées par un compagnon à l'utilisateur. */
 type Row = typeof schema.userRequests.$inferSelect;
@@ -22,7 +23,7 @@ export function toRequestDTO(r: Row): UserRequestDTO {
   };
 }
 
-export async function createRequest(input: { agentId: string; conversationId: string; title: string; questions: AskQuestion[] }) {
+export async function createRequest(input: { agentId: string; conversationId: string; title: string; questions: AskQuestion[] }, delegation?: TeamDelegation | null) {
   const ids = new Set<string>();
   for (const q of input.questions) {
     if (ids.has(q.id)) throw new RequestError(`Identifiant de question dupliqué : ${q.id}`);
@@ -31,14 +32,19 @@ export async function createRequest(input: { agentId: string; conversationId: st
       throw new RequestError(`La question « ${q.label} » nécessite des options.`);
     }
   }
-  // Une seule demande en attente par conversation : la précédente est annulée.
-  await db()
-    .update(schema.userRequests)
-    .set({ status: 'cancelled' })
-    .where(and(eq(schema.userRequests.conversationId, input.conversationId), eq(schema.userRequests.status, 'pending')));
   const row = { id: newId('rq'), ...input };
-  await db().insert(schema.userRequests).values(row);
-  const created = (await getRequest(row.id))!;
+  const created = await db().transaction(async (tx) => {
+    if (!delegation) {
+      // Une nouvelle demande ordinaire remplace la précédente, sans annuler une délégation indépendante.
+      const delegated = tx.select({ id: schema.teamHandoffs.id }).from(schema.teamHandoffs)
+        .where(and(eq(schema.teamHandoffs.kind, 'question'), eq(schema.teamHandoffs.refId, schema.userRequests.id)));
+      await tx.update(schema.userRequests).set({ status: 'cancelled' })
+        .where(and(eq(schema.userRequests.conversationId, input.conversationId), eq(schema.userRequests.status, 'pending'), notExists(delegated)));
+    }
+    const [created] = await tx.insert(schema.userRequests).values(row).returning();
+    if (delegation) await openHandoff({ agentId: input.agentId, kind: 'question', refId: row.id, delegation }, tx);
+    return created;
+  });
   publish({ type: 'request.changed', request: toRequestDTO(created) });
   return created;
 }
@@ -67,11 +73,11 @@ export async function answerRequest(id: string, answers: Record<string, unknown>
     const shown = Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'oui' : 'non') : String(v ?? '');
     lines.push(`- ${q.label} : ${shown || '(sans réponse)'}`);
   }
-  await db()
-    .update(schema.userRequests)
+  const [row] = await db().update(schema.userRequests)
     .set({ status: 'answered', answers: clean, answeredAt: new Date() })
-    .where(eq(schema.userRequests.id, id));
-  const row = (await getRequest(id))!;
+    .where(and(eq(schema.userRequests.id, id), eq(schema.userRequests.status, 'pending')))
+    .returning();
+  if (!row) throw new RequestError('Cette demande a déjà été traitée.');
   publish({ type: 'request.changed', request: toRequestDTO(row) });
   return { row, summary: `${req.title}\n${lines.join('\n')}` };
 }

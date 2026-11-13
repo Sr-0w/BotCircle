@@ -9,15 +9,17 @@ import { t } from '@/lib/i18n';
 import { ServiceLogo } from '../service-logo';
 
 const card = 'not-prose w-full max-w-lg space-y-3 rounded-2xl border bg-card p-4 shadow-xs';
-export function ComputerSetupCard({ agentId, reason }: { agentId: string; reason?: string }) {
+export function ComputerSetupCard({ agentId, reason, handoffId }: { agentId: string; reason?: string; handoffId?: string }) {
   const [status, setStatus] = useState<Awaited<ReturnType<typeof api.desktop>> | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const running = status?.running && !status.suspended;
   const reload = () => api.desktop(agentId).then(setStatus).catch(e => setError(e.message));
   useEffect(() => { void reload(); }, [agentId]);
   useServerEvent(e => ((e.type === 'agent.updated' && e.agent.id === agentId) || (e.type === 'turn.finished' && e.agentId === agentId)) && void reload(), [agentId]);
   async function start() {
     setBusy(true); setError('');
-    try { setStatus(await api.startDesktop(agentId, true)); }
+    try { setStatus(await api.startDesktop(agentId, true, handoffId)); setConfirmed(true); }
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -27,7 +29,7 @@ export function ComputerSetupCard({ agentId, reason }: { agentId: string; reason
     <p className="text-xs text-muted-foreground">{t('Ce bouton autorise ce Circle à utiliser son bureau. Tu peux passer cette étape.')}</p>
     {status?.running && !status.suspended && <p role="status" className="text-sm">{t('Ordinateur démarré')}</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <Button size="sm" disabled={busy || Boolean(status?.running && !status.suspended)} onClick={start}>{busy && <LoaderIcon className="animate-spin" />}{busy ? t('Démarrage…') : status?.running && !status.suspended ? t('Ordinateur démarré') : t('Activer et démarrer l’ordinateur')}</Button>
+    <Button size="sm" disabled={busy || (handoffId ? confirmed : Boolean(running))} onClick={start}>{busy && <LoaderIcon className="animate-spin" />}{busy ? t('Démarrage…') : running ? t(handoffId && !confirmed ? 'Reprendre la tâche' : 'Ordinateur démarré') : t('Activer et démarrer l’ordinateur')}</Button>
   </section>;
 }
 

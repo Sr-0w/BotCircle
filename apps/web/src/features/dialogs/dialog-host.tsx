@@ -21,11 +21,11 @@ export function DialogHost() {
   const d = useDialog();
   if (!d) return null;
   switch (d.kind) {
-    case 'integration': return <IntegrationConnectDialog requestedBy={d.requestedBy} provider={d.provider} connector={d.connector} initialPermissions={d.initialPermissions} onClose={closeDialog} />;
+    case 'integration': return <IntegrationConnectDialog requestedBy={d.requestedBy} handoffId={d.handoffId} provider={d.provider} connector={d.connector} initialPermissions={d.initialPermissions} onClose={closeDialog} />;
     case "mail":
-      return <MailDialog initialPreset={d.initialPreset} connector={d.connector} requestedBy={d.requestedBy} onClose={closeDialog} />;
+      return <MailDialog initialPreset={d.initialPreset} connector={d.connector} requestedBy={d.requestedBy} handoffId={d.handoffId} onClose={closeDialog} />;
     case "mcp":
-      return <McpDialog connector={d.connector} requestedBy={d.requestedBy} onClose={closeDialog} />;
+      return <McpDialog connector={d.connector} requestedBy={d.requestedBy} handoffId={d.handoffId} onClose={closeDialog} />;
     case "plugin":
       return <PluginDialog onClose={closeDialog} />;
     case "skill":
