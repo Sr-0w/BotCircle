@@ -4,6 +4,7 @@ import { runTurn } from '../agents/turn.ts';
 import { artifactsByIds } from '../artifacts/service.ts';
 import { getConversation, saveMessage } from '../conversations/repo.ts';
 import { log } from '../journal.ts';
+import { publish } from '../bus.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
 import { addTaskEvent, getTask, startNextTask, updateTask, type TaskRow } from './service.ts';
 
@@ -61,12 +62,16 @@ async function conclude(task: TaskRow, status: 'completed' | 'failed', outcome: 
  * compagnon, avec les fichiers réellement produits en pièces jointes.
  */
 async function post(task: TaskRow, text: string) {
-  if (!await getConversation(task.conversationId)) return;
+  const origin = await getConversation(task.conversationId);
+  if (!origin || origin.archived) return;
+  const inChat = origin.kind === 'chat';
   const files = task.status === 'completed' ? await artifactsByIds(task.artifacts) : [];
   const metadata: MessageMetadata = { kind: 'chat', agentId: task.agentId, autonomous: true, createdAt: new Date().toISOString(), taskId: task.id };
   await saveMessage(task.conversationId, {
     id: newId('msg'), role: 'assistant',
     parts: [{ type: 'text', text }, ...files.map((a) => ({ type: 'file' as const, url: artifactUrl(a.id), filename: a.name, mediaType: a.mediaType }))],
     metadata,
-  }, { author: 'agent', agentId: task.agentId });
+  // Dans un chat général, la contribution est attribuée au compagnon (métadonnées) sans compter comme un non-lu de son propre fil.
+  }, { author: 'agent', agentId: inChat ? null : task.agentId });
+  if (inChat) publish({ type: 'chat.changed', chatId: task.conversationId });
 }

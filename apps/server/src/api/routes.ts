@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { attachmentRoutes } from '../attachments/routes.ts';
 import { artifactRoutes } from '../artifacts/routes.ts';
 import { taskRoutes } from '../tasks/routes.ts';
+import { chatRoutes } from '../chats/routes.ts';
 import { grantArtifact } from '../artifacts/service.ts';
 import { artifactIdFromUrl } from '@opendots/shared';
 import { AttachmentError, validateMessageParts } from '../attachments/service.ts';
@@ -118,6 +119,7 @@ export function createApi() {
   api.route('/attachments', attachmentRoutes());
   api.route('/artifacts', artifactRoutes());
   api.route('/tasks', taskRoutes());
+  api.route('/chats', chatRoutes());
 
   api.get('/bootstrap', async (c) => {
     const dto: BootstrapDTO = {
