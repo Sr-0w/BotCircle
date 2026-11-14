@@ -1,3 +1,5 @@
+import type { ArtifactRow } from '../artifacts/service.ts';
+import { artifactUrl } from '@opendots/shared';
 import { desktopVisionMessages } from '../computer/vision.ts';
 import { compactSemanticObservations } from '../computer/semantic-context.ts';
 import { abortableChunks } from './abortable.ts';
@@ -404,6 +406,18 @@ async function executeTurn(
       const reply = await resolveReply(conversationId, messageId.trim());
       if (!reply) throw new Error('Message introuvable dans cette conversation.');
       replyTo = reply;
+    },
+    publishArtifact: async (artifact: ArtifactRow) => {
+      // Dans le fil de l'utilisateur, la pièce jointe est portée par ce tour. Dans un fil entre compagnons,
+      // l'utilisateur ne lit pas ce fil : le fichier est déposé dans son chat avec ce compagnon.
+      if (!pair) return conversationId;
+      const target = await mainConversationId(agentId);
+      await saveMessage(target, {
+        id: newId('msg'), role: 'assistant',
+        parts: [{ type: 'file', url: artifactUrl(artifact.id), filename: artifact.name, mediaType: artifact.mediaType }],
+        metadata: { kind: 'chat', agentId, autonomous: true, createdAt: new Date().toISOString() },
+      }, { author: 'agent', agentId });
+      return target;
     },
     steerBackground: (instruction: string) => {
       const targets = runSlot(live.key).background.filter((turn) => turn !== live && !turn.stream.abort.signal.aborted);

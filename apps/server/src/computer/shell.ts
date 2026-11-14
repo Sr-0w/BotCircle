@@ -371,6 +371,72 @@ async function executeShell(agentId: string, command: string, opts: { timeoutSec
   return { backend, exitCode: r.code, stdout: r.stdout, stderr: r.stderr, durationMs: Date.now() - started, timedOut: r.timedOut, cwd: hostHome };
 }
 
+/**
+ * Lit un fichier de l'ordinateur d'un compagnon, en tant que ce compagnon : il n'obtient donc que ce que
+ * son propre utilisateur Linux peut lire (pas les dossiers des autres, pas un lien vers ailleurs).
+ */
+export async function readWorkspaceFile(agentId: string, path: string, maxBytes: number): Promise<Buffer> {
+  return withDesktopAgent(agentId, async () => {
+    const release = leaseComputer();
+    try {
+      const settings = await getShellSettings();
+      const backend = await resolveBackend(settings);
+      if (!backend) throw new Error('Le shell est désactivé dans les paramètres.');
+      const hostHome = ensureHostDirs(agentId);
+      if (backend === 'host') {
+        const { realpath, stat: statFile } = await import('node:fs/promises');
+        const target = await realpath(path.startsWith('/') ? path : join(hostHome, path)).catch(() => null);
+        const roots = [await realpath(hostHome), await realpath(join(workspacesDir(), 'shared'))];
+        if (!target || !roots.some((root) => target === root || target.startsWith(root + '/'))) throw new Error('Chemin hors de ton espace de travail.');
+        const info = await statFile(target);
+        if (!info.isFile()) throw new Error('Ce chemin n’est pas un fichier.');
+        if (info.size > maxBytes) throw new Error('Fichier trop volumineux.');
+        return readFile(target);
+      }
+      await ensureContainer(settings);
+      const { user, home } = await ensureComputerUser(agentId, settings.sudo);
+      // head borne la lecture ; un octet de plus que la limite signale un fichier trop gros.
+      const child = spawn('docker', ['exec', '-u', user, '-w', home, computerName(), 'sh', '-c', 'test -f "$1" || { echo "Fichier introuvable." >&2; exit 3; }; head -c "$2" -- "$1"', 'read', path, String(maxBytes + 1)], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const chunks: Buffer[] = []; let size = 0; let stderr = '';
+      child.stdout!.on('data', (d: Buffer) => { size += d.length; if (size <= maxBytes + 1) chunks.push(d); });
+      child.stderr!.on('data', (d: Buffer) => { if (stderr.length < 2000) stderr += d.toString('utf8'); });
+      const code = await new Promise<number | null>((resolve) => { const timer = setTimeout(() => child.kill('SIGKILL'), 60_000); child.on('close', (c) => { clearTimeout(timer); resolve(c); }); child.on('error', () => { clearTimeout(timer); resolve(1); }); });
+      if (code !== 0) throw new Error(stderr.trim() || 'Fichier illisible.');
+      if (size > maxBytes) throw new Error('Fichier trop volumineux.');
+      return Buffer.concat(chunks);
+    } finally { release(); }
+  });
+}
+
+/** Dépose un fichier dans le dossier `inbox` du compagnon, en tant que ce compagnon. Renvoie son chemin. */
+export async function writeWorkspaceFile(agentId: string, name: string, bytes: Buffer): Promise<string> {
+  const safe = name.replace(/[\\/\u0000-\u001f]/g, '_').replace(/^\.+/, '') || 'fichier';
+  return withDesktopAgent(agentId, async () => {
+    const release = leaseComputer();
+    try {
+      const settings = await getShellSettings();
+      const backend = await resolveBackend(settings);
+      if (!backend) throw new Error('Le shell est désactivé dans les paramètres.');
+      const hostHome = ensureHostDirs(agentId);
+      if (backend === 'host') {
+        await mkdir(join(hostHome, 'inbox'), { recursive: true });
+        await writeFile(join(hostHome, 'inbox', safe), bytes, { mode: 0o600 });
+        return join(hostHome, 'inbox', safe);
+      }
+      await ensureContainer(settings);
+      const { user, home } = await ensureComputerUser(agentId, settings.sudo);
+      const child = spawn('docker', ['exec', '-i', '-u', user, '-w', home, computerName(), 'sh', '-c', 'mkdir -p inbox && cat > "inbox/$1"', 'write', safe], { stdio: ['pipe', 'ignore', 'pipe'] });
+      let stderr = '';
+      child.stderr!.on('data', (d: Buffer) => { if (stderr.length < 2000) stderr += d.toString('utf8'); });
+      child.stdin!.on('error', () => {});
+      child.stdin!.end(bytes);
+      const code = await new Promise<number | null>((resolve) => { const timer = setTimeout(() => child.kill('SIGKILL'), 60_000); child.on('close', (c) => { clearTimeout(timer); resolve(c); }); child.on('error', () => { clearTimeout(timer); resolve(1); }); });
+      if (code !== 0) throw new Error(stderr.trim() || 'Écriture impossible.');
+      return `${home}/inbox/${safe}`;
+    } finally { release(); }
+  });
+}
+
 /** Version compacte pour le modèle. */
 export function shellForModel(r: ShellResult) {
   return {

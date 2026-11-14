@@ -55,18 +55,25 @@ export const conversations = pgTable(
   'conversations',
   {
     id: text('id').primaryKey(),
-    kind: text('kind').$type<'main' | 'pair'>().notNull(),
+    /** main : fil d'un compagnon ; pair : fil entre deux compagnons ; chat : chat général sans compagnon ; task : journal de travail d'une tâche. */
+    kind: text('kind').$type<'main' | 'pair' | 'chat' | 'task'>().notNull(),
     /** Compagnon propriétaire pour une conversation principale. */
     agentId: text('agent_id'),
     /** Participants d'une conversation entre compagnons (triés). */
     agentA: text('agent_a'),
     agentB: text('agent_b'),
+    /** Titre d'un chat général. */
+    title: text('title'),
+    /** Modèle propre à un chat général (sinon le modèle par défaut). */
+    model: jsonb('model').$type<ModelConfig | null>(),
+    archived: boolean('archived').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('conversations_main_idx').on(t.agentId).where(sql`kind = 'main'`),
     uniqueIndex('conversations_pair_idx').on(t.agentA, t.agentB).where(sql`kind = 'pair'`),
+    index('conversations_kind_idx').on(t.kind, t.updatedAt),
   ],
 );
 
@@ -303,3 +310,110 @@ export const userRequests = pgTable('user_requests', {
   createdAt: ts('created_at').notNull().defaultNow(),
   answeredAt: ts('answered_at'),
 });
+
+// --- Artefacts : fichiers privés du compte, partagés par autorisation explicite ----------
+
+export const artifacts = pgTable(
+  'artifacts',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    mediaType: text('media_type').notNull(),
+    size: integer('size').notNull(),
+    /** Les octets sont stockés une seule fois par empreinte. */
+    sha256: text('sha256').notNull(),
+    authorKind: text('author_kind').$type<'user' | 'agent' | 'worker'>().notNull(),
+    authorId: text('author_id'),
+    source: text('source').$type<'upload' | 'agent' | 'screenshot'>().notNull(),
+    conversationId: text('conversation_id'),
+    taskId: text('task_id'),
+    /** Artefact dont celui-ci est une version révisée. */
+    parentId: text('parent_id'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    deletedAt: ts('deleted_at'),
+  },
+  (t) => [index('artifacts_conversation_idx').on(t.conversationId), index('artifacts_sha_idx').on(t.sha256)],
+);
+
+/** Droit de lecture d'un compagnon sur un artefact. Sans ligne active, pas d'accès. */
+export const artifactGrants = pgTable(
+  'artifact_grants',
+  {
+    id: text('id').primaryKey(),
+    artifactId: text('artifact_id').notNull(),
+    agentId: text('agent_id').notNull(),
+    /** `user` ou id du compagnon qui a partagé. */
+    grantedBy: text('granted_by').notNull(),
+    via: text('via').$type<'upload' | 'share' | 'create' | 'task' | 'user'>().notNull(),
+    conversationId: text('conversation_id'),
+    taskId: text('task_id'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    revokedAt: ts('revoked_at'),
+  },
+  (t) => [index('artifact_grants_artifact_idx').on(t.artifactId), index('artifact_grants_agent_idx').on(t.agentId)],
+);
+
+/** Journal des accès : qui a lu, partagé ou publié quoi. Jamais le contenu. */
+export const artifactAccess = pgTable(
+  'artifact_access',
+  {
+    id: text('id').primaryKey(),
+    artifactId: text('artifact_id').notNull(),
+    actor: text('actor').notNull(),
+    action: text('action').$type<'create' | 'read' | 'download' | 'share' | 'publish' | 'revoke' | 'delete' | 'denied'>().notNull(),
+    detail: text('detail'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('artifact_access_artifact_idx').on(t.artifactId, t.createdAt)],
+);
+
+// --- Tâches : travail long exécuté par un worker, hors du tour de chat --------------------
+
+export type TaskStatus = 'queued' | 'running' | 'waiting_for_user' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    agentId: text('agent_id').notNull(),
+    /** Conversation d'origine : la carte et le résultat y apparaissent. */
+    conversationId: text('conversation_id').notNull(),
+    /** Conversation privée du worker : son journal technique. */
+    workConversationId: text('work_conversation_id').notNull(),
+    title: text('title').notNull(),
+    instruction: text('instruction').notNull(),
+    status: text('status').$type<TaskStatus>().notNull().default('queued'),
+    phase: text('phase'),
+    currentAction: text('current_action'),
+    completedSteps: integer('completed_steps').notNull().default(0),
+    totalSteps: integer('total_steps'),
+    blocker: text('blocker'),
+    requiresUserInput: boolean('requires_user_input').notNull().default(false),
+    result: text('result'),
+    error: text('error'),
+    artifacts: jsonb('artifacts').$type<string[]>().notNull().default([]),
+    /** Consignes ajoutées pendant l'exécution, appliquées à l'étape suivante. */
+    pendingInstructions: jsonb('pending_instructions').$type<string[]>().notNull().default([]),
+    /** `agent` (délégation par le compagnon), `user` (mention depuis un chat) ou `assistant` (chat général). */
+    requestedBy: text('requested_by').notNull().default('agent'),
+    lastHeartbeat: ts('last_heartbeat'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    startedAt: ts('started_at'),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('tasks_agent_idx').on(t.agentId, t.status), index('tasks_conversation_idx').on(t.conversationId, t.createdAt)],
+);
+
+/** Journal technique d'une tâche (outils, notes, erreurs), consultable dans « Détails ». */
+export const taskEvents = pgTable(
+  'task_events',
+  {
+    seq: serial('seq').primaryKey(),
+    taskId: text('task_id').notNull(),
+    kind: text('kind').$type<'status' | 'step' | 'note' | 'error' | 'instruction' | 'artifact'>().notNull(),
+    summary: text('summary').notNull(),
+    data: jsonb('data'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('task_events_task_idx').on(t.taskId, t.seq)],
+);

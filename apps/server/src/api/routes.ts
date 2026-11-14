@@ -1,6 +1,9 @@
 import { closeCodexClients, codexHome, codexAccount, codexClient, codexModels } from '../models/codex.ts';
 import { bodyLimit } from 'hono/body-limit';
 import { attachmentRoutes } from '../attachments/routes.ts';
+import { artifactRoutes } from '../artifacts/routes.ts';
+import { grantArtifact } from '../artifacts/service.ts';
+import { artifactIdFromUrl } from '@opendots/shared';
 import { AttachmentError, validateMessageParts } from '../attachments/service.ts';
 import { stopAllDesktops } from '../computer/desktop.ts';
 import { desktopRoutes } from '../computer/routes.ts';
@@ -112,6 +115,7 @@ export function createApi() {
   api.route('/integrations', integrationRoutes());
   api.route('/computer', desktopRoutes());
   api.route('/attachments', attachmentRoutes());
+  api.route('/artifacts', artifactRoutes());
 
   api.get('/bootstrap', async (c) => {
     const dto: BootstrapDTO = {
@@ -335,6 +339,11 @@ export function createApi() {
     const parts = await validateMessageParts(message.parts);
     if (!parts.length) return c.json({ error: 'Message vide' }, 400);
     const conversationId = await mainConversationId(agent.id);
+    // Joindre un fichier à ce compagnon lui donne, à lui seul, le droit de le lire.
+    for (const part of parts) {
+      const artifactId = part.type === 'file' ? artifactIdFromUrl(part.url) : null;
+      if (artifactId) await grantArtifact(artifactId, agent.id, 'user', 'upload', { conversationId });
+    }
     let finalParts = parts;
     const metadata: OpenDotsUIMessage['metadata'] = {};
     const replyToId = (message.metadata as { replyTo?: { messageId?: string } } | undefined)?.replyTo?.messageId;

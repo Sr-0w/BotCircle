@@ -1,3 +1,5 @@
+import { artifactTools, shareArtifactsWith } from '../artifacts/tools.ts';
+import { ArtifactError } from '../artifacts/service.ts';
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ActivitySchedule, AgentPermissions, ModelConfig } from '@opendots/shared';
@@ -56,6 +58,10 @@ export interface ToolContext {
   tz: string;
   /** Pendant le traitement d'un message d'un coéquipier : l'id de ce coéquipier. */
   peerAgentId?: string;
+  /** Tâche en arrière-plan exécutée par ce tour (worker). */
+  taskId?: string;
+  /** Rend un artefact visible de l'utilisateur ; renvoie la conversation où il apparaît. */
+  publishArtifact?: (artifact: import('../artifacts/service.ts').ArtifactRow) => Promise<string | null>;
 }
 
 const ok = (data: Record<string, unknown> = {}) => ({ ok: true, ...data });
@@ -450,8 +456,9 @@ export function buildTools(ctx: ToolContext): ToolSet {
         to: z.string().describe('Nom ou id du compagnon'),
         message: z.string().min(1),
         expects_reply: z.boolean().optional().describe('true (défaut) si tu attends une réponse'),
+        artifacts: z.array(z.string()).max(8).optional().describe("Ids d'artefacts à remettre avec le message : le destinataire reçoit le droit de les lire"),
       }),
-      execute: async ({ to, message, expects_reply }) =>
+      execute: async ({ to, message, expects_reply, artifacts }) =>
         guard(async () => {
           if (ctx.depth >= config.maxTeamDepth) return fail('Chaîne de collaboration trop longue : conclus avec les informations disponibles.');
           const target = await resolveAgentRef(to);
@@ -460,9 +467,12 @@ export function buildTools(ctx: ToolContext): ToolSet {
           if (ctx.peerAgentId && target.id === ctx.peerAgentId)
             return fail(`Inutile : ta réponse finale à ce tour est automatiquement transmise à ${target.name}. Écris simplement ta réponse (ou <no_reply/> si aucune réponse n'est nécessaire).`);
           try {
+            // Les fichiers passent par référence : on vérifie le droit de l'expéditeur, puis on autorise le destinataire.
+            const shared = artifacts?.length ? await shareArtifactsWith(ctx.agent.id, target.id, artifacts, { conversationId: ctx.conversationId, taskId: ctx.taskId ?? null }) : [];
             const sent = await sendTeamMessage({
               fromAgentId: ctx.agent.id,
               toAgentId: target.id,
+              artifacts: shared,
               content: message,
               expectsReply: expects_reply ?? true,
               replyToConversationId: ctx.isMain ? ctx.conversationId : null,
@@ -472,10 +482,11 @@ export function buildTools(ctx: ToolContext): ToolSet {
               status: 'sent',
               to: target.name,
               teamMessageId: sent.id,
+              ...(shared.length ? { sharedArtifacts: shared.map((row) => ({ id: row.id, name: row.name })) } : {}),
               note: expects_reply === false ? 'Message transmis.' : `${target.name} répondra plus tard ; tu seras réveillé avec sa réponse.`,
             });
           } catch (err) {
-            if (err instanceof TeamError) return fail(err.message);
+            if (err instanceof TeamError || err instanceof ArtifactError) return fail(err.message);
             throw err;
           }
         }),
@@ -700,6 +711,7 @@ export function buildTools(ctx: ToolContext): ToolSet {
     });
   }
 
+  Object.assign(tools, artifactTools(ctx));
   return tools;
 }
 

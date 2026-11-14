@@ -192,7 +192,7 @@ export interface MessageMetadata {
   agentId?: string;
   /** Type d'événement pour les messages "event". */
   event?: {
-    type: 'schedule' | 'watch' | 'webhook' | 'mail' | 'agent_reply' | 'agent_message' | 'approval' | 'system' | 'reaction';
+    type: 'schedule' | 'watch' | 'webhook' | 'mail' | 'agent_reply' | 'agent_message' | 'approval' | 'system' | 'reaction' | 'task';
     title: string;
     activityId?: string;
     approvalId?: string;
@@ -212,6 +212,8 @@ export interface MessageMetadata {
   reactions?: MessageReaction[];
   /** Durée du tour, une fois terminé, pour le panneau « A travaillé ». */
   workedMs?: number;
+  /** Message produit par une tâche (résultat, blocage) : la tâche d'origine. */
+  taskId?: string;
 }
 
 /** Un emoji ajouté par l'utilisateur (`actor: 'user'`) ou un compagnon (id). */
@@ -267,7 +269,122 @@ export type ServerEvent =
   | { type: 'skills.changed' }
   | { type: 'connectors.changed' }
   | { type: 'request.changed'; request: UserRequestDTO }
-  | { type: 'draft.changed'; draft: MailDraftDTO };
+  | { type: 'draft.changed'; draft: MailDraftDTO }
+  | { type: 'task.changed'; task: TaskDTO }
+  | { type: 'chat.changed'; chatId: string; deleted?: boolean }
+  | { type: 'artifact.changed'; artifactId: string };
+
+// --- Artefacts (fichiers) -----------------------------------------------------
+
+export interface ArtifactDTO {
+  id: string;
+  name: string;
+  mediaType: string;
+  size: number;
+  sha256: string;
+  /** Qui a créé le fichier : l'utilisateur, un compagnon ou un worker (tâche). */
+  authorKind: 'user' | 'agent' | 'worker';
+  authorId: string | null;
+  source: 'upload' | 'agent' | 'screenshot';
+  conversationId: string | null;
+  taskId: string | null;
+  /** Version révisée de cet artefact, le cas échéant. */
+  parentId: string | null;
+  createdAt: string;
+  /** Lien privé (session requise) vers le contenu inchangé. */
+  url: string;
+}
+
+export interface ArtifactGrantDTO {
+  agentId: string;
+  grantedBy: string;
+  via: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface ArtifactAccessDTO {
+  actor: string;
+  action: string;
+  detail: string | null;
+  createdAt: string;
+}
+
+/** Limite par fichier, côté client et serveur. */
+export const ARTIFACT_MAX_BYTES = 50 * 1024 * 1024;
+
+export const artifactUrl = (id: string) => `/api/artifacts/${id}/content`;
+const ARTIFACT_URL = /^\/api\/artifacts\/(art_[a-z0-9]+)\/content$/;
+export const artifactIdFromUrl = (url: unknown): string | null => (typeof url === 'string' ? ARTIFACT_URL.exec(url)?.[1] ?? null : null);
+
+// --- Tâches (workers en arrière-plan) --------------------------------------------
+
+export type TaskStatus = 'queued' | 'running' | 'waiting_for_user' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export const ACTIVE_TASK_STATUSES: TaskStatus[] = ['queued', 'running', 'waiting_for_user', 'paused'];
+
+export interface TaskDTO {
+  id: string;
+  agentId: string;
+  conversationId: string;
+  title: string;
+  instruction: string;
+  status: TaskStatus;
+  /** Progression observée, jamais estimée. */
+  phase: string | null;
+  currentActionSummary: string | null;
+  completedSteps: number;
+  totalSteps: number | null;
+  blocker: string | null;
+  requiresUserInput: boolean;
+  result: string | null;
+  error: string | null;
+  artifacts: ArtifactDTO[];
+  requestedBy: string;
+  lastHeartbeat: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface TaskEventDTO {
+  seq: number;
+  kind: 'status' | 'step' | 'note' | 'error' | 'instruction' | 'artifact';
+  summary: string;
+  createdAt: string;
+}
+
+// --- Chats généraux (sans compagnon propriétaire) ---------------------------------
+
+export interface ChatDTO {
+  id: string;
+  title: string;
+  /** Modèle propre au chat ; null = modèle par défaut. */
+  model: ModelConfig | null;
+  effectiveModel: ModelConfig;
+  createdAt: string;
+  updatedAt: string;
+  lastMessagePreview: string | null;
+}
+
+/** Mentions `@Nom` d'un message, résolues sur les compagnons existants (insensible à la casse, sans doublon). */
+export function findMentions(text: string, agents: { id: string; name: string }[]): string[] {
+  const found: string[] = [];
+  const sorted = [...agents].sort((a, b) => b.name.length - a.name.length);
+  const lower = text.toLowerCase();
+  for (const agent of sorted) {
+    const name = agent.name.trim().toLowerCase();
+    if (!name) continue;
+    let from = 0;
+    while (true) {
+      const at = lower.indexOf(`@${name}`, from);
+      if (at < 0) break;
+      const next = lower[at + name.length + 1];
+      if ((next === undefined || !/[\p{L}\p{N}_]/u.test(next)) && !found.includes(agent.id)) found.push(agent.id);
+      from = at + 1;
+    }
+  }
+  return found;
+}
 
 // --- Skills, connecteurs, plugins -------------------------------------------
 
@@ -467,7 +584,10 @@ export function isActionToolPart(part: Presentable): boolean {
   return out.status === 'pending_approval';
 }
 
-export type PresentedBubble<T> = { key: string; text: string } | { key: string; image: T };
+export type PresentedBubble<T> = { key: string; text: string } | { key: string; image: T } | { key: string; file: PresentedFile };
+
+/** Pièce jointe non image d'un message : un fichier réel, téléchargeable. */
+export interface PresentedFile { url: string; filename: string; mediaType: string; size?: number; caption?: string | null; artifactId?: string | null }
 
 /**
  * Un tour assistant est un seul message stocké. Les phrases visibles
@@ -489,6 +609,21 @@ export function presentAssistantTurn<T extends Presentable>(parts: T[]): { bubbl
     if (part.type === 'file' && part.mediaType?.startsWith('image/')) {
       bubbles.push({ key: `image-${index}`, image: part });
       return;
+    }
+    // Un fichier joint (artefact) est une pièce jointe du fil, pas une trace de travail.
+    if (part.type === 'file' && part.url && artifactIdFromUrl(part.url)) {
+      bubbles.push({ key: `file-${index}`, file: { url: part.url, filename: part.filename ?? 'fichier', mediaType: part.mediaType ?? 'application/octet-stream', artifactId: artifactIdFromUrl(part.url) } });
+      return;
+    }
+    // Un fichier n'est « remis » que si l'outil de publication l'a confirmé.
+    if (part.type === 'tool-artifact_publish_to_chat') {
+      const out = part.output as { ok?: boolean; status?: string; caption?: string | null; artifact?: { id: string; url: string; name: string; mediaType: string; size: number } } | undefined;
+      if (part.state === 'output-available' && out?.ok && out.status === 'published' && out.artifact) {
+        const a = out.artifact;
+        if (a.mediaType.startsWith('image/')) bubbles.push({ key: `image-${index}`, image: { type: 'file', url: a.url, filename: a.name, mediaType: a.mediaType } as unknown as T });
+        else bubbles.push({ key: `file-${index}`, file: { url: a.url, filename: a.name, mediaType: a.mediaType, size: a.size, caption: out.caption ?? null, artifactId: a.id } });
+        return;
+      }
     }
     // Une capture partagée par le compagnon est une image du fil, pas une trace d'outil.
     if (part.type === 'tool-share_screenshot') {

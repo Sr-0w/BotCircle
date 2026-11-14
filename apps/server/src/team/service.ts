@@ -6,6 +6,7 @@ import { log } from '../journal.ts';
 import { pairConversationId, saveMessage } from '../conversations/repo.ts';
 import { mainConversationId } from '../agents/repo.ts';
 import { newId } from '../util.ts';
+import { artifactUrl } from '@opendots/shared';
 import { isPureAck, PAIR_THREAD_CAP } from './policy.ts';
 
 export type TeamMessageRow = typeof schema.teamMessages.$inferSelect;
@@ -22,6 +23,8 @@ export async function sendTeamMessage(input: {
   expectsReply: boolean;
   replyToConversationId: string | null;
   depth: number;
+  /** Fichiers remis avec le message (déjà autorisés au destinataire). */
+  artifacts?: { id: string; name: string; mediaType: string; size: number }[];
 }): Promise<TeamMessageRow> {
   if (input.fromAgentId === input.toAgentId) throw new TeamError('Un compagnon ne peut pas s’écrire à lui-même.');
   const [{ value: recent }] = await db()
@@ -51,7 +54,10 @@ export async function sendTeamMessage(input: {
     {
       id: newId('msg'),
       role: 'user',
-      parts: [{ type: 'text', text: input.content }],
+      parts: [
+        { type: 'text', text: input.content },
+        ...(input.artifacts ?? []).map((a) => ({ type: 'file' as const, url: artifactUrl(a.id), filename: a.name, mediaType: a.mediaType })),
+      ],
       metadata: { kind: 'team', agentId: input.fromAgentId, createdAt: new Date().toISOString() },
     },
     { author: 'agent', agentId: input.fromAgentId },
