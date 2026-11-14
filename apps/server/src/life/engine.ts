@@ -14,6 +14,8 @@ import { countThreadMessages, getTeamMessage, postTeamNote, updateTeamMessage } 
 import { decideReply, shouldWakeSender } from '../team/policy.ts';
 import { saveMessage } from '../conversations/repo.ts';
 import { publish } from '../bus.ts';
+import { runTask } from '../tasks/runner.ts';
+import { failStalledTasks } from '../tasks/service.ts';
 import { errorMessage, newId, sha256, truncate } from '../util.ts';
 
 /**
@@ -141,6 +143,11 @@ export function registerLifeHandlers() {
     }
   });
 
+  // Worker d'une tâche en arrière-plan. Ne lève jamais : l'issue est portée par l'état de la tâche.
+  registerJobHandler('task.run', async ({ taskId }: { taskId: string }) => {
+    await runTask(taskId).catch((error) => console.error('[task]', error));
+  });
+
   registerJobHandler('watch.check', async ({ activityId }: { activityId: string }) => {
     const act = await getActivity(activityId);
     if (!act || !act.enabled || !act.watch) return;
@@ -213,6 +220,8 @@ export async function checkWatch(act: ActivityRow): Promise<{ triggered: boolean
 
 /** Un tick du scheduler : déclenche les activités arrivées à échéance. */
 export async function tick() {
+  // Une tâche sans signe de vie est déclarée en échec plutôt que de rester « en cours » indéfiniment.
+  await failStalledTasks().catch((error) => console.error('[tasks]', error));
   if (runtime().ticking) return;
   runtime().ticking = true;
   try {

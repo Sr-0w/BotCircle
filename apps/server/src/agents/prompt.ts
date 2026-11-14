@@ -7,7 +7,8 @@ export type TurnMode =
   | { kind: 'onboarding' }
   | { kind: 'user' }
   | { kind: 'event'; title: string; eventType?: string }
-  | { kind: 'team'; peerName: string; expectsReply: boolean; nudge?: boolean };
+  | { kind: 'team'; peerName: string; expectsReply: boolean; nudge?: boolean }
+  | { kind: 'task'; title: string };
 
 export interface PromptInput {
   agent: AgentRow;
@@ -23,6 +24,8 @@ export interface PromptInput {
   toolNames: string[];
   /** Tâches déjà lancées qui continuent pendant que ce tour répond. */
   background?: { task: string; progress: string[] }[];
+  /** Tâches de ce compagnon en file, en cours, en pause ou en attente de l'utilisateur. */
+  tasks?: { id: string; title: string; status: string; phase: string | null; currentAction: string | null; completedSteps: number; blocker: string | null }[];
 }
 
 function section(title: string, body: string) {
@@ -192,6 +195,31 @@ export function buildSystemPrompt(p: PromptInput): string {
         '- When you need precise information or want the user to pick between options, prefer ask_user (an interactive form) over a long question in text.',
     ),
   );
+
+  if (p.mode.kind === 'task') {
+    out.push(section(
+      'Current situation: you are a background worker',
+      `You are executing the task "${p.mode.title}" as a background worker. Nobody reads this thread: the user sees one compact task card (status, current step, number of actions) and, at the end, your final answer. ` +
+        `Do the work with your tools, step by step, and verify results. Do not narrate ("I will now…"): each tool call already updates the card. ` +
+        `Call task_report when you enter a new phase of the work, and with requires_user_input when you truly cannot continue without the user (a choice only they can make, credentials, an approval): the task is then suspended until they answer. Never invent progress. ` +
+        `Files you produce for the user must be registered with artifact_create and attached with artifact_publish_to_chat; they are delivered with your final answer. ` +
+        `End with ONE final answer in the user's language: what was done and verified, the result, and any open question. That answer is posted in the user's conversation as your message. If you fail or are blocked, say exactly why.`,
+    ));
+  }
+
+  if (p.tasks && p.toolNames?.includes('task_start')) {
+    out.push(section(
+      'Background tasks',
+      `You stay the user's interlocutor; long work runs in background workers so the conversation is never blocked. ` +
+        `Delegate to a worker with task_start when a request needs many steps (desktop or browser work, long research, coding, multi-file processing). Then answer ONCE, briefly, that it is underway and that the user can keep talking to you; do not narrate the work and do not do it yourself in this turn. Simple questions are answered directly, without a task. ` +
+        `When the user asks how it is going, call task_status and report only what it returns (phase, current action, steps done, blocker): never invent a percentage or a result. Use task_send_instruction to pass on a new requirement, task_pause / task_resume / task_cancel when asked. ` +
+        `A task's result is posted in this conversation by the worker when it finishes; do not repeat it.` +
+        (p.tasks.length
+          ? `\nYour tasks right now:\n${p.tasks.map((t) => `- ${t.id} "${t.title}": ${t.status}${t.phase ? `, phase: ${t.phase}` : ''}${t.currentAction ? `, current action: ${t.currentAction}` : ''}, ${t.completedSteps} steps done${t.blocker ? `, blocked: ${t.blocker}` : ''}`).join('\n')}` +
+            (p.tasks.some((t) => t.status === 'running') ? `\nWhile a task is running it owns your desktop: your pointer and keyboard tools are unavailable in this conversation.` : '')
+          : ''),
+    ));
+  }
 
   if (p.background?.length) {
     out.push(section(

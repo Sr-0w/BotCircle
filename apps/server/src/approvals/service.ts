@@ -1,3 +1,4 @@
+import { sendInstruction, taskByWorkConversation } from '../tasks/service.ts';
 import { and, desc, eq } from 'drizzle-orm';
 import type { ApprovalDTO, ApprovalStatus } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
@@ -128,6 +129,15 @@ export async function resolveApproval(
     }
   }
 
+  const task = await taskByWorkConversation(row.conversationId);
+  if (task) {
+    // Demandée par un worker : la décision est versée à sa tâche, qui reprend d'elle-même.
+    const verdict = row.status === 'executed' ? `L'utilisateur a approuvé « ${row.summary} » et l'action a été exécutée. Résultat : ${JSON.stringify(row.result)}`
+      : row.status === 'failed' ? `L'utilisateur a approuvé « ${row.summary} » mais l'exécution a échoué : ${row.error}`
+        : `L'utilisateur a refusé « ${row.summary} ». Ne la réessaie pas ; continue autrement ou conclus.`;
+    if (task.status === 'waiting_for_user' || task.status === 'paused' || task.status === 'running' || task.status === 'queued') await sendInstruction(task.id, verdict).catch(() => {});
+    return row;
+  }
   if (opts.notifyAgent) {
     const outcome =
       row.status === 'executed'

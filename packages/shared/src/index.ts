@@ -580,6 +580,8 @@ export function isActionToolPart(part: Presentable): boolean {
   const out = toolOutput(part);
   if (!out || out.ok === false) return false;
   if (part.type === 'tool-team_send_message' && out.status === 'sent') return true;
+  // Une tâche déléguée laisse sa carte dans le fil (mise à jour en place).
+  if (part.type === 'tool-task_start' && typeof (out as { taskId?: unknown }).taskId === 'string') return true;
   if (ACTION_TOOL_TYPES.has(part.type)) return true;
   return out.status === 'pending_approval';
 }

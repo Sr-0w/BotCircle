@@ -1,3 +1,5 @@
+import { addTaskEvent, getTask, hasRunningTask, listTasks, recordStep, registerTaskStream, releaseTaskStream, takeInstructions, updateTask, waitForUser, TASK_LOOP_REPEATS, TASK_MAX_STEPS } from '../tasks/service.ts';
+import { workerTools } from '../tasks/tools.ts';
 import type { ArtifactRow } from '../artifacts/service.ts';
 import { artifactUrl } from '@opendots/shared';
 import { desktopVisionMessages } from '../computer/vision.ts';
@@ -29,7 +31,9 @@ export type TurnTrigger =
   | { kind: 'onboarding' }
   | { kind: 'user'; message: OpenDotsUIMessage }
   | { kind: 'event'; event: NonNullable<MessageMetadata['event']>; text: string; depth: number }
-  | { kind: 'team'; teamMessageId: string; fromAgentId: string; expectsReply: boolean; depth: number; nudge?: boolean };
+  | { kind: 'team'; teamMessageId: string; fromAgentId: string; expectsReply: boolean; depth: number; nudge?: boolean }
+  /** Worker d'une tâche en arrière-plan : tourne dans sa conversation de travail, hors du fil de l'utilisateur. */
+  | { kind: 'task'; taskId: string; note?: string };
 
 export interface TurnResult {
   messageId: string | null;
@@ -118,6 +122,7 @@ function turnHint(trigger: TurnTrigger): string {
   if (trigger.kind === 'user') return messageText(trigger.message).slice(0, 240) || 'Message';
   if (trigger.kind === 'event') return trigger.event.title;
   if (trigger.kind === 'team') return 'Message d’un coéquipier';
+  if (trigger.kind === 'task') return 'Tâche en arrière-plan';
   return 'Accueil';
 }
 
@@ -133,6 +138,14 @@ export function stopAgent(agentId: string) {
   const turns = [slot.foreground, ...slot.background].filter((turn): turn is LiveTurn => Boolean(turn));
   for (const turn of turns) turn.stream.abort.abort();
   return turns.length > 0;
+}
+
+/** Détail court d'une étape de worker (commande, URL, cible), pour la carte de tâche. */
+function stepDetail(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const value = input as Record<string, unknown>;
+  const detail = [value.command, value.url, value.query, value.title, value.path, value.name].find((v) => typeof v === 'string' && v.trim()) as string | undefined;
+  return detail ? ` : ${detail.split('\n')[0].slice(0, 80)}` : '';
 }
 
 function statusDue(steps: { text?: string; toolCalls?: { toolName?: string }[] }[]) {
@@ -273,7 +286,8 @@ export function runTurn(
   trigger: TurnTrigger,
 ): { stream: ActiveStream; done: Promise<TurnResult> } {
   const stream = new ActiveStream(conversationId);
-  const key = `${accountKey()}:${agentId}`;
+  // Un worker a sa propre file : il n'occupe jamais le premier plan du compagnon, qui reste disponible pour discuter.
+  const key = `${accountKey()}:${agentId}${trigger.kind === 'task' ? ':task' : ''}`;
   const slot = runSlot(key);
   const live: LiveTurn = { key, agentId, conversationId, hint: turnHint(trigger), detached: false, stream, notes: [], steers: [] };
   const empty: TurnResult = { messageId: null, text: '', silent: true, error: null };
@@ -383,12 +397,26 @@ async function executeTurn(
     );
     mode = { kind: 'event', title: trigger.event.title, eventType: trigger.event.type };
     hint = `${trigger.event.title} ${trigger.text}`;
+  } else if (trigger.kind === 'task') {
+    const task = await getTask(trigger.taskId);
+    if (!task) { finishStream(stream); return { messageId: null, text: '', silent: true, error: 'Tâche introuvable' }; }
+    const first = !(await loadMessages(conversationId, { limit: 1 })).messages.length;
+    const attached = first && task.artifacts.length ? `\n\nFichiers remis pour cette tâche (artifact_id) : ${task.artifacts.join(', ')}` : '';
+    await saveMessage(conversationId, {
+      id: newId('msg'), role: 'user',
+      parts: [{ type: 'text', text: first ? `${task.instruction}${attached}` : (trigger.note ?? 'Reprends la tâche là où tu t’étais arrêté. Vérifie d’abord l’état réel avant de refaire une action.') }],
+      metadata: { kind: 'chat', createdAt: new Date().toISOString(), taskId: task.id },
+    }, { author: 'event', agentId });
+    mode = { kind: 'task', title: task.title };
+    hint = task.title;
+    registerTaskStream(task.id, stream);
   } else {
     // Le message du coéquipier est déjà enregistré dans le fil.
     mode = { kind: 'team', peerName: names.get(trigger.fromAgentId) ?? 'un compagnon', expectsReply: trigger.expectsReply, nudge: trigger.nudge };
   }
 
-  const depth = trigger.kind === 'user' || trigger.kind === 'onboarding' ? 0 : trigger.depth;
+  const taskId = trigger.kind === 'task' ? trigger.taskId : undefined;
+  const depth = trigger.kind === 'user' || trigger.kind === 'onboarding' || trigger.kind === 'task' ? 0 : trigger.depth;
   const turnStarted = Date.now();
   let replyTo: MessageReplyRef | null = null;
   let toldUser = false;
@@ -396,8 +424,9 @@ async function executeTurn(
   const toolCtx = {
     agent,
     conversationId,
-    isMain: !pair,
+    isMain: !pair && !taskId,
     userTurn: trigger.kind === 'user',
+    taskId,
     depth,
     tz,
     abortSignal: stream.abort.signal,
@@ -410,6 +439,14 @@ async function executeTurn(
     publishArtifact: async (artifact: ArtifactRow) => {
       // Dans le fil de l'utilisateur, la pièce jointe est portée par ce tour. Dans un fil entre compagnons,
       // l'utilisateur ne lit pas ce fil : le fichier est déposé dans son chat avec ce compagnon.
+      if (taskId) {
+        // Livrable d'un worker : rattaché à la tâche, remis avec sa synthèse dans la conversation d'origine.
+        const task = await getTask(taskId);
+        if (!task) return null;
+        if (!task.artifacts.includes(artifact.id)) await updateTask(taskId, { artifacts: [...task.artifacts, artifact.id] });
+        await addTaskEvent(taskId, 'artifact', `Fichier produit : ${artifact.name}`);
+        return task.conversationId;
+      }
       if (!pair) return conversationId;
       const target = await mainConversationId(agentId);
       await saveMessage(target, {
@@ -452,6 +489,15 @@ async function executeTurn(
     ? { tools: {}, info: { connectors: [] as string[], skills: [] }, lazy: { loaded: new Set<string>(), names: new Set<string>(), groups: [] } }
     : await buildCapabilityTools(toolCtx);
   const tools = trigger.kind === 'onboarding' ? {} : { ...capabilities.tools, ...buildTools(toolCtx) };
+  const workerBusy = taskId ? null : await hasRunningTask(agentId);
+  if (taskId) {
+    // Un worker ne parle pas à l'utilisateur étape par étape : il rapporte sa progression de façon structurée.
+    for (const name of ['text_user', 'ask_user', 'steer_task', 'task_start', 'react_to_message']) delete (tools as Record<string, unknown>)[name];
+    Object.assign(tools, workerTools(taskId));
+  } else if (workerBusy) {
+    // Le bureau appartient à la tâche en cours : pas de clics concurrents depuis la conversation.
+    for (const name of ['computer_action', 'computer_target', 'computer_keyboard']) delete (tools as Record<string, unknown>)[name];
+  }
   serializeTools(tools, live.key);
   const modelCfg = await effectiveModel(agent);
   if (tools.computer_screenshot) {
@@ -503,10 +549,15 @@ async function executeTurn(
     tz,
     now: new Date(),
     toolNames: activeToolNames(tools, capabilities.lazy),
+    tasks: taskId ? [] : (await listTasks({ agentId, active: true, limit: 8 })).map((t) => ({ id: t.id, title: t.title, status: t.status, phase: t.phase, currentAction: t.currentAction, completedSteps: t.completedSteps, blocker: t.blocker })),
     background: runSlot(live.key).background.filter((turn) => turn !== live).map((turn) => ({ task: turn.hint, progress: turn.notes.slice(-4) })),
   });
 
   const responseId = newId('msg');
+  const taskNotes: string[] = [];
+  /** Raison d'arrêt imposée au worker (boucle, budget) : il doit conclure sans outil. */
+  let taskStop: string | null = null;
+  let taskStepsSeen = 0;
   let turnError: string | null = null;
   let finalMessage: OpenDotsUIMessage | null = null;
   const stepLimit = await getTurnStepLimit();
@@ -515,7 +566,7 @@ async function executeTurn(
 
   if (runSlot(live.key).foreground === live) beginStream(stream);
   publish({ type: 'turn.started', agentId, conversationId, autonomous });
-  if (!live.detached) await setAgentState(agentId, pair ? 'collaborating' : autonomous ? 'awake' : 'thinking', mode.kind === 'event' ? mode.title : null);
+  if (!live.detached && !taskId) await setAgentState(agentId, pair ? 'collaborating' : autonomous ? 'awake' : 'thinking', mode.kind === 'event' ? mode.title : null);
 
   try {
     const resolved = await resolveModel(modelCfg);
@@ -526,7 +577,7 @@ async function executeTurn(
       tools,
       // Outils de services chargés à la demande : load_tools les active dès l'étape suivante.
       activeTools: activeToolNames(tools, capabilities.lazy) as any,
-      prepareStep: ({ messages, stepNumber, steps }) => {
+      prepareStep: async ({ messages, stepNumber, steps }) => {
         const prepared = compactSemanticObservations(desktopVisionMessages(messages));
         const names = activeToolNames(tools, capabilities.lazy) as any;
         const detachedNote = live.detached
@@ -547,6 +598,33 @@ async function executeTurn(
         const steerNote = live.steers.length
           ? `\n\nWhile you were working, the user added these instructions for THIS task. Apply them from now on, they override the original request where they differ:\n${live.steers.map((line) => `- ${line}`).join('\n')}`
           : '';
+        if (taskId) {
+          // Progression observée : chaque appel d'outil réellement exécuté depuis la dernière étape est compté ici,
+          // dans la boucle du modèle elle-même, pour que les garde-fous s'appliquent avant l'étape suivante.
+          const done = steps as { toolCalls?: { toolName: string; input?: unknown }[]; toolResults?: { output?: unknown }[] }[];
+          for (const step of done.slice(taskStepsSeen)) {
+            for (const call of step.toolCalls ?? []) {
+              if (call.toolName === 'task_report') continue;
+              const { loop, overBudget } = await recordStep(taskId, `${toolActivityLabel(call.toolName) ?? call.toolName}${stepDetail(call.input)}`, `${call.toolName}:${JSON.stringify(call.input ?? null)}`);
+              if (loop && !taskStop) { taskStop = `You repeated the same action ${TASK_LOOP_REPEATS} times with no progress.`; await updateTask(taskId, { error: `Arrêtée : la même action a été répétée ${TASK_LOOP_REPEATS} fois sans progrès.` }); }
+              else if (overBudget && !taskStop) { taskStop = `The step budget of this task (${TASK_MAX_STEPS}) is exhausted.`; await updateTask(taskId, { error: `Arrêtée : budget de ${TASK_MAX_STEPS} étapes atteint.` }); }
+            }
+            for (const result of step.toolResults ?? []) {
+              const out = result.output as { status?: string; summary?: string } | null;
+              if (out?.status === 'pending_approval' && !taskStop) {
+                await waitForUser(taskId, `Validation requise : ${out.summary ?? 'action à approuver'}`);
+                taskStop = 'An action is waiting for the user\'s approval; the task is suspended until they decide.';
+              }
+            }
+          }
+          taskStepsSeen = done.length;
+          if ((await getTask(taskId))?.status === 'waiting_for_user' && !taskStop) taskStop = 'You asked for the user\'s input; the task is suspended until they answer.';
+          const added = await takeInstructions(taskId);
+          if (added.length) taskNotes.push(...added);
+          const note = taskNotes.length ? `\n\nThe user added these instructions for this task while you were working. Apply them from now on:\n${taskNotes.map((line) => `- ${line}`).join('\n')}` : '';
+          if (taskStop) return { activeTools: [], toolChoice: 'none' as const, messages: prepared, instructions: system + note + `\n\n${taskStop} Stop working now. Give a short, honest report: what was actually done and verified, what is unfinished, and the exact blocker. Do not call tools.` };
+          if (note) return { activeTools: names, messages: prepared, instructions: system + note };
+        }
         if (statusNote || steerNote) return { activeTools: names, messages: prepared, instructions: system + detachedNote + steerNote + statusNote };
         return { activeTools: names, messages: prepared, ...(detachedNote ? { instructions: system + detachedNote } : {}) };
       },
@@ -598,6 +676,7 @@ async function executeTurn(
         stream.push({ type: 'text-end', id });
       }
       stream.push(chunk);
+      if (taskId) continue;
       if (!live.detached && chunk.type === 'tool-input-start') {
         const label = toolActivityLabel(chunk.toolName);
         void setAgentState(agentId, chunk.toolName === 'team_send_message' ? 'collaborating' : 'working', label).catch((error) => console.error('[agent state]', error));
@@ -625,12 +704,12 @@ async function executeTurn(
   // 2. Persistance de la réponse
   const response = finalMessage as OpenDotsUIMessage | null;
   // Dans un fil entre compagnons, la réponse transmise est le texte final, pas les phrases d'étape.
-  const text = response ? (pair ? finalText(response) : messageText(response)) : '';
+  const text = response ? (pair || taskId ? finalText(response) : messageText(response)) : '';
   // Un réveil n'est masqué que s'il n'a rien produit de visible pour l'utilisateur.
   const acted = (response?.parts ?? []).some((p: any) => typeof p.type === 'string' && VISIBLE_EFFECT_TOOLS.test(p.type.slice(5)) && p.output?.ok !== false);
   // Une réponse d'un coéquipier est toujours montrée à l'utilisateur (jamais masquée).
   const mustSurface = trigger.kind === 'event' && trigger.event.type === 'agent_reply';
-  const silent = autonomous && !pair && !acted && !mustSurface && (SILENCE.test(text) || (!text && !turnError));
+  const silent = autonomous && !pair && !taskId && !acted && !mustSurface && (SILENCE.test(text) || (!text && !turnError));
   if (response && response.parts.length) {
     const parts = (SILENCE.test(text) ? response.parts.filter((p) => p.type !== 'text') : response.parts).filter((p) => {
       if (p.type !== 'tool-text_user') return true;
@@ -648,13 +727,14 @@ async function executeTurn(
   }
 
   finishStream(stream);
+  if (taskId) releaseTaskStream(taskId);
   publish({ type: 'turn.finished', agentId, conversationId });
 
   if (turnError) {
-    if (!live.detached) await setAgentState(agentId, 'error', turnError.slice(0, 200));
+    if (!live.detached && !taskId) await setAgentState(agentId, 'error', turnError.slice(0, 200));
     await log(agentId, 'turn.error', `Erreur pendant un tour : ${turnError.slice(0, 200)}`, { conversationId, trigger: trigger.kind });
   } else {
-    if (!live.detached) await setAgentState(agentId, autonomous && trigger.kind !== 'onboarding' && !pair ? 'sleeping' : 'available', null);
+    if (!live.detached && !taskId) await setAgentState(agentId, autonomous && trigger.kind !== 'onboarding' && !pair ? 'sleeping' : 'available', null);
     if (autonomous) {
       await log(agentId, silent ? 'turn.silent' : 'turn.autonomous', silent ? 'Réveil traité sans message' : 'Message autonome envoyé', {
         conversationId,
