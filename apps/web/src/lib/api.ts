@@ -20,6 +20,12 @@ import type {
   AgentDTO,
   ApprovalDTO,
   BootstrapDTO,
+  ArtifactDTO,
+  ArtifactGrantDTO,
+  ArtifactAccessDTO,
+  TaskDTO,
+  TaskEventDTO,
+  ChatDTO,
   JournalEntryDTO,
   MemoryDTO,
   ModelConfig,
@@ -111,6 +117,34 @@ export const api = {
     if (!response.ok) { if (response.status === 401) window.dispatchEvent(new Event('opendots:unauthorized')); throw new ApiError(value.error ?? 'Impossible de joindre cette image.', response.status); }
     return value as { id: string; url: string; filename: string; mediaType: 'image/jpeg'; width: number; height: number; size: number };
   },
+  /** Tout fichier non image : stocké inchangé comme artefact du compte. `agentId` donne à ce compagnon le droit de le lire. */
+  uploadArtifact: async (file: File, scope: { agentId?: string; conversationId?: string }) => {
+    const body = new FormData(); body.set('file', file);
+    if (scope.agentId) body.set('agentId', scope.agentId);
+    if (scope.conversationId) body.set('conversationId', scope.conversationId);
+    const response = await fetch('/api/artifacts', { method: 'POST', headers: { 'x-opendots-client': '1' }, body });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) { if (response.status === 401) window.dispatchEvent(new Event('opendots:unauthorized')); throw new ApiError(value.error ?? 'Impossible de joindre ce fichier.', response.status); }
+    return value as ArtifactDTO;
+  },
+  artifacts: (filter: { agentId?: string; conversationId?: string; taskId?: string } = {}) => request<ArtifactDTO[]>('GET', `/artifacts?${new URLSearchParams(Object.entries(filter).filter(([, v]) => v) as [string, string][])}`),
+  artifact: (id: string) => request<ArtifactDTO & { grants: ArtifactGrantDTO[]; access: ArtifactAccessDTO[] }>('GET', `/artifacts/${id}`),
+  grantArtifact: (id: string, agentId: string) => request<{ grants: ArtifactGrantDTO[]; access: ArtifactAccessDTO[] }>('POST', `/artifacts/${id}/grants`, { agentId }),
+  revokeArtifact: (id: string, agentId: string) => request<{ grants: ArtifactGrantDTO[]; access: ArtifactAccessDTO[] }>('DELETE', `/artifacts/${id}/grants/${agentId}`),
+  deleteArtifact: (id: string) => request<{ ok: boolean }>('DELETE', `/artifacts/${id}`),
+
+  tasks: (filter: { agentId?: string; conversationId?: string; active?: boolean } = {}) => request<TaskDTO[]>('GET', `/tasks?${new URLSearchParams({ ...(filter.agentId ? { agentId: filter.agentId } : {}), ...(filter.conversationId ? { conversationId: filter.conversationId } : {}), ...(filter.active ? { active: '1' } : {}) })}`),
+  task: (id: string) => request<TaskDTO & { events: TaskEventDTO[] }>('GET', `/tasks/${id}`),
+  taskAction: (id: string, action: 'cancel' | 'pause' | 'resume') => request<TaskDTO>('POST', `/tasks/${id}/${action}`),
+  taskInstruction: (id: string, instruction: string) => request<TaskDTO>('POST', `/tasks/${id}/instruction`, { instruction }),
+
+  chats: (q?: string) => request<ChatDTO[]>('GET', `/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  createChat: (input: { title?: string; model?: ModelConfig | null } = {}) => request<ChatDTO>('POST', '/chats', input),
+  updateChat: (id: string, patch: { title?: string; model?: ModelConfig | null }) => request<ChatDTO>('PATCH', `/chats/${id}`, patch),
+  deleteChat: (id: string) => request<{ ok: boolean }>('DELETE', `/chats/${id}`),
+  chatMessages: (id: string) => request<{ conversationId: string; messages: ODMessage[]; cursor: number | null; active: boolean; tasks: TaskDTO[] }>('GET', `/chats/${id}/messages`),
+  stopChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/stop`),
+
   desktop: (agentId: string) => request<DesktopStatus>('GET', `/computer/desktop?agentId=${agentId}`),
   desktopPermissions: () => request<Record<string, DesktopPermissions>>('GET', '/computer/desktop/permissions'),
   setDesktopPermissions: (agentId: string, permissions: DesktopPermissions) => request<DesktopPermissions>('PUT', `/computer/desktop/permissions/${agentId}`, permissions),

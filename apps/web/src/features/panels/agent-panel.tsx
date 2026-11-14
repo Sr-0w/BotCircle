@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { CopyIcon, PencilIcon, PlusIcon, RotateCwIcon, Trash2Icon } from "lucide-react";
-import type { ActivityDTO, AgentDTO, JournalEntryDTO, MemoryDTO } from "@opendots/shared";
+import { ACTIVE_TASK_STATUSES, type ActivityDTO, type AgentDTO, type JournalEntryDTO, type MemoryDTO } from "@opendots/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
-import { useServerEvent } from "@/lib/store";
+import { useServerEvent, useStore } from "@/lib/store";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import { AgentSettings } from "./agent-settings";
@@ -13,6 +13,7 @@ import { ACTIVITY_ICONS, describeActivity, STATUS_LABELS } from "../pages/tasks-
 import { openDialog } from "@/lib/dialogs";
 import { onWorkPanelRequested } from "@/lib/work-store";
 import { WorkTab } from "./work-tab";
+import { FilesList, TasksList } from "./work-lists";
 
 import { t } from "@/lib/i18n";
 function ActivityItem({ activity }: { activity: ActivityDTO }) {
@@ -102,20 +103,31 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
   const journal = useReload<JournalEntryDTO[]>(() => api.journal(agent.id), (e) => e.type === "journal.created", [agent.id]);
 
   const [tab, setTab] = useState("work");
+  const activeTasks = useStore((s) => s.tasks.filter((task) => task.agentId === agent.id && ACTIVE_TASK_STATUSES.includes(task.status)).length);
   useEffect(() => onWorkPanelRequested(() => setTab("work")), []);
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full min-h-0 flex-col gap-0">
-      <TabsList className="mx-3 mt-3 grid w-auto grid-cols-5">
-        <TabsTrigger value="work" className="text-xs">{t("Travail")}</TabsTrigger>
-        <TabsTrigger value="activities" className="text-xs">{t("Activités")}</TabsTrigger>
-        <TabsTrigger value="memory" className="text-xs">{t("Mémoire")}</TabsTrigger>
-        <TabsTrigger value="journal" className="text-xs">{t("Journal")}</TabsTrigger>
-        <TabsTrigger value="profile" className="text-xs">{t("Profil")}</TabsTrigger>
+      <TabsList className="mx-3 mt-3 flex w-auto justify-start overflow-x-auto">
+        <TabsTrigger value="work" className="shrink-0 text-xs">{t("Travail")}</TabsTrigger>
+        <TabsTrigger value="tasks" className="shrink-0 text-xs">{t("Tâches")}{activeTasks > 0 && <span className="ml-1 rounded-full bg-foreground px-1.5 font-semibold text-[10px] text-background">{activeTasks}</span>}</TabsTrigger>
+        <TabsTrigger value="files" className="shrink-0 text-xs">{t("Fichiers")}</TabsTrigger>
+        <TabsTrigger value="activities" className="shrink-0 text-xs">{t("Activités")}</TabsTrigger>
+        <TabsTrigger value="memory" className="shrink-0 text-xs">{t("Mémoire")}</TabsTrigger>
+        <TabsTrigger value="journal" className="shrink-0 text-xs">{t("Journal")}</TabsTrigger>
+        <TabsTrigger value="profile" className="shrink-0 text-xs">{t("Profil")}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="work" className="min-h-0 flex-1 overflow-y-auto p-3">
-        <WorkTab agent={agent} />
+        <WorkTab id={agent.id} name={agent.named ? agent.name : t("ton compagnon")} />
+      </TabsContent>
+
+      <TabsContent value="tasks" className="min-h-0 flex-1 overflow-y-auto p-3">
+        <TasksList scope={{ agentId: agent.id }} />
+      </TabsContent>
+
+      <TabsContent value="files" className="min-h-0 flex-1 overflow-y-auto p-3">
+        <FilesList scope={{ agentId: agent.id }} />
       </TabsContent>
 
       <TabsContent value="activities" className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">

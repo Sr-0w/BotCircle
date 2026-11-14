@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { AgentDTO, ApprovalDTO, ServerEvent } from "@opendots/shared";
+import type { AgentDTO, ApprovalDTO, ChatDTO, ServerEvent, TaskDTO } from "@opendots/shared";
 import { api } from "./api";
 import { closeDialog } from "./dialogs";
 import { notifyFromEvent } from "./notify";
@@ -8,12 +8,16 @@ import { notifyFromEvent } from "./notify";
 interface State {
   agents: AgentDTO[];
   approvals: ApprovalDTO[];
+  /** Tâches en arrière-plan connues du client, tenues à jour par les événements du serveur. */
+  tasks: TaskDTO[];
+  /** Chats généraux, du plus récent au plus ancien. */
+  chats: ChatDTO[];
   connected: boolean;
   paused: boolean;
 }
 
 let generation = 0;
-let state: State = { agents: [], approvals: [], connected: false, paused: false };
+let state: State = { agents: [], approvals: [], tasks: [], chats: [], connected: false, paused: false };
 const listeners = new Set<() => void>();
 const eventListeners = new Set<(e: ServerEvent) => void>();
 
@@ -68,8 +72,8 @@ function refreshAgent(id: string) {
 
 export async function loadInitial() {
   const requestGeneration = generation;
-  const [agents, approvals, settings] = await Promise.all([api.agents(), api.approvals(), api.settings()]);
-  if (requestGeneration === generation) set({ agents, approvals, paused: settings.paused });
+  const [agents, approvals, settings, tasks, chats] = await Promise.all([api.agents(), api.approvals(), api.settings(), api.tasks().catch(() => []), api.chats().catch(() => [])]);
+  if (requestGeneration === generation) set({ agents, approvals, tasks, chats, paused: settings.paused });
 }
 
 function handle(e: ServerEvent) {
@@ -97,6 +101,15 @@ function handle(e: ServerEvent) {
         if (owner) refreshAgent(owner.id);
       }
       break;
+    case "task.changed":
+      set((s) => ({ tasks: s.tasks.some((task) => task.id === e.task.id) ? s.tasks.map((task) => (task.id === e.task.id ? e.task : task)) : [e.task, ...s.tasks] }));
+      break;
+    case "chat.changed": {
+      if (e.deleted) set((s) => ({ chats: s.chats.filter((chat) => chat.id !== e.chatId) }));
+      const requestGeneration = generation;
+      api.chats().then((chats) => requestGeneration === generation && set({ chats })).catch(() => {});
+      break;
+    }
     case "settings.changed": {
       const requestGeneration = generation;
       api.settings().then((s) => requestGeneration === generation && set({ paused: s.paused })).catch(() => {});
@@ -118,7 +131,7 @@ export function clearAccountState() {
   source?.close(); source = null;
   for (const timer of refreshTimers.values()) window.clearTimeout(timer);
   refreshTimers.clear();
-  set({ agents: [], approvals: [], connected: false, paused: false });
+  set({ agents: [], approvals: [], tasks: [], chats: [], connected: false, paused: false });
 }
 
 export function connectEvents() {
@@ -145,4 +158,9 @@ export function connectEvents() {
 
 export function removeAgentLocally(id: string) {
   set((s) => ({ agents: s.agents.filter((a) => a.id !== id) }));
+}
+
+/** Un chat créé ici apparaît tout de suite, sans attendre l'événement du serveur. */
+export function setStoreChats(chats: ChatDTO[]) {
+  set({ chats });
 }

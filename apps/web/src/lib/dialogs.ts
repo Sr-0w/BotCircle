@@ -11,6 +11,8 @@ export type DialogState =
   | { kind: "activity"; activity?: ActivityDTO; agentId?: string }
   | { kind: "draft"; draftId: string }
   | { kind: "team"; agentA: string; agentB: string }
+  | { kind: "task"; taskId: string }
+  | { kind: "artifact"; artifactId: string }
   | null;
 
 let current: DialogState = null;

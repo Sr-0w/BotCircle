@@ -8,6 +8,7 @@ import {
   SearchIcon,
   TerminalIcon,
   ClipboardListIcon,
+  FileTextIcon,
   MailIcon,
   PlugIcon,
   EyeIcon,
@@ -19,7 +20,7 @@ import {
   WebhookIcon,
 } from "lucide-react";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
-import { isActionToolPart, presentAssistantTurn } from "@opendots/shared";
+import { artifactIdFromUrl, isActionToolPart, presentAssistantTurn } from "@opendots/shared";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import type { ODMessage } from "@/lib/api";
@@ -32,6 +33,7 @@ import { openDialog } from "@/lib/dialogs";
 import { ComputerSetupCard, WelcomeSetupCards } from './setup-cards';
 import { DesktopScreenshot } from './desktop-screenshot';
 import { MessageActions, MessageQuote, ReactionPills } from './message-actions';
+import { FileCard, TaskCard } from './attachments';
 
 import { t } from "@/lib/i18n";
 const LiveComputer = lazy(() => import('./live-computer').then(m => ({ default: m.LiveComputer })));
@@ -111,6 +113,20 @@ function describeTool(name: string, input: any, output: any): { title: string; i
       return { title: output?.subject ? t("Lit « {v0} »", { v0: String(output.subject).slice(0, 40) }) : t("Lit un e-mail"), icon: <MailIcon className="size-3.5" /> };
     case "mail_prepare":
       return { title: t("Prépare un e-mail"), icon: <MailIcon className="size-3.5" /> };
+    case "task_start": return { title: i.title ? t("Lance la tâche « {v0} »", { v0: String(i.title).slice(0, 50) }) : t("Lance une tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
+    case "task_status": case "task_list": return { title: t("Consulte l’état de ses tâches"), icon: <ClipboardListIcon className="size-3.5" /> };
+    case "task_send_instruction": return { title: t("Transmet une consigne à sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
+    case "task_pause": return { title: t("Met sa tâche en pause"), icon: <ClipboardListIcon className="size-3.5" /> };
+    case "task_resume": return { title: t("Reprend sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
+    case "task_cancel": return { title: t("Annule sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
+    case "invoke_agent": return { title: i.agent ? t("Sollicite {v0}", { v0: i.agent }) : t("Sollicite un compagnon"), icon: <BotIcon className="size-3.5" /> };
+    case "list_agents": return { title: t("Consulte l’équipe"), icon: <BotIcon className="size-3.5" /> };
+    case "artifact_list": return { title: t("Consulte ses fichiers"), icon: <FileTextIcon className="size-3.5" /> };
+    case "artifact_read": return { title: t("Lit un fichier"), icon: <FileTextIcon className="size-3.5" /> };
+    case "artifact_create": return { title: i.name ? t("Crée le fichier « {v0} »", { v0: String(i.name).slice(0, 50) }) : t("Crée un fichier"), icon: <FileTextIcon className="size-3.5" /> };
+    case "artifact_share": return { title: i.to ? t("Transmet un fichier à {v0}", { v0: i.to }) : t("Transmet un fichier"), icon: <FileTextIcon className="size-3.5" /> };
+    case "artifact_publish_to_chat": return { title: t("Remet un fichier dans la conversation"), icon: <FileTextIcon className="size-3.5" /> };
+    case "artifact_save_to_workspace": case "artifact_from_workspace": return { title: t("Échange un fichier avec son ordinateur"), icon: <FileTextIcon className="size-3.5" /> };
     case "approval_respond":
       return { title: i.decision === "reject" ? t("Transmet ton refus") : t("Transmet ton accord"), icon: <KeyRoundIcon className="size-3.5" /> };
     default:
@@ -248,6 +264,7 @@ function ToolCard({ part, agentId, date }: { part: ToolUIPart; agentId?: string;
   const input = (part as any).input ?? {};
   if (!out || out.ok === false) return null;
   if (isSentTeam(part)) return <SentTeamCard part={part} agentId={agentId} date={date} />;
+  if ((name === "task_start" || name === "invoke_agent") && out.taskId) return <TaskCard taskId={out.taskId} showAgent={name === "invoke_agent"} />;
   if (name === "ask_user" && out.requestId) return <AskUserCard requestId={out.requestId} title={input.title} questions={input.questions ?? []} />;
   if (name === "connection_request_setup") return <ConnectionRequestCard kind={out.kind} provider={out.provider} permissions={out.permissions} reason={out.reason} agentId={agentId} />;
   if (name === 'computer_request_setup' && agentId) return <ComputerSetupCard agentId={agentId} reason={out.reason} />;
@@ -263,7 +280,9 @@ function isToolPart(part: { type: string }): part is AnyTool {
   return part.type === 'dynamic-tool' || part.type.startsWith('tool-');
 }
 
-export function MessageView({ message, streaming, agentId, onReply, onReact }: {
+export function MessageView({ message, streaming, agentId, onReply, onReact, attribution }: {
+  /** Dans un chat général : signe chaque réponse (assistant ou compagnon intervenu). */
+  attribution?: boolean;
   message: ODMessage;
   streaming: boolean;
   agentId?: string;
@@ -288,7 +307,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact }: {
               {message.metadata?.answer ? <AnswerBubble text={text} /> : text && <p className="whitespace-pre-wrap">{text}</p>}
               {files.map((part, index) => part.mediaType?.startsWith('image/')
                 ? <a key={index} href={part.url} target="_blank" rel="noreferrer"><img src={part.url} alt={part.filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" /></a>
-                : <span key={index} className="rounded-lg border px-2 py-1 text-xs">{part.filename ?? t('Fichier')}</span>)}
+                : <FileCard key={index} align="end" file={{ url: part.url, filename: part.filename ?? t('Fichier'), mediaType: part.mediaType ?? 'application/octet-stream', artifactId: artifactIdFromUrl(part.url) }} />)}
             </MessageContent>
           </Message>
         </MessageActions>
@@ -308,6 +327,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact }: {
 
   return (
     <div id={`message-${message.id}`} className="flex scroll-mt-24 flex-col gap-2 rounded-2xl [&[data-flash]]:ring-2 [&[data-flash]]:ring-ring">
+      {attribution && view.bubbles.length > 0 && <Author agentId={message.metadata?.agentId} model={message.metadata?.model} />}
       {view.bubbles.map((bubble) => 'text' in bubble ? (
         <MessageActions key={bubble.key} text={bubble.text} onReply={() => reply(bubble.text)} onReact={react}>
           <Message from="assistant" data-bubble={bubble.key} className="max-w-[min(100%,36rem)]">
@@ -317,6 +337,8 @@ export function MessageView({ message, streaming, agentId, onReply, onReact }: {
             </MessageContent>
           </Message>
         </MessageActions>
+      ) : 'file' in bubble ? (
+        <div key={bubble.key} data-bubble={bubble.key}><FileCard file={bubble.file} /></div>
       ) : (
         <a key={bubble.key} data-bubble={bubble.key} href={(bubble.image as { url?: string }).url} target="_blank" rel="noreferrer" className="w-fit">
           <img src={(bubble.image as { url?: string }).url} alt={(bubble.image as { filename?: string }).filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" />
@@ -330,6 +352,18 @@ export function MessageView({ message, streaming, agentId, onReply, onReact }: {
       )}
       <ReactionPills reactions={reactions} onToggle={react} />
     </div>
+  );
+}
+
+/** Signature d'une réponse dans un chat général : le compagnon intervenu, sinon l'assistant et son modèle. */
+function Author({ agentId, model }: { agentId?: string; model?: string }) {
+  const agent = useStore((s) => s.agents.find((a) => a.id === agentId));
+  return (
+    <p className="flex items-center gap-1.5 text-muted-foreground text-xs" data-author={agent ? agent.id : 'assistant'}>
+      {agent ? <DotAvatar color={agent.color} size={14} /> : <SparklesIcon className="size-3.5" />}
+      <span className="font-medium text-foreground">{agent ? agent.name : agentId ? t('Un compagnon') : t('Assistant')}</span>
+      {!agentId && model && <span className="truncate">· {model}</span>}
+    </p>
   );
 }
 

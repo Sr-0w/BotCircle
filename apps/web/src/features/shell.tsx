@@ -2,16 +2,23 @@ import { onWorkPanelRequested } from "@/lib/work-store";
 import { useEffect, useMemo, useState } from "react";
 import {
   MenuIcon,
+  MessagesSquareIcon,
   PanelRightIcon,
+  PlusIcon,
+  SearchIcon,
   PauseCircleIcon,
   SettingsIcon,
   WifiOffIcon,
 } from "lucide-react";
-import { AGENT_STATE_LABELS, type AgentDTO } from "@opendots/shared";
+import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO } from "@opendots/shared";
+import { toast } from "sonner";
+import { api } from "@/lib/api";
+import { GeneralChatView } from "./chat/general-chat-view";
+import { ChatPanel } from "./panels/chat-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useStore } from "@/lib/store";
+import { setStoreChats, useStore } from "@/lib/store";
 import { cn, plainPreview, relativeTime } from "@/lib/utils";
 import { ChatView } from "./chat/chat-view";
 import { AgentPanel } from "./panels/agent-panel";
@@ -25,7 +32,7 @@ import { useAccount } from '@/lib/account';
 // Pages et modales secondaires chargées à la demande.
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
-type Route = { view: "agent"; id: string | null } | { view: "settings"; section: SettingsSection };
+type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
 function parseHash(): Route {
   const h = window.location.hash.replace(/^#\/?/, "");
@@ -34,13 +41,15 @@ function parseHash(): Route {
     const section = h.split('/')[1];
     return { view: 'settings', section: SETTINGS_SECTIONS.includes(section as SettingsSection) ? section as SettingsSection : 'general' };
   }
+  const chat = /^chat\/(.+)$/.exec(h);
+  if (chat) return { view: 'chat', id: chat[1] };
   const match = /^agent\/(.+)$/.exec(h);
   return { view: 'agent', id: match?.[1] ?? null };
 }
 function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => { const on = () => setRoute(parseHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
-  return [route, next => { window.location.hash = next.view === 'agent' ? `/agent/${next.id}` : `/settings/${next.section}`; }];
+  return [route, next => { window.location.hash = next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : `/settings/${next.section}`; }];
 }
 
 const BUSY = ["thinking", "working", "collaborating", "awake"];
@@ -81,6 +90,19 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const pending = useStore((s) => s.approvals.filter((a) => a.status === "pending").length);
   const paused = useStore((s) => s.paused);
   const connected = useStore((s) => s.connected);
+  const chats = useStore((s) => s.chats);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<ChatDTO[] | null>(null);
+  // La recherche porte sur les titres et le contenu des chats, côté serveur.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) { setFound(null); return; }
+    let active = true;
+    const timer = window.setTimeout(() => void api.chats(q).then((result) => active && setFound(result)).catch(() => {}), 200);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [query, chats]);
+  const shown = found ?? chats;
+  const newChat = () => void api.createChat().then((chat) => { setStoreChats([chat, ...chats.filter((c) => c.id !== chat.id)]); go({ view: "chat", id: chat.id }); }).catch((e) => toast.error(e.message));
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
@@ -101,12 +123,37 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
         )}
       </div>
 
-      <div className="px-4 pb-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Compagnons")}</div>
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2">
-        {agents.map((a) => (
-          <AgentRow key={a.id} agent={a} active={route.view === "agent" && route.id === a.id} onClick={() => go({ view: "agent", id: a.id })} />
-        ))}
-      </nav>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="px-4 pb-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Compagnons")}</div>
+        <nav className="space-y-0.5 px-2" aria-label={t("Compagnons")}>
+          {agents.map((a) => (
+            <AgentRow key={a.id} agent={a} active={route.view === "agent" && route.id === a.id} onClick={() => go({ view: "agent", id: a.id })} />
+          ))}
+        </nav>
+
+        <div className="mt-4 flex items-center px-4 pb-1.5">
+          <span className="flex-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Chats")}</span>
+          <button type="button" aria-label={t("Nouveau chat")} title={t("Nouveau chat")} onClick={newChat} className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><PlusIcon className="size-4" /></button>
+        </div>
+        {chats.length > 6 && (
+          <div className="relative mx-2 mb-1">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Rechercher un chat…")} aria-label={t("Rechercher un chat…")} className="h-8 w-full rounded-lg border bg-transparent pr-2 pl-8 text-xs outline-none focus:border-ring" />
+          </div>
+        )}
+        <nav className="space-y-0.5 px-2 pb-2" aria-label={t("Chats")}>
+          {shown.length === 0 && <button type="button" onClick={newChat} className="w-full rounded-xl border border-dashed px-3 py-2.5 text-left text-muted-foreground text-xs hover:bg-accent/60">{query ? t("Aucun chat trouvé.") : t("Un fil libre, sans compagnon attitré. Commence un chat.")}</button>}
+          {shown.map((chat) => (
+            <button key={chat.id} onClick={() => go({ view: "chat", id: chat.id })} className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-accent/70", route.view === "chat" && route.id === chat.id && "bg-accent")}>
+              <span className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-4 text-muted-foreground" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2"><span className="truncate font-medium text-sm">{chat.title}</span><span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{relativeTime(chat.updatedAt)}</span></span>
+                <span className="block truncate text-muted-foreground text-xs">{plainPreview(chat.lastMessagePreview) || t("Chat vide")}</span>
+              </span>
+            </button>
+          ))}
+        </nav>
+      </div>
 
       <div className="space-y-0.5 border-t p-2">
         {paused && (
@@ -172,6 +219,17 @@ export function Shell() {
     return agents.find((a) => a.id === route.id) ?? agents[0] ?? null;
   }, [agents, route]);
 
+  const chats = useStore((s) => s.chats);
+  const currentChat = route.view === "chat" ? chats.find((chat) => chat.id === route.id) ?? null : null;
+  // Chat supprimé (ici ou ailleurs) : retour aux compagnons.
+  const chatsLoaded = useStore((s) => s.connected);
+  useEffect(() => {
+    if (route.view === "chat" && chatsLoaded && !currentChat) {
+      const timer = window.setTimeout(() => go({ view: "agent", id: agents[0]?.id ?? null }), 1500);
+      return () => window.clearTimeout(timer);
+    }
+  }, [route, chatsLoaded, currentChat]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Nouveau compagnon créé depuis la conversation : il apparaît simplement dans la liste.
   useEffect(() => {
     if (route.view === "agent" && !route.id && agents[0]) go({ view: "agent", id: agents[0].id });
@@ -199,8 +257,19 @@ export function Shell() {
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label={t("Menu")}>
             <MenuIcon />
           </Button>
-          {route.view !== "agent" ? (
+          {route.view === "settings" ? (
             <span className="font-medium">{t("Paramètres")}</span>
+          ) : route.view === "chat" ? (
+            currentChat && <>
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-3.5 text-muted-foreground" /></span>
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="truncate font-medium text-sm">{currentChat.title}</p>
+                <p className="truncate text-muted-foreground text-xs">{t("Chat")} · {currentChat.effectiveModel.model}</p>
+              </div>
+              <Button variant="ghost" size="icon" aria-label={t("Panneau du chat")} onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? setPanelOpen((v) => !v) : setMobilePanel(true))}>
+                <PanelRightIcon />
+              </Button>
+            </>
           ) : current ? (
             <>
               <DotAvatar color={current.color} state={current.state} size={28} named={current.named} />
@@ -226,7 +295,16 @@ export function Shell() {
         <div className="flex min-h-0 flex-1">
           <Suspense fallback={<div className="flex-1" />}>
           {route.view === 'settings' ? (
-            <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : current ? (
+            <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : route.view === 'chat' ? (
+            currentChat && <>
+              <GeneralChatView chat={currentChat} />
+              {panelOpen && (
+                <aside className="hidden w-[340px] shrink-0 border-l lg:block">
+                  <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
+                </aside>
+              )}
+            </>
+          ) : current ? (
             <>
               <ChatView agent={current} />
               {panelOpen && (
@@ -245,6 +323,14 @@ export function Shell() {
           <SheetContent side="right" className="w-[92vw] max-w-sm p-0">
             <SheetTitle className="sr-only">{current.name}</SheetTitle>
             <AgentPanel agent={current} />
+          </SheetContent>
+        </Sheet>
+      )}
+      {currentChat && (
+        <Sheet open={mobilePanel} onOpenChange={setMobilePanel}>
+          <SheetContent side="right" className="w-[92vw] max-w-sm p-0">
+            <SheetTitle className="sr-only">{currentChat.title}</SheetTitle>
+            <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
           </SheetContent>
         </Sheet>
       )}

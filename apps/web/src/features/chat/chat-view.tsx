@@ -13,7 +13,7 @@ import { api, type ODMessage } from "@/lib/api";
 import type { MessageReplyRef } from "@opendots/shared";
 import { useServerEvent } from "@/lib/store";
 import { DotAvatar } from "../dot-avatar";
-import { Composer } from "./composer";
+import { Composer, isChatImage } from "./composer";
 import { liveStep, MessageView } from "./message-parts";
 import { openWorkPanel, publishWork } from "@/lib/work-store";
 import { ChatActionsContext } from "./cards";
@@ -171,12 +171,17 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           reply={reply}
           onClearReply={() => setReply(null)}
           placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
-          onSubmit={async (text, images) => {
+          onSubmit={async (text, attachments) => {
             if (busy) await chat.stop();
             const files = [];
-            for (const image of images) {
-              let part = uploaded.current.get(image);
-              if (!part) { const attachment = await api.uploadImage(image); part = { type: 'file' as const, url: attachment.url, filename: attachment.filename, mediaType: attachment.mediaType }; uploaded.current.set(image, part); }
+            for (const file of attachments) {
+              let part = uploaded.current.get(file);
+              if (!part) {
+                // Une image est vue par le modèle ; tout autre fichier est remis inchangé au compagnon comme artefact.
+                if (isChatImage(file)) { const attachment = await api.uploadImage(file); part = { type: 'file' as const, url: attachment.url, filename: attachment.filename, mediaType: attachment.mediaType }; }
+                else { const artifact = await api.uploadArtifact(file, { agentId: agent.id }); part = { type: 'file' as const, url: artifact.url, filename: artifact.name, mediaType: artifact.mediaType }; }
+                uploaded.current.set(file, part);
+              }
               files.push(part);
             }
             const pending = reply;
