@@ -17,6 +17,7 @@ import { publish } from '../bus.ts';
 import { runTask } from '../tasks/runner.ts';
 import { failStalledTasks } from '../tasks/service.ts';
 import { expireSecureLogins } from '../securelogin/service.ts';
+import { syncOpencodeTasks } from '../opencode/service.ts';
 import { errorMessage, newId, sha256, truncate } from '../util.ts';
 
 /**
@@ -224,6 +225,7 @@ export async function tick() {
   // Une tâche sans signe de vie est déclarée en échec plutôt que de rester « en cours » indéfiniment.
   await failStalledTasks().catch((error) => console.error('[tasks]', error));
   await expireSecureLogins().catch((error) => console.error('[secure-login]', error));
+  await syncOpencodeTasks().catch((error) => console.error('[opencode]', error));
   if (runtime().ticking) return;
   runtime().ticking = true;
   try {

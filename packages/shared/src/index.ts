@@ -63,6 +63,8 @@ export interface AgentPermissions {
   shell: boolean;
   /** Voir le bureau et préparer des actions graphiques avec validation. */
   computer: boolean;
+  /** Déléguer du développement à une instance OpenCode connectée par l'utilisateur. */
+  code: boolean;
 }
 
 export const DEFAULT_PERMISSIONS: AgentPermissions = {
@@ -75,6 +77,7 @@ export const DEFAULT_PERMISSIONS: AgentPermissions = {
   connectors: true,
   shell: true,
   computer: false,
+  code: false,
 };
 
 export interface AgentDTO {
@@ -273,7 +276,8 @@ export type ServerEvent =
   | { type: 'task.changed'; task: TaskDTO }
   | { type: 'chat.changed'; chatId: string; deleted?: boolean }
   | { type: 'artifact.changed'; artifactId: string }
-  | { type: 'secure_login.changed'; login: SecureLoginDTO };
+  | { type: 'secure_login.changed'; login: SecureLoginDTO }
+  | { type: 'opencode.changed' };
 
 // --- Connexion sécurisée ----------------------------------------------------------
 
@@ -343,6 +347,19 @@ export const artifactIdFromUrl = (url: unknown): string | null => (typeof url ==
 export type TaskStatus = 'queued' | 'running' | 'waiting_for_user' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export const ACTIVE_TASK_STATUSES: TaskStatus[] = ['queued', 'running', 'waiting_for_user', 'paused'];
 
+export type TaskProviderName = 'worker' | 'opencode';
+/** Référence stable d'une exécution externe : une consigne ne peut pas atterrir dans une autre session. */
+export interface TaskExternalRef {
+  instanceId: string;
+  sessionId: string;
+  directory: string | null;
+  /** Dernier message assistant déjà pris en compte, pour ne rien rapporter deux fois. */
+  seenMessageId?: string | null;
+  promptedAt?: number;
+  /** `true` tant que l'instance ne répond pas : l'état affiché est le dernier connu, pas un échec. */
+  unreachable?: boolean;
+}
+
 export interface TaskDTO {
   id: string;
   agentId: string;
@@ -360,6 +377,9 @@ export interface TaskDTO {
   result: string | null;
   error: string | null;
   artifacts: ArtifactDTO[];
+  /** `opencode` : le travail se fait dans une session OpenCode distante, ouvrable dans l'espace de code. */
+  provider: TaskProviderName;
+  external: (TaskExternalRef & { instanceName: string }) | null;
   requestedBy: string;
   lastHeartbeat: string | null;
   createdAt: string;
@@ -372,6 +392,57 @@ export interface TaskEventDTO {
   kind: 'status' | 'step' | 'note' | 'error' | 'instruction' | 'artifact';
   summary: string;
   createdAt: string;
+}
+
+// --- OpenCode ---------------------------------------------------------------------
+
+export interface OpencodeInstanceDTO {
+  id: string;
+  name: string;
+  baseUrl: string;
+  username: string;
+  /** Un mot de passe est enregistré (jamais renvoyé). */
+  hasPassword: boolean;
+  defaultDirectory: string | null;
+  version: string | null;
+  /** `online` : a répondu au dernier contrôle ; `offline` : injoignable ; `unknown` : jamais contrôlée. */
+  state: 'online' | 'offline' | 'unknown';
+  lastSeenAt: string | null;
+  lastError: string | null;
+  activeTasks: number;
+}
+
+export interface OpencodeProjectDTO { id: string; worktree: string; name: string | null }
+export interface OpencodeSessionDTO { id: string; title: string; directory: string; updatedAt: number; busy: boolean; additions: number; deletions: number; files: number }
+
+/** Une partie de message OpenCode, réduite à ce que l'espace de code affiche. */
+export type OpencodePartDTO =
+  | { type: 'text'; text: string }
+  | { type: 'reasoning'; text: string }
+  | { type: 'tool'; tool: string; status: 'pending' | 'running' | 'completed' | 'error'; title: string | null; input: string; output: string | null }
+  | { type: 'patch'; files: string[] }
+  | { type: 'file'; filename: string | null; mime: string };
+export interface OpencodeMessageDTO { id: string; role: 'user' | 'assistant'; createdAt: number; completedAt: number | null; model: string | null; error: string | null; parts: OpencodePartDTO[] }
+export interface OpencodeDiffDTO { path: string; status: 'added' | 'modified' | 'deleted'; additions: number; deletions: number; patch: string }
+export interface OpencodePermissionDTO { id: string; permission: string; patterns: string[] }
+export interface OpencodeQuestionDTO { id: string; questions: { question: string; header: string; options: string[]; multiple: boolean }[] }
+export interface OpencodeExchangeDTO { seq: number; taskId: string; author: 'user' | 'companion' | 'opencode'; agentId: string | null; kind: string; text: string; original: string | null; createdAt: string }
+export interface OpencodeFileNodeDTO { name: string; path: string; type: 'file' | 'directory' }
+
+/** L'espace de code d'une tâche : la session exacte, son état réel, ce qui attend l'utilisateur. */
+export interface OpencodeWorkspaceDTO {
+  task: TaskDTO;
+  /** `false` : l'instance ne répond pas ; les listes sont alors vides et l'état de la tâche est le dernier connu. */
+  reachable: boolean;
+  error: string | null;
+  session: OpencodeSessionDTO | null;
+  /** `busy`, `idle`, `retry` selon OpenCode ; `unknown` si l'instance est injoignable. */
+  sessionStatus: 'busy' | 'idle' | 'retry' | 'unknown';
+  messages: OpencodeMessageDTO[];
+  permissions: OpencodePermissionDTO[];
+  questions: OpencodeQuestionDTO[];
+  diffs: OpencodeDiffDTO[];
+  exchanges: OpencodeExchangeDTO[];
 }
 
 // --- Chats généraux (sans compagnon propriétaire) ---------------------------------
@@ -603,7 +674,7 @@ export function isActionToolPart(part: Presentable): boolean {
   if (part.type === 'tool-team_send_message' && out.status === 'sent') return true;
   // Une tâche déléguée laisse sa carte dans le fil (mise à jour en place).
   if (part.type === 'tool-request_secure_login' && typeof (out as { loginId?: unknown }).loginId === 'string') return true;
-  if ((part.type === 'tool-task_start' || part.type === 'tool-invoke_agent') && typeof (out as { taskId?: unknown }).taskId === 'string') return true;
+  if ((part.type === 'tool-task_start' || part.type === 'tool-invoke_agent' || part.type === 'tool-opencode_start') && typeof (out as { taskId?: unknown }).taskId === 'string') return true;
   if (ACTION_TOOL_TYPES.has(part.type)) return true;
   return out.status === 'pending_approval';
 }

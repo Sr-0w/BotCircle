@@ -1,5 +1,6 @@
 import { taskTools } from '../tasks/tools.ts';
 import { secureLoginTools } from '../securelogin/tools.ts';
+import { opencodeTools } from '../opencode/tools.ts';
 import { artifactTools, shareArtifactsWith } from '../artifacts/tools.ts';
 import { ArtifactError } from '../artifacts/service.ts';
 import { tool, type ToolSet } from 'ai';
@@ -717,6 +718,8 @@ export function buildTools(ctx: ToolContext): ToolSet {
   Object.assign(tools, artifactTools(ctx));
   // Seulement pour un compagnon qui a un ordinateur : c'est là que les pages de connexion apparaissent.
   if (ctx.agent.permissions.computer) Object.assign(tools, secureLoginTools(ctx));
+  // Développement délégué : réservé aux compagnons que l'utilisateur y a autorisés, hors worker.
+  if (ctx.agent.permissions.code && !ctx.taskId) Object.assign(tools, opencodeTools(ctx));
   return tools;
 }
 

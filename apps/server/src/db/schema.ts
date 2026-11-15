@@ -10,7 +10,7 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import type { SecureLoginStatus,
+import type { SecureLoginStatus, TaskProviderName, TaskExternalRef,
   ActivityKind,
   ActivitySchedule,
   ActivityMailFilter,
@@ -394,6 +394,10 @@ export const tasks = pgTable(
     artifacts: jsonb('artifacts').$type<string[]>().notNull().default([]),
     /** Consignes ajoutées pendant l'exécution, appliquées à l'étape suivante. */
     pendingInstructions: jsonb('pending_instructions').$type<string[]>().notNull().default([]),
+    /** Qui exécute : un worker OpenDots (`worker`) ou une session OpenCode distante (`opencode`). */
+    provider: text('provider').$type<TaskProviderName>().notNull().default('worker'),
+    /** Pour une exécution externe : l'instance, la session et le dossier exacts. */
+    external: jsonb('external').$type<TaskExternalRef | null>(),
     /** `agent` (délégation par le compagnon), `user` (mention depuis un chat) ou `assistant` (chat général). */
     requestedBy: text('requested_by').notNull().default('agent'),
     lastHeartbeat: ts('last_heartbeat'),
@@ -438,4 +442,41 @@ export const secureLogins = pgTable(
     resolvedAt: ts('resolved_at'),
   },
   (t) => [index('secure_logins_agent_idx').on(t.agentId, t.status)],
+);
+
+/** Instances OpenCode du compte (`opencode serve`), jointes par leur API HTTP. Le mot de passe est chiffré. */
+export const opencodeInstances = pgTable('opencode_instances', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  baseUrl: text('base_url').notNull(),
+  username: text('username').notNull().default('opencode'),
+  password: text('password'),
+  defaultDirectory: text('default_directory'),
+  version: text('version'),
+  lastSeenAt: ts('last_seen_at'),
+  lastError: text('last_error'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+/**
+ * Ce qui a été dit à OpenCode et ce qu'il a répondu, pour les « Échanges de l'équipe » : consignes réellement
+ * envoyées (avec la demande d'origine de l'utilisateur si le compagnon l'a reformulée), réponses et issues. Les
+ * appels d'outils et la sortie du terminal n'y figurent pas : ils restent dans l'espace de code.
+ */
+export const opencodeExchanges = pgTable(
+  'opencode_exchanges',
+  {
+    seq: serial('seq').primaryKey(),
+    taskId: text('task_id').notNull(),
+    instanceId: text('instance_id').notNull(),
+    sessionId: text('session_id').notNull(),
+    /** `user` (saisi dans l'espace de code), `companion` ou `opencode`. */
+    author: text('author').$type<'user' | 'companion' | 'opencode'>().notNull(),
+    agentId: text('agent_id'),
+    kind: text('kind').$type<'delegation' | 'instruction' | 'response' | 'question' | 'permission' | 'result' | 'failure' | 'stop'>().notNull(),
+    text: text('text').notNull(),
+    original: text('original'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('opencode_exchanges_task_idx').on(t.taskId, t.seq)],
 );

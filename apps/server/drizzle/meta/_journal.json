@@ -43,6 +43,13 @@
       "when": 1794700800000,
       "tag": "0005_secure_logins",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794787200000,
+      "tag": "0006_opencode",
+      "breakpoints": true
     }
   ]
 }

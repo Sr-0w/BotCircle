@@ -40,10 +40,25 @@ export async function toTaskDTO(row: TaskRow): Promise<TaskDTO> {
     phase: row.phase, currentActionSummary: row.currentAction, completedSteps: row.completedSteps, totalSteps: row.totalSteps,
     blocker: row.blocker, requiresUserInput: row.requiresUserInput, result: row.result, error: row.error,
     artifacts: (await artifactsByIds(row.artifacts)).map(toArtifactDTO), requestedBy: row.requestedBy,
+    provider: row.provider, external: row.external ? { ...row.external, instanceName: (await externalName?.(row.external.instanceId)) ?? 'OpenCode' } : null,
     lastHeartbeat: row.lastHeartbeat?.toISOString() ?? null, createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null, finishedAt: row.finishedAt?.toISOString() ?? null,
   };
 }
+
+/**
+ * Une exécution externe (OpenCode) garde la même carte, le même registre et les mêmes actions qu'un worker, mais
+ * l'arrêt et les consignes partent vers la session distante. Le fournisseur s'enregistre ici.
+ */
+export interface TaskProvider {
+  /** Arrête réellement l'exécution distante ; lève une erreur si l'arrêt n'a pas pu être transmis. */
+  cancel(row: TaskRow): Promise<void>;
+  /** Transmet une consigne à la même session. */
+  instruct(row: TaskRow, instruction: string, author: 'user' | 'companion'): Promise<void>;
+}
+const providers = new Map<string, TaskProvider>();
+let externalName: ((instanceId: string) => Promise<string | null>) | null = null;
+export function registerTaskProvider(name: string, provider: TaskProvider, nameOf: (instanceId: string) => Promise<string | null>) { providers.set(name, provider); externalName = nameOf; }
 
 export async function getTask(id: string): Promise<TaskRow | null> {
   const [row] = await db().select().from(schema.tasks).where(eq(schema.tasks.id, id));
@@ -106,9 +121,9 @@ export async function createTask(input: { agentId: string; conversationId: strin
  * même navigateur. La suivante démarre quand la précédente rend la main.
  */
 export async function startNextTask(agentId: string) {
-  const [running] = await db().select({ id: schema.tasks.id }).from(schema.tasks).where(and(eq(schema.tasks.agentId, agentId), eq(schema.tasks.status, 'running'))).limit(1);
+  const [running] = await db().select({ id: schema.tasks.id }).from(schema.tasks).where(and(eq(schema.tasks.agentId, agentId), eq(schema.tasks.status, 'running'), eq(schema.tasks.provider, 'worker'))).limit(1);
   if (running) return;
-  const [next] = await db().select().from(schema.tasks).where(and(eq(schema.tasks.agentId, agentId), eq(schema.tasks.status, 'queued'))).orderBy(schema.tasks.createdAt).limit(1);
+  const [next] = await db().select().from(schema.tasks).where(and(eq(schema.tasks.agentId, agentId), eq(schema.tasks.status, 'queued'), eq(schema.tasks.provider, 'worker'))).orderBy(schema.tasks.createdAt).limit(1);
   if (!next) return;
   await updateTask(next.id, { status: 'running', startedAt: next.startedAt ?? new Date(), lastHeartbeat: new Date(), blocker: null, error: null, requiresUserInput: false });
   // Sans agentId : le worker ne doit pas bloquer les réveils et messages du compagnon dans la file.
@@ -116,7 +131,7 @@ export async function startNextTask(agentId: string) {
 }
 
 export async function hasRunningTask(agentId: string): Promise<TaskRow | null> {
-  const [row] = await db().select().from(schema.tasks).where(and(eq(schema.tasks.agentId, agentId), eq(schema.tasks.status, 'running'))).limit(1);
+  const [row] = await db().select().from(schema.tasks).where(and(eq(schema.tasks.agentId, agentId), eq(schema.tasks.status, 'running'), eq(schema.tasks.provider, 'worker'))).limit(1);
   return row ?? null;
 }
 
@@ -141,9 +156,16 @@ export async function takeInstructions(taskId: string): Promise<string[]> {
   return row.pendingInstructions;
 }
 
-export async function sendInstruction(taskId: string, instruction: string) {
+export async function sendInstruction(taskId: string, instruction: string, author: 'user' | 'companion' = 'user') {
   const row = await getTask(taskId);
   if (!row) throw new TaskError('Tâche introuvable.');
+  const external = providers.get(row.provider);
+  if (external) {
+    // Session distante : la consigne part dans LA session de cette tâche ; une session terminée peut être poursuivie.
+    await external.instruct(row, instruction.trim().slice(0, 8000), author);
+    await addTaskEvent(taskId, 'instruction', `Consigne envoyée : ${instruction.trim().slice(0, 300)}`);
+    return (await getTask(taskId))!;
+  }
   if (!ACTIVE_TASK_STATUSES.includes(row.status)) throw new TaskError('Cette tâche est terminée : démarre-en une nouvelle.');
   await db().update(schema.tasks).set({ pendingInstructions: [...row.pendingInstructions, instruction.trim().slice(0, 2000)] }).where(eq(schema.tasks.id, taskId));
   await addTaskEvent(taskId, 'instruction', `Consigne ajoutée : ${instruction.trim().slice(0, 300)}`);
@@ -156,6 +178,8 @@ export async function cancelTask(taskId: string): Promise<TaskRow> {
   const row = await getTask(taskId);
   if (!row) throw new TaskError('Tâche introuvable.');
   if (!ACTIVE_TASK_STATUSES.includes(row.status)) return row;
+  // Une exécution distante n'est dite « annulée » que si l'arrêt a réellement été transmis.
+  await providers.get(row.provider)?.cancel(row);
   const updated = await updateTask(taskId, { status: 'cancelled', finishedAt: new Date(), currentAction: null, requiresUserInput: false });
   await addTaskEvent(taskId, 'status', 'Annulée');
   live.get(liveKey(taskId))?.abort.abort();
@@ -166,6 +190,7 @@ export async function cancelTask(taskId: string): Promise<TaskRow> {
 export async function pauseTask(taskId: string): Promise<TaskRow> {
   const row = await getTask(taskId);
   if (!row) throw new TaskError('Tâche introuvable.');
+  if (providers.has(row.provider)) throw new TaskError('Une session OpenCode ne se met pas en pause : arrête-la, ou envoie-lui une consigne.');
   if (row.status !== 'running' && row.status !== 'queued') throw new TaskError('Seule une tâche en cours peut être mise en pause.');
   const updated = await updateTask(taskId, { status: 'paused', currentAction: null });
   await addTaskEvent(taskId, 'status', 'Mise en pause');
@@ -177,6 +202,7 @@ export async function pauseTask(taskId: string): Promise<TaskRow> {
 export async function resumeTask(taskId: string): Promise<TaskRow> {
   const row = await getTask(taskId);
   if (!row) throw new TaskError('Tâche introuvable.');
+  if (providers.has(row.provider)) throw new TaskError('Réponds à la demande d’OpenCode depuis l’espace de code, ou envoie-lui une consigne.');
   if (row.status !== 'paused' && row.status !== 'waiting_for_user') throw new TaskError('Cette tâche n’est ni en pause ni en attente.');
   const updated = await updateTask(taskId, { status: 'queued', blocker: null, requiresUserInput: false });
   await addTaskEvent(taskId, 'status', 'Reprise demandée');
@@ -198,7 +224,7 @@ export async function taskByWorkConversation(conversationId: string): Promise<Ta
 
 /** Tâches « en cours » sans signe de vie depuis trop longtemps : échec explicite plutôt qu'un état figé. */
 export async function failStalledTasks(now = Date.now()): Promise<number> {
-  const stalled = await db().select().from(schema.tasks).where(and(eq(schema.tasks.status, 'running'), lt(schema.tasks.lastHeartbeat, new Date(now - TASK_STALL_MS))));
+  const stalled = await db().select().from(schema.tasks).where(and(eq(schema.tasks.status, 'running'), eq(schema.tasks.provider, 'worker'), lt(schema.tasks.lastHeartbeat, new Date(now - TASK_STALL_MS))));
   for (const row of stalled) {
     if (live.has(liveKey(row.id))) { live.get(liveKey(row.id))!.abort.abort(); }
     await updateTask(row.id, { status: 'failed', error: 'Aucun signe de vie du worker : tâche arrêtée.', finishedAt: new Date(), currentAction: null });

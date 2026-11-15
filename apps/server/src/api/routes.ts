@@ -4,6 +4,7 @@ import { attachmentRoutes } from '../attachments/routes.ts';
 import { artifactRoutes } from '../artifacts/routes.ts';
 import { taskRoutes } from '../tasks/routes.ts';
 import { secureLoginRoutes } from '../securelogin/routes.ts';
+import { opencodeRoutes } from '../opencode/routes.ts';
 import { chatRoutes } from '../chats/routes.ts';
 import { grantArtifact } from '../artifacts/service.ts';
 import { artifactIdFromUrl } from '@opendots/shared';
@@ -121,6 +122,7 @@ export function createApi() {
   api.route('/artifacts', artifactRoutes());
   api.route('/tasks', taskRoutes());
   api.route('/secure-logins', secureLoginRoutes());
+  api.route('/opencode', opencodeRoutes());
   api.route('/chats', chatRoutes());
 
   api.get('/bootstrap', async (c) => {
@@ -286,6 +288,7 @@ export function createApi() {
             connectors: z.boolean(),
             shell: z.boolean(),
             computer: z.boolean(),
+            code: z.boolean(),
             createAgents: z.enum(['allow', 'ask', 'deny']),
           })
           .partial()
