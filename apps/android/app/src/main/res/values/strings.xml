@@ -24,14 +24,16 @@
     <string name="approval_failed">Approved, but it failed</string>
     <string name="approval_pending">Waiting for your approval</string>
     <string name="approval_rejected">Refused</string>
+    <string name="approval_risky">This action has consequences: check the details first.</string>
     <string name="approval_title">Action to approve</string>
     <string name="approvals">Approvals</string>
     <string name="approvals_empty_body">When a companion prepares a sensitive action, it waits for you here.</string>
     <string name="approvals_empty_title">Nothing to approve</string>
     <string name="approvals_recent">Recent</string>
     <string name="approvals_waiting">Waiting for you</string>
-    <string name="approve">Approve</string>
+    <string name="approve">Allow</string>
     <string name="ask_companion">Ask a companion</string>
+    <string name="asked_by">Asked by %1$s</string>
     <string name="assistant">Assistant</string>
     <string name="assistant_failed">The assistant could not answer.</string>
     <string name="attach_files">Attach files</string>
@@ -185,6 +187,7 @@
     <string name="file_granted_by">by %1$s</string>
     <string name="file_grants">Companions with access</string>
     <string name="file_history">History</string>
+    <string name="file_info">Details</string>
     <string name="file_no_app">No app can open this file. Save it instead.</string>
     <string name="file_no_grants">No companion can read this file.</string>
     <string name="file_revoke">Revoke</string>
@@ -209,6 +212,11 @@
     <string name="journal_empty_title">Nothing yet</string>
     <string name="journal_note">The important operations it carried out</string>
     <string name="journal_title">%1$s’s journal</string>
+    <string name="kind_archive">Archive</string>
+    <string name="kind_audio">Audio</string>
+    <string name="kind_image">Image</string>
+    <string name="kind_text">Text</string>
+    <string name="kind_video">Video</string>
     <string name="load_failed">Couldn’t load the conversation</string>
     <string name="login_cancelled">Sign-in cancelled</string>
     <string name="login_done">Signed in</string>
@@ -247,6 +255,7 @@
     <string name="name">Name</string>
     <string name="new_chat">New chat</string>
     <string name="new_companion">New companion</string>
+    <string name="next">Next</string>
     <string name="no">no</string>
     <string name="no_account">Create an account</string>
     <string name="no_answer">(no answer)</string>
@@ -258,6 +267,7 @@
     <string name="open">Open</string>
     <string name="open_web_app">Open the web app</string>
     <string name="open_web_app_note">Connectors, skills, memory and the desktop viewer</string>
+    <string name="open_with">Open with…</string>
     <string name="opencode_row_note">Development machines and their status</string>
     <string name="openrouter_key">OpenRouter key</string>
     <string name="openrouter_key_hint">Create one at openrouter.ai/keys</string>
@@ -268,6 +278,10 @@
     <string name="pause_autonomous_note">Schedules, watches and wake-ups stop until you resume</string>
     <string name="paused_long">Autonomous activity is paused</string>
     <string name="paused_short">Paused</string>
+    <string name="pdf_found_on">Found on pages %1$s</string>
+    <string name="pdf_page">Page %1$d</string>
+    <string name="pdf_pages">Page %1$d / %2$d</string>
+    <string name="pdf_unreadable">This PDF cannot be read.</string>
     <string name="perm_activities">Manage its own schedules</string>
     <string name="perm_code">Delegate code to OpenCode</string>
     <string name="perm_computer">See and use the desktop</string>
@@ -279,6 +293,13 @@
     <string name="perm_web">Read public web pages</string>
     <string name="permissions">Permissions</string>
     <string name="permissions_note">Sending email and other sensitive actions always ask for your approval.</string>
+    <string name="preview">Preview</string>
+    <string name="preview_no_match">No result</string>
+    <string name="preview_rendered">Rendered</string>
+    <string name="preview_search">Search in the file</string>
+    <string name="preview_source">Source</string>
+    <string name="preview_truncated">Long file: only the first 2 MB are shown. Save it to see everything.</string>
+    <string name="previous">Previous</string>
     <string name="provider_api_key">API key</string>
     <string name="provider_checking">Checking…</string>
     <string name="provider_connect">Connect</string>
@@ -300,6 +321,7 @@
     <string name="reduce_transparency_note">Replace blur with plain surfaces</string>
     <string name="register_title">Create your account</string>
     <string name="reject">Refuse</string>
+    <string name="reject_all">Reject all</string>
     <string name="remove_file">Remove %1$s</string>
     <string name="remove_image">Remove image</string>
     <string name="rename">Rename</string>
@@ -453,9 +475,19 @@
     <string name="writing_reply">Writing its reply…</string>
     <string name="yes">yes</string>
     <string name="you">You</string>
+    <string name="zoom_in">Zoom in</string>
+    <string name="zoom_out">Zoom out</string>
     <plurals name="actions">
         <item quantity="one">%d action</item>
         <item quantity="other">%d actions</item>
+    </plurals>
+    <plurals name="approvals_asked">
+        <item quantity="one">%d approval requested</item>
+        <item quantity="other">%d approvals requested</item>
+    </plurals>
+    <plurals name="approvals_pending">
+        <item quantity="one">%d pending</item>
+        <item quantity="other">%d pending</item>
     </plurals>
     <plurals name="code_active">
         <item quantity="one">%d task running</item>

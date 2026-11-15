@@ -24,14 +24,16 @@
     <string name="approval_failed">Approuvé, mais l’exécution a échoué</string>
     <string name="approval_pending">En attente de ta validation</string>
     <string name="approval_rejected">Refusé</string>
+    <string name="approval_risky">Action à conséquences : vérifie les détails avant d’autoriser.</string>
     <string name="approval_title">Action à valider</string>
     <string name="approvals">Validations</string>
     <string name="approvals_empty_body">Quand un compagnon prépare une action sensible, elle t’attend ici.</string>
     <string name="approvals_empty_title">Rien à valider</string>
     <string name="approvals_recent">Récentes</string>
     <string name="approvals_waiting">En attente</string>
-    <string name="approve">Approuver</string>
+    <string name="approve">Autoriser</string>
     <string name="ask_companion">Demander à un compagnon</string>
+    <string name="asked_by">Demandé par %1$s</string>
     <string name="assistant">Assistant</string>
     <string name="assistant_failed">L’assistant n’a pas pu répondre.</string>
     <string name="attach_files">Joindre des fichiers</string>
@@ -185,6 +187,7 @@
     <string name="file_granted_by">par %1$s</string>
     <string name="file_grants">Compagnons qui y ont accès</string>
     <string name="file_history">Historique</string>
+    <string name="file_info">Informations</string>
     <string name="file_no_app">Aucune application ne peut ouvrir ce fichier. Enregistre-le plutôt.</string>
     <string name="file_no_grants">Aucun compagnon ne peut lire ce fichier.</string>
     <string name="file_revoke">Retirer</string>
@@ -209,6 +212,11 @@
     <string name="journal_empty_title">Rien pour l’instant</string>
     <string name="journal_note">Les opérations importantes qu’il a menées</string>
     <string name="journal_title">Journal de %1$s</string>
+    <string name="kind_archive">Archive</string>
+    <string name="kind_audio">Audio</string>
+    <string name="kind_image">Image</string>
+    <string name="kind_text">Texte</string>
+    <string name="kind_video">Vidéo</string>
     <string name="load_failed">Impossible de charger la conversation</string>
     <string name="login_cancelled">Connexion annulée</string>
     <string name="login_done">Connexion effectuée</string>
@@ -247,6 +255,7 @@
     <string name="name">Nom</string>
     <string name="new_chat">Nouveau chat</string>
     <string name="new_companion">Nouveau compagnon</string>
+    <string name="next">Suivant</string>
     <string name="no">non</string>
     <string name="no_account">Créer un compte</string>
     <string name="no_answer">(sans réponse)</string>
@@ -258,6 +267,7 @@
     <string name="open">Ouvrir</string>
     <string name="open_web_app">Ouvrir l’app web</string>
     <string name="open_web_app_note">Connecteurs, skills, mémoire et bureau graphique</string>
+    <string name="open_with">Ouvrir avec…</string>
     <string name="opencode_row_note">Machines de développement et leur état</string>
     <string name="openrouter_key">Clé OpenRouter</string>
     <string name="openrouter_key_hint">Crée-la sur openrouter.ai/keys</string>
@@ -268,6 +278,10 @@
     <string name="pause_autonomous_note">Planifications, surveillances et réveils s’arrêtent jusqu’à la reprise</string>
     <string name="paused_long">Activités autonomes suspendues</string>
     <string name="paused_short">En pause</string>
+    <string name="pdf_found_on">Trouvé pages %1$s</string>
+    <string name="pdf_page">Page %1$d</string>
+    <string name="pdf_pages">Page %1$d / %2$d</string>
+    <string name="pdf_unreadable">Ce PDF est illisible.</string>
     <string name="perm_activities">Gérer ses planifications</string>
     <string name="perm_code">Déléguer du code à OpenCode</string>
     <string name="perm_computer">Voir et utiliser le bureau</string>
@@ -279,6 +293,13 @@
     <string name="perm_web">Lire des pages web publiques</string>
     <string name="permissions">Permissions</string>
     <string name="permissions_note">L’envoi d’e-mails et les autres actions sensibles demandent toujours ta validation.</string>
+    <string name="preview">Aperçu</string>
+    <string name="preview_no_match">Aucun résultat</string>
+    <string name="preview_rendered">Rendu</string>
+    <string name="preview_search">Rechercher dans le fichier</string>
+    <string name="preview_source">Source</string>
+    <string name="preview_truncated">Fichier long : seuls les 2 premiers Mo sont affichés. Enregistre-le pour tout voir.</string>
+    <string name="previous">Précédent</string>
     <string name="provider_api_key">Clé API</string>
     <string name="provider_checking">Vérification…</string>
     <string name="provider_connect">Connecter</string>
@@ -300,6 +321,7 @@
     <string name="reduce_transparency_note">Remplace le flou par des surfaces unies</string>
     <string name="register_title">Crée ton compte</string>
     <string name="reject">Refuser</string>
+    <string name="reject_all">Tout refuser</string>
     <string name="remove_file">Retirer %1$s</string>
     <string name="remove_image">Retirer l’image</string>
     <string name="rename">Renommer</string>
@@ -453,9 +475,19 @@
     <string name="writing_reply">Rédige sa réponse…</string>
     <string name="yes">oui</string>
     <string name="you">Toi</string>
+    <string name="zoom_in">Zoomer</string>
+    <string name="zoom_out">Dézoomer</string>
     <plurals name="actions">
         <item quantity="one">%d action</item>
         <item quantity="other">%d actions</item>
+    </plurals>
+    <plurals name="approvals_asked">
+        <item quantity="one">%d validation demandée</item>
+        <item quantity="other">%d validations demandées</item>
+    </plurals>
+    <plurals name="approvals_pending">
+        <item quantity="one">%d en attente</item>
+        <item quantity="other">%d en attente</item>
     </plurals>
     <plurals name="code_active">
         <item quantity="one">%d tâche en cours</item>

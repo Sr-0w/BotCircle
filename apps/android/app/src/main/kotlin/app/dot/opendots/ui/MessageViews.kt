@@ -173,7 +173,8 @@ private fun UserMessage(message: ChatMessage, env: MessageEnv, modifier: Modifie
                     }
                 }
                 if (text.isNotEmpty()) Text(text, style = Dot.type.body, color = Dot.colors.textPrimary)
-                files.forEach { file -> if (file.mediaType.startsWith("image/")) AttachedImage(file, env) else FileCard(file, env.fileActions, onAccess = env.onFileAccess) }
+                files.filter { it.mediaType.startsWith("image/") }.forEach { file -> AttachedImage(file, env) }
+                files.filterNot { it.mediaType.startsWith("image/") }.takeIf { it.isNotEmpty() }?.let { FileGroup(it, env.fileActions, onAccess = env.onFileAccess) }
             }
             MessageMenu(menu, { menu = false }, text, message.id, "user", env)
         }
@@ -219,8 +220,10 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                     ),
                     verticalArrangement = Arrangement.spacedBy(DotSpacing.xs + 2.dp),
                 ) {
-                    turn.bubbles.forEach { bubble ->
-                        when (bubble) {
+                    groupFileBubbles(turn.bubbles).forEach { item ->
+                        // Files sent one after the other share one surface.
+                        if (item is List<*>) { @Suppress("UNCHECKED_CAST") val files = item as List<Bubble.File>; FileGroup(files.map { it.file }, env.fileActions, sizes = files.map { it.size }, captions = files.map { it.caption }, onAccess = env.onFileAccess); return@forEach }
+                        when (val bubble = item as Bubble) {
                             is Bubble.Text -> DotReplyBubble {
                                 if (bubble.key == firstText) message.meta.replyTo?.let { ReplyQuote(it, env) }
                                 DotMarkdown(
@@ -236,7 +239,11 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                 MessageMenu(menu, { menu = false }, turn.plainText, message.id, "assistant", env, onShowWork = if (turn.hasWork) env.onShowWork else null)
             }
         }
-        turn.actions.forEach { part -> ActionCard(part, message, env) }
+        // Validations asked one after the other in a turn are shown together; a single one stays a card.
+        groupApprovalParts(turn.actions).forEach { item ->
+            if (item is List<*>) { @Suppress("UNCHECKED_CAST") val parts = item as List<Part.Tool>; ApprovalGroup(parts.map { it.outputObject!!.str("approvalId")!! }, parts.map { it.outputObject?.str("summary") }, env) }
+            else ActionCard(item as Part.Tool, message, env)
+        }
         if (message.meta.setup) SetupHint(env)
         Reactions(message.id, message.meta.reactions, env)
         if (showActions && !streaming && turn.plainText.isNotEmpty()) {
@@ -465,4 +472,26 @@ fun liveStepLabel(message: ChatMessage?): Pair<String, Int>? {
         else -> return null
     }
     return title to tools.size
+}
+
+/** Consecutive file bubbles become one list (one surface); everything else stays as it is. */
+private fun groupFileBubbles(bubbles: List<Bubble>): List<Any> {
+    val out = mutableListOf<Any>()
+    var run = mutableListOf<Bubble.File>()
+    fun flush() { if (run.isNotEmpty()) { out.add(run.toList()); run = mutableListOf() } }
+    for (bubble in bubbles) if (bubble is Bubble.File) run.add(bubble) else { flush(); out.add(bubble) }
+    flush()
+    return out
+}
+
+private fun Part.Tool.pendingApprovalId(): String? = outputObject?.takeIf { it.str("status") == "pending_approval" && name != "mail_prepare" }?.str("approvalId")
+
+/** Consecutive approval cards become one list; everything else stays as it is. */
+private fun groupApprovalParts(parts: List<Part.Tool>): List<Any> {
+    val out = mutableListOf<Any>()
+    var run = mutableListOf<Part.Tool>()
+    fun flush() { if (run.size > 1) out.add(run.toList()) else run.forEach { out.add(it) }; run = mutableListOf() }
+    for (part in parts) if (part.pendingApprovalId() != null) run.add(part) else { flush(); out.add(part) }
+    flush()
+    return out
 }

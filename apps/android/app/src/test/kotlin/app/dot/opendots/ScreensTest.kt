@@ -30,6 +30,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.hasTestTag
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
@@ -83,7 +84,9 @@ class ScreensTest {
         {"type":"text","text":"**12,418 lines** across `163` files.\n\n| Package | Lines |\n|---|---|\n| server | 7,902 |\n| web | 4,516 |\n\n```bash\nfind . -name '*.ts' | xargs wc -l\n```\n\nI drafted the reply to Claire:"},
         {"type":"tool-mail_send","toolCallId":"t4","state":"output-available","input":{},"output":{"ok":true,"status":"pending_approval","approvalId":"ap1","summary":"Send an email to claire@example.com"}}]}
     ]}"""
-    private val approvals = """[{"id":"ap1","agentId":"a1","conversationId":"c1","action":"mail.send","summary":"GitHub — robin@example.com · Pousser (git push) une branche depuis l'ordinateur du compagnon · commit 100f9b4271509a9a826ac4de535d182960079cd2 · {\"repo\":\"Sr-0w/BotCircle\",\"branch\":\"fix/team-tools\",\"set_upstream\":true}","status":"pending","createdAt":"2026-11-13T09:00:00Z"}]"""
+    private val approvals = """[{"id":"ap1","agentId":"a1","conversationId":"c1","action":"mail.send","summary":"GitHub — robin@example.com · Pousser (git push) une branche depuis l'ordinateur du compagnon · commit 100f9b4271509a9a826ac4de535d182960079cd2 · {\"repo\":\"Sr-0w/BotCircle\",\"branch\":\"fix/team-tools\",\"set_upstream\":true}","status":"pending","createdAt":"2026-11-13T09:00:00Z"},
+      {"id":"ap2","agentId":"a2","conversationId":"c2","action":"shell.exec","service":"terminal","summary":"Terminal · rm -rf build · {\"cwd\":\"/home/dev/app\"}","status":"pending","createdAt":"2026-11-13T09:00:00Z"},
+      {"id":"ap3","agentId":"a2","conversationId":"c2","action":"integration.call","service":"gmail","summary":"Gmail · Send the report","status":"pending","createdAt":"2026-11-13T09:00:00Z"}]"""
     private val activities = """[
       {"id":"act1","agentId":"a1","title":"Weekly recap","kind":"schedule","schedule":{"type":"cron","expr":"0 17 * * 5"},"enabled":true,"nextRunAt":"2026-11-13T17:00:00Z"},
       {"id":"act2","agentId":"a2","title":"Watch: monitor price","kind":"watch","watch":{"url":"https://shop.example.com/monitor","mode":"contains"},"enabled":false}]"""
@@ -154,7 +157,17 @@ class ScreensTest {
                     path == "/artifacts/art_r1/grants/a3" -> json("""{"grants":[],"access":[{"actor":"user","action":"revoke","detail":"✕ a3","createdAt":"2026-11-13T09:06:00Z"}]}""")
                     path == "/agents/a2/messages" -> json("""{"conversationId":"c2","cursor":null,"active":false,"messages":[
                       {"id":"v1","role":"assistant","metadata":{"agentId":"a2"},"parts":[{"type":"text","text":"A sign-in is needed on service.example."},
-                        {"type":"tool-request_secure_login","toolCallId":"l1","state":"output-available","input":{"url":"https://service.example/login","reason":"Read the latest invoice"},"output":{"ok":true,"status":"waiting_for_secure_login","loginId":"sl1","origin":"https://service.example"}}]}]}""")
+                        {"type":"tool-request_secure_login","toolCallId":"l1","state":"output-available","input":{"url":"https://service.example/login","reason":"Read the latest invoice"},"output":{"ok":true,"status":"waiting_for_secure_login","loginId":"sl1","origin":"https://service.example"}}]},
+                      {"id":"v2","role":"assistant","metadata":{"agentId":"a2"},"parts":[{"type":"text","text":"Here are the script and the notes."},
+                        {"type":"file","url":"/api/artifacts/art_py/content","filename":"notepad.py","mediaType":"text/x-python"},
+                        {"type":"file","url":"/api/artifacts/art_md/content","filename":"notes.md","mediaType":"text/markdown"},
+                        {"type":"tool-shell_exec","toolCallId":"ap-a","state":"output-available","input":{},"output":{"ok":true,"status":"pending_approval","approvalId":"ap2","summary":"Terminal · rm -rf build · {\"cwd\":\"/home/dev/app\"}"}},
+                        {"type":"tool-integration_call","toolCallId":"ap-b","state":"output-available","input":{},"output":{"ok":true,"status":"pending_approval","approvalId":"ap3","summary":"Gmail · Send the report"}}]}]}""")
+                    path == "/artifacts/art_py/content" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/plain").body("def total(items):\n    # Sum of prices.\n    return sum(i.price for i in items)\n").build()
+                    path == "/artifacts/art_md/content" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/plain").body("# Meeting\n\nShip on Friday.\n").build()
+                    path == "/artifacts/art_py" -> json("""{"id":"art_py","name":"notepad.py","mediaType":"text/x-python","size":79}""")
+                    path == "/artifacts/art_md" -> json("""{"id":"art_md","name":"notes.md","mediaType":"text/markdown","size":28}""")
+                    path == "/approvals/ap3" -> json("""{"status":"rejected"}""")
                     path == "/agents/a2/stream" -> MockResponse.Builder().code(204).build()
                     path == "/secure-logins/sl1" -> json("""{"id":"sl1","agentId":"a2","conversationId":"c2","origin":"https://service.example","url":"https://service.example/login?next=%2Finvoices","reason":"Read the latest invoice","status":"pending"}""")
                     path == "/secure-logins/sl1/resolve" -> json("""{"id":"sl1","agentId":"a2","conversationId":"c2","origin":"https://service.example","url":"https://service.example/login?next=%2Finvoices","reason":"Read the latest invoice","status":"cancelled"}""")
@@ -241,7 +254,7 @@ class ScreensTest {
         val sent = posts.first { it.first == "/agents/a1/chat" }.second
         assertTrue(sent, "\"role\":\"user\"" in sent && "\"text\":\"Hello\"" in sent)
         compose.waitUntil(10_000) { app.session("a1").state.value.messages.any { it.id == "m9" } || posts.any { it.first == "/agents/a1/read" } }
-        compose.onNodeWithText("Approve").performClick()
+        compose.onNodeWithText("Allow").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/approvals/ap1" } }
         assertEquals("""{"decision":"approve"}""", posts.first { it.first == "/approvals/ap1" }.second)
     }
@@ -325,8 +338,8 @@ class ScreensTest {
         waitFor("Finished")
         waitFor("Weekly recap")
         shoot("tasks-background-dark")
-        // The finished worker task is the second card: the first is the running OpenCode session.
-        compose.onAllNodes(hasText("Details"))[1].performClick()
+        // The OpenCode card opens its session; the worker task keeps its Details.
+        compose.onAllNodes(hasText("Details"))[0].performClick()
         waitFor("Reads the meeting notes")
         waitFor("summary.pdf")
         waitFor("PDF · 47 KB")
@@ -437,6 +450,34 @@ class ScreensTest {
         // Android back returns to the page that opened the workspace.
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Weekly recap")
+    }
+
+    /** #42: files sent together are one surface with Preview and Save; code previews with colours and search. */
+    @Test fun filesAreCompactLinesWithAPreviewAndApprovalsAskedTogetherAreGrouped() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        waitFor("Venty")
+        compose.onNodeWithText("Venty").performClick()
+        waitFor("notepad.py")
+        waitFor("Python · 79 B")
+        assertEquals(1, compose.onAllNodes(hasTestTag("file-group"), useUnmergedTree = true).fetchSemanticsNodes().size)
+        // Two validations asked together: one surface; the risky one shows its details before the buttons.
+        waitFor("2 approvals requested")
+        waitFor("This action has consequences")
+        waitFor("/home/dev/app")
+        waitFor("Asked by Venty")
+        shoot("files-approvals-dark")
+        compose.onAllNodes(hasText("Refuse") and androidx.compose.ui.test.hasClickAction())[1].performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/approvals/ap3" } }
+        assertEquals("""{"decision":"reject"}""", posts.first { it.first == "/approvals/ap3" }.second)
+        // Preview of the Python file: coloured, numbered, searchable.
+        compose.onAllNodesWithContentDescription("Preview")[0].performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("code-highlighted"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor("return sum(i.price for i in items)")
+        shoot("file-preview-code-dark")
+        compose.onNodeWithContentDescription("Search in the file").performTextInput("return")
+        waitFor("1/1")
     }
 
     /** Files attached in the code workspace go with the instruction, as multipart, to that task's session. */

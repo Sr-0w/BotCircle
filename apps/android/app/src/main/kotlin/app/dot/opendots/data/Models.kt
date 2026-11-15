@@ -86,6 +86,8 @@ data class Approval(
     val status: String = "pending",
     val error: String? = null,
     val createdAt: String = "",
+    /** Provenance (github, gmail, google-drive, google-calendar, outlook, mail, computer, terminal, mcp), for its logo. */
+    val service: String? = null,
 )
 
 @Serializable

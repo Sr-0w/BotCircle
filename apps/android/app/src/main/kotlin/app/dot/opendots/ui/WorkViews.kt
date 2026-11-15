@@ -96,7 +96,15 @@ import kotlinx.coroutines.launch
 
 /** What a file card can do. One object per screen, so cards stay stable. */
 @Immutable
-class FileActions(val open: (Part.File) -> Unit, val save: (Part.File) -> Unit, val sizeOf: suspend (String) -> Long?)
+class FileActions(
+    val open: (Part.File) -> Unit,
+    val save: (Part.File) -> Unit,
+    val sizeOf: suspend (String) -> Long?,
+    /** The file downloaded to the app's cache, with the session, for the preview. */
+    val fetch: suspend (Part.File) -> java.io.File = { error("unavailable") },
+    /** Absolute address of a server path, for thumbnails loaded with the session. */
+    val resolve: (String) -> String = { it },
+)
 
 /** Opening hands the file to another app; saving copies it, unchanged, where the user chooses. */
 @Composable
@@ -125,39 +133,16 @@ fun rememberFileActions(app: AppState): FileActions {
             },
             save = { file -> saving = file; runCatching { saver.launch(file.filename ?: "file") }.onFailure { saving = null; app.notify(failed) } },
             sizeOf = { id -> runCatching { app.client.artifact(id).size }.getOrNull() },
+            fetch = { file -> fetchToCache(context, app.client, file) },
+            resolve = app.client::resolve,
         )
     }
 }
 
-/** A file of the thread: its real name, type and size, then Open, Save and who has access. */
+/** A file of the thread: one compact line (format, name, size), then Preview and Save; access in its menu. */
 @Composable
 fun FileCard(file: Part.File, actions: FileActions?, modifier: Modifier = Modifier, size: Long? = null, caption: String? = null, onAccess: ((String) -> Unit)? = null) {
-    val c = Dot.colors
-    val artifactId = remember(file.url) { artifactIdFromUrl(file.url) }
-    // The message does not carry the size: it comes from the artifact itself.
-    val realSize by produceState(size, artifactId, size) { if (size == null && artifactId != null && actions != null) value = actions.sizeOf(artifactId) }
-    DotCard(modifier.fillMaxWidth().testTag("file-card")) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(c.surfaceRaised), contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(20.dp), tint = c.textSecondary)
-            }
-            Spacer(Modifier.width(DotSpacing.m))
-            Column(Modifier.weight(1f)) {
-                Text(file.filename ?: stringResource(R.string.file), style = Dot.type.bodyStrong, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
-                Text(listOfNotNull(fileKind(file).ifBlank { null }, realSize?.let(::formatBytes)?.ifBlank { null }).joinToString(" · "), style = Dot.type.caption, color = c.textSecondary, maxLines = 1)
-            }
-        }
-        if (!caption.isNullOrBlank()) { Spacer(Modifier.height(DotSpacing.s)); Text(caption, style = Dot.type.callout, color = c.textSecondary) }
-        if (actions != null) {
-            Spacer(Modifier.height(DotSpacing.m))
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                DotButton(stringResource(R.string.open), { actions.open(file) }, style = ButtonStyle.Secondary, icon = Icons.AutoMirrored.Outlined.OpenInNew, compact = true)
-                DotButton(stringResource(R.string.save_file), { actions.save(file) }, style = ButtonStyle.Secondary, icon = Icons.Outlined.Download, compact = true)
-                if (artifactId != null && onAccess != null) DotButton(stringResource(R.string.file_access), { onAccess(artifactId) }, style = ButtonStyle.Ghost, icon = Icons.Outlined.Shield, compact = true)
-            }
-        }
-    }
+    FileGroup(listOf(file), actions, modifier, listOf(size), listOf(caption), onAccess)
 }
 
 private fun Artifact.asPart() = Part.File(url, mediaType, name)

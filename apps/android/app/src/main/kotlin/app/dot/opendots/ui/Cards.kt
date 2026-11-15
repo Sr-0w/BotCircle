@@ -43,6 +43,23 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.dot.design.Dot
+import androidx.compose.ui.draw.clip
+import app.dot.design.DotShapes
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material.icons.outlined.DesktopWindows
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import app.dot.design.DotSpacing
 import app.dot.design.components.ButtonStyle
 import app.dot.design.components.DotButton
@@ -145,48 +162,119 @@ fun approvalStatusLabel(status: String): String = stringResource(
     },
 )
 
+/** Consequences that must stay visible before the decision, however compact the card. */
+private val RISKY = Regex("\\b(delete|remove|destroy|drop|purge|wipe|force|dns|purchase|pay|payment|transfer|sudo|root|chmod|rm\\s+-rf|supprim|efface|achat|paiement|virement)\\b", RegexOption.IGNORE_CASE)
+
 /**
- * A sensitive action waiting for the user: stated plainly, then two unambiguous buttons. Nothing is triggered by a
- * swipe or an animation; the buttons lock while the decision travels to the server.
+ * A sensitive action. Pending: what, where and who asked, details on demand, and for an action with consequences the
+ * details and a warning before the buttons. Decided: one line with the real state from the server (granted is not
+ * done). Nothing is triggered by a swipe; the buttons lock while the decision travels.
  */
 @Composable
-fun ApprovalCard(approvalId: String, fallbackSummary: String?, env: MessageEnv, modifier: Modifier = Modifier, approval: Approval? = env.approvals[approvalId], approveLabel: String = stringResource(R.string.approve), rejectLabel: String = stringResource(R.string.reject)) {
+fun ApprovalCard(approvalId: String, fallbackSummary: String?, env: MessageEnv, modifier: Modifier = Modifier, approval: Approval? = env.approvals[approvalId], approveLabel: String = stringResource(R.string.approve), rejectLabel: String = stringResource(R.string.reject), embedded: Boolean = false) {
+    val c = Dot.colors
     val status = approval?.status ?: "pending"
-    DotCard(modifier.fillMaxWidth(), emphasized = status == "pending") {
-        val summary = remember(approval?.summary, fallbackSummary) { splitApprovalSummary(approval?.summary?.ifBlank { null } ?: fallbackSummary.orEmpty()) }
-        CardHeader(
-            Icons.Outlined.Shield,
-            summary.title.ifBlank { stringResource(R.string.approval_title) },
-            approvalStatusLabel(status),
-            if (status == "failed") Dot.colors.danger else if (status == "executed") Dot.colors.success else Dot.colors.textSecondary,
-            overline = summary.context,
-        )
-        if (summary.details.isNotEmpty() || summary.extra.isNotEmpty()) {
-            var open by remember(approvalId) { mutableStateOf(false) }
-            DotDisclosure(stringResource(R.string.details), open, { open = !open }, Modifier.padding(start = 30.dp)) {
-                summary.details.forEach { (key, value) ->
-                    Column {
-                        Text(key, style = Dot.type.caption, color = Dot.colors.textTertiary)
-                        Text(value.take(400), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = Dot.colors.textPrimary)
-                    }
+    val raw = approval?.summary?.ifBlank { null } ?: fallbackSummary.orEmpty()
+    val summary = remember(raw) { splitApprovalSummary(raw) }
+    val risky = remember(raw, approval?.action) { RISKY.containsMatchIn(raw) || approval?.action == "shell.exec" }
+    val hasDetails = summary.details.isNotEmpty() || summary.extra.isNotEmpty() || !approval?.error.isNullOrBlank()
+    var open by remember(approvalId) { mutableStateOf(false) }
+    val agent = approval?.agentId?.let { id -> env.agents.firstOrNull { it.id == id } }
+    val surface = if (embedded) Modifier else Modifier.clip(DotShapes.large).background(c.surface).border(DotSpacing.hairline * 2, if (status == "pending") c.borderStrong else c.border, DotShapes.large)
+    val details: @Composable () -> Unit = {
+        Column(Modifier.padding(top = DotSpacing.s).fillMaxWidth().clip(DotShapes.medium).background(c.surfaceRaised).padding(DotSpacing.s).testTag("approval-details"), verticalArrangement = Arrangement.spacedBy(DotSpacing.xs)) {
+            summary.details.forEach { (key, value) ->
+                Row { Text(key, style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.width(72.dp)); Text(value.take(400), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textPrimary) }
+            }
+            summary.extra.forEach { Text(it, style = Dot.type.caption, color = c.textSecondary) }
+            approval?.error?.takeIf { it.isNotBlank() }?.let { Text(it, style = Dot.type.caption, color = c.danger) }
+        }
+    }
+    if (status != "pending") {
+        Column(modifier.fillMaxWidth().then(surface).testTag("approval-$status")) {
+            Row(
+                Modifier.fillMaxWidth().clickable(enabled = hasDetails, role = Role.Button) { open = !open }.heightIn(min = 52.dp).padding(horizontal = DotSpacing.m, vertical = DotSpacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ServiceLogo(approval?.service)
+                Spacer(Modifier.width(DotSpacing.m))
+                Column(Modifier.weight(1f)) {
+                    Text(summary.title.ifBlank { stringResource(R.string.approval_title) }, style = Dot.type.callout, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(approvalStatusLabel(status), style = Dot.type.caption, color = if (status == "failed") c.danger else c.textSecondary, maxLines = 1)
                 }
-                summary.extra.forEach { Text(it, style = Dot.type.caption, color = Dot.colors.textSecondary) }
+                Icon(if (status == "executed" || status == "approved") Icons.Outlined.Check else if (status == "failed") Icons.Outlined.ErrorOutline else Icons.Outlined.Close, null, Modifier.size(18.dp), tint = if (status == "failed") c.danger else if (status == "executed") c.success else c.textTertiary)
+                if (hasDetails) Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ChevronRight, null, Modifier.padding(start = DotSpacing.xs).size(18.dp), tint = c.textTertiary)
+            }
+            if (open) Box(Modifier.padding(start = DotSpacing.m, end = DotSpacing.m, bottom = DotSpacing.m)) { details() }
+        }
+        return
+    }
+    Column(modifier.fillMaxWidth().then(surface).padding(horizontal = DotSpacing.m, vertical = DotSpacing.m).testTag("approval-pending")) {
+        Row(verticalAlignment = Alignment.Top) {
+            ServiceLogo(approval?.service, Modifier.padding(top = 2.dp))
+            Spacer(Modifier.width(DotSpacing.m))
+            Column(Modifier.weight(1f)) {
+                Text(summary.title.ifBlank { stringResource(R.string.approval_title) }, style = Dot.type.bodyStrong, color = c.textPrimary)
+                Text(listOfNotNull(summary.context, agent?.let { stringResource(R.string.asked_by, agentDisplayName(it)) }).joinToString(" · "), style = Dot.type.caption, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (risky) Row(Modifier.padding(top = DotSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.WarningAmber, null, Modifier.size(14.dp), tint = c.danger)
+                    Spacer(Modifier.width(DotSpacing.xs))
+                    Text(stringResource(R.string.approval_risky), style = Dot.type.caption, color = c.danger)
+                }
+                if (hasDetails && (open || risky)) details()
             }
         }
-        approval?.error?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(DotSpacing.s))
-            Text(it, style = Dot.type.caption, color = Dot.colors.danger)
+        Row(Modifier.fillMaxWidth().padding(top = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
+            if (hasDetails && !risky) Text(
+                stringResource(R.string.details), style = Dot.type.caption, color = c.textSecondary,
+                modifier = Modifier.clip(DotShapes.pill).clickable(role = Role.Button) { open = !open }.padding(horizontal = DotSpacing.s, vertical = DotSpacing.s),
+            )
+            Spacer(Modifier.weight(1f))
+            DecisionButtons(approvalId, env, approveLabel, rejectLabel, inline = true)
         }
-        if (status == "pending") DecisionButtons(approvalId, env, approveLabel, rejectLabel)
     }
 }
 
+/** Several validations asked together: one surface, each decided on its own; refusing everything is allowed. */
 @Composable
-private fun DecisionButtons(approvalId: String, env: MessageEnv, approveLabel: String, rejectLabel: String) {
+fun ApprovalGroup(ids: List<String>, summaries: List<String?>, env: MessageEnv) {
+    val c = Dot.colors
+    val pending = ids.filter { (env.approvals[it]?.status ?: "pending") == "pending" }
+    Column(Modifier.fillMaxWidth().clip(DotShapes.large).background(c.surface).border(DotSpacing.hairline * 2, c.border, DotShapes.large).testTag("approval-group")) {
+        Row(Modifier.fillMaxWidth().padding(start = DotSpacing.m, end = DotSpacing.xs).heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(pluralStringResource(R.plurals.approvals_asked, ids.size, ids.size) + if (pending.isNotEmpty()) " · " + pluralStringResource(R.plurals.approvals_pending, pending.size, pending.size) else "", style = Dot.type.caption, color = c.textSecondary, modifier = Modifier.weight(1f))
+            if (pending.size > 1) Text(stringResource(R.string.reject_all), style = Dot.type.label, color = c.textSecondary, modifier = Modifier.clip(DotShapes.pill).clickable(role = Role.Button) { pending.forEach { env.onDecide(it, false) } }.padding(DotSpacing.s))
+        }
+        ids.forEachIndexed { index, id ->
+            Hairline()
+            ApprovalCard(id, summaries.getOrNull(index), env, embedded = true)
+        }
+    }
+}
+
+/** Where an operation acts: the service's own mark when there is one, a quiet glyph otherwise. */
+@Composable
+fun ServiceLogo(service: String?, modifier: Modifier = Modifier) {
+    val brand = service?.let { BRAND_MARKS[it] }
+    if (brand != null) {
+        val dark = Dot.colors.isDark
+        val vector = remember(service, dark) {
+            ImageVector.Builder(name = brand.title, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+                .addPath(PathParser().parsePathString(brand.path).toNodes(), fill = SolidColor(Color(if (dark && brand.dark != null) brand.dark else brand.color))).build()
+        }
+        Icon(vector, brand.title, modifier.size(18.dp), tint = Color.Unspecified)
+        return
+    }
+    val icon = when (service) { "outlook", "mail" -> Icons.Outlined.MailOutline; "computer" -> Icons.Outlined.DesktopWindows; "terminal" -> Icons.Outlined.Terminal; "mcp" -> Icons.Outlined.Extension; else -> Icons.Outlined.Shield }
+    Icon(icon, null, modifier.size(18.dp), tint = Dot.colors.textSecondary)
+}
+
+@Composable
+private fun DecisionButtons(approvalId: String, env: MessageEnv, approveLabel: String, rejectLabel: String, inline: Boolean = false) {
     var sent by remember(approvalId) { mutableStateOf<Boolean?>(null) }
     val haptics = rememberDotHaptics()
-    Spacer(Modifier.height(DotSpacing.m))
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+    if (!inline) Spacer(Modifier.height(DotSpacing.m))
+    Row(if (inline) Modifier else Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
         DotButton(rejectLabel, { sent = false; haptics.reject(); env.onDecide(approvalId, false) }, style = ButtonStyle.Secondary, enabled = sent == null, loading = sent == false, compact = true)
         Spacer(Modifier.width(DotSpacing.s))
         DotPrimaryButton(approveLabel, { sent = true; haptics.confirm(); env.onDecide(approvalId, true) }, enabled = sent == null, loading = sent == true, compact = true)
