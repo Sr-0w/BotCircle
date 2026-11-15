@@ -68,10 +68,17 @@
     <string name="code_directory">Dossier du projet par défaut</string>
     <string name="code_directory_optional">Dossier du projet par défaut (facultatif)</string>
     <string name="code_edit">Modifier</string>
+    <string name="code_effort_default">par défaut</string>
+    <string name="code_effort_for">Effort pour %1$s</string>
     <string name="code_expose_note">Le plus simple : sur la machine de développement, lance `opencode pair --remote`, puis jumelle-la ici avec son lien ou son QR code ; ça marche même derrière un NAT. Sinon, avec une adresse et un mot de passe : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0, joignable par le serveur BotCircle via un réseau privé, un tunnel SSH ou un reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
+    <string name="code_file_too_large">Un fichier ne peut pas dépasser 10 Mo.</string>
     <string name="code_files_changed">Fichiers modifiés : %1$s</string>
     <string name="code_instances_note">Les machines de développement où tes compagnons délèguent du code</string>
     <string name="code_link">Lien affiché par opencode pair</string>
+    <string name="code_model">Modèle</string>
+    <string name="code_model_none">Aucun modèle trouvé.</string>
+    <string name="code_model_search">Chercher un modèle…</string>
+    <string name="code_model_set">Modèle : %s</string>
     <string name="code_name_hint">PC de dev</string>
     <string name="code_never_checked">Jamais contrôlée</string>
     <string name="code_no_change">OpenCode ne signale aucun fichier modifié dans cette session.</string>
@@ -90,6 +97,7 @@
     <string name="code_permission">OpenCode demande une autorisation</string>
     <string name="code_queue">Après ce travail</string>
     <string name="code_queued">Placée à la suite du travail en cours</string>
+    <string name="code_reads_images">Lit les images</string>
     <string name="code_remove_note">Les tâches et échanges passés restent consultables.</string>
     <string name="code_remove_title">Retirer cette instance ?</string>
     <string name="code_save">Enregistrer et contrôler</string>

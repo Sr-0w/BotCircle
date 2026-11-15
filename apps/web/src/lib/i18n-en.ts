@@ -1,5 +1,9 @@
 /** Dictionnaire anglais : clé = texte français. */
 export const EN: Record<string, string> = {
+  "Retirer {v0}": "Remove {v0}",
+  "Chercher un modèle…": "Search models…",
+  "Effort pour {v0} :": "Effort for {v0}:",
+  "Lit les images": "Reads images",
   "Retour à la session": "Back to the session",
   "1 fichier": "1 file",
   "{count} fichiers": "{count} files",

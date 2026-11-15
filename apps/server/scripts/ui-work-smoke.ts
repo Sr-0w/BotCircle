@@ -19,7 +19,7 @@ globalThis.fetch = async (input, init) => {
 };
 
 /** Une fausse instance `opencode serve` : mêmes chemins et mêmes formes que l'API réelle. */
-const oc = { prompts: [] as string[], busy: true, messages: [
+const oc = { prompts: [] as string[], bodies: [] as any[], busy: true, messages: [
   { info: { id: 'm_u1', role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'a', type: 'text', text: 'Regroupe OAuth avec les fournisseurs.' }] },
   { info: { id: 'm_a1', role: 'assistant', time: { created: Date.now() + 3_600_000 }, modelID: 'gpt-5', providerID: 'openai' }, parts: [
     { id: 'b', type: 'text', text: 'Je regroupe les réglages des fournisseurs.' },
@@ -35,7 +35,8 @@ function fakeOpencode(url: URL, init?: RequestInit) {
   if (path === '/session/status') return json(oc.busy ? { ses_smoke: { type: 'busy' } } : {});
   if (path === '/session/ses_smoke/message') return json(oc.messages);
   if (path === '/session/ses_smoke/diff') return json([{ path: 'apps/web/src/settings-page.tsx', status: 'modified', additions: 12, deletions: 4, patch: '@@ -1,2 +1,2 @@\n-ancien\n+nouveau' }]);
-  if (path === '/session/ses_smoke/prompt_async') { const text = JSON.parse(String(init!.body)).parts[0].text; oc.prompts.push(text); if (!oc.messages.some((m) => m.info.role === 'user' && m.parts[0]?.text === text)) oc.messages.push({ info: { id: `m_u${oc.messages.length}`, role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'p', type: 'text', text }] }); return new Response(null, { status: 204 }); }
+  if (path === '/config/providers') return json({ providers: [{ id: 'openai', name: 'OpenAI', models: { 'gpt-5': { id: 'gpt-5', name: 'GPT-5', attachment: true } } }, { id: 'anthropic', name: 'Anthropic', models: { 'claude-sonnet': { id: 'claude-sonnet', name: 'Claude Sonnet', modalities: { input: ['text', 'image', 'pdf'] } } } }], default: { openai: 'gpt-5' } });
+  if (path === '/session/ses_smoke/prompt_async') { const body = JSON.parse(String(init!.body)); oc.bodies.push(body); const text = body.parts[0].text; oc.prompts.push(text); if (!oc.messages.some((m) => m.info.role === 'user' && m.parts[0]?.text === text)) oc.messages.push({ info: { id: `m_u${oc.messages.length}`, role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'p', type: 'text', text }] }); return new Response(null, { status: 204 }); }
   if (path === '/session/ses_smoke/abort') { oc.busy = false; return json(true); }
   if (path === '/permission' || path === '/question') return json([]);
   if (path === '/file') return json([{ name: 'apps', path: 'apps', type: 'directory', ignored: false }, { name: 'README.md', path: 'README.md', type: 'file', ignored: false }]);
@@ -227,12 +228,25 @@ try {
   await space.locator('[data-code-diff]').getByText('apps/web/src/settings-page.tsx').click();
   await space.getByText('+nouveau', { exact: true }).waitFor();
   await space.getByRole('button', { name: 'Retour à la session' }).click();
-  await space.getByRole('button', { name: 'Fichiers' }).click();
+  await space.getByRole('button', { name: 'Fichiers', exact: true }).click();
   await space.locator('[data-code-files]').getByText('README.md').click();
   await space.locator('[data-code-file]').getByText('# BotCircle').waitFor();
   await space.getByRole('button', { name: 'Retour à la session' }).click();
+  // Le modèle de la session est affiché dans le champ et se choisit là ; un fichier joint part avec la consigne.
+  await space.locator('[data-code-model]').getByText('GPT-5').waitFor();
+  await space.locator('[data-code-model]').click();
+  await space.getByRole('textbox', { name: 'Chercher un modèle…' }).fill('sonnet');
+  await space.locator('[data-code-model-menu]').getByText('Claude Sonnet').click();
+  await space.locator('[data-code-model]').getByText('Claude Sonnet').waitFor();
+  await space.locator('input[type=file]').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('à garder\n') });
+  await space.locator('[data-code-attachments]').getByText('notes.txt').waitFor();
   await space.getByRole('textbox', { name: 'Écrire directement à OpenCode…' }).fill('Garde les animations.');
+  await shot('12-code-composer');
   await space.getByRole('button', { name: 'Envoyer' }).click();
+  await space.locator('[data-code-attachments]').waitFor({ state: 'detached' });
+  const sent = oc.bodies.at(-1);
+  assert.deepEqual(sent.model, { providerID: 'anthropic', modelID: 'claude-sonnet' });
+  assert.equal(sent.parts[1].filename, 'notes.txt'); assert.equal(Buffer.from(sent.parts[1].url.split(',')[1], 'base64').toString(), 'à garder\n');
   await space.locator('[data-code-message="user"]').getByText('Garde les animations.').waitFor();
   assert.deepEqual(oc.prompts, ['Regroupe OAuth avec les fournisseurs.', 'Garde les animations.']);
   await space.getByRole('button', { name: 'Échanges' }).click();

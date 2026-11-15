@@ -84,7 +84,15 @@ Opening a card opens that session: beside the chat on desktop (expandable), full
 - **Exchanges**: what was really sent to OpenCode, by whom (you or a companion), with your original words when a
   companion rephrased them, and OpenCode's results. Tool and terminal noise stays out of it. On the Web the same
   exchanges appear under Settings → Team exchanges.
-- A field to write to OpenCode directly (attributed to you), Stop, and the permission / question prompts.
+- A field to write to OpenCode directly (attributed to you), laid out like a coding agent's: the text, then **+** to
+  attach files, the session's **model** (with its effort when it has some) and Send / Stop.
+  - The model list is the instance's own (`GET /api/model`, cached 5 minutes). Choosing one switches the session's
+    model on the development machine (`POST /api/session/:id/model`); with OpenCode 1.x it is sent with each
+    instruction instead.
+  - Attached files (up to 8, 10 MB each, 20 MB in all) are sent inline with the instruction straight to OpenCode;
+    BotCircle does not keep them, and only their names come back in the session. An image or a PDF is refused before
+    sending when the session's model cannot read it.
+- The permission / question prompts.
 
 ## Not covered
 

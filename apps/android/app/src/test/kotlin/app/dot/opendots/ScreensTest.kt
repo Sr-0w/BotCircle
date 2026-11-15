@@ -30,6 +30,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -60,6 +62,7 @@ class ScreensTest {
     private var onboarded = true
     private var signedIn = true
     private var paired = false
+    private var codeModel = """{"providerID":"openai","id":"gpt-5","variant":null,"name":"GPT-5","input":["text","image"]}"""
 
     private val agents = """[
       {"id":"a1","name":"Ari","named":true,"color":"#7C6CF2","description":"Concise and a bit playful.","effectiveModel":{"provider":"openrouter","model":"anthropic/claude-sonnet-5.5"},"state":"available","lastMessagePreview":"12,418 lines across 163 files.","unread":0,"mainConversationId":"c1"},
@@ -129,7 +132,7 @@ class ScreensTest {
                     path == "/chats/ch1/stream" -> MockResponse.Builder().code(204).build()
                     path == "/chats/ch1/chat" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"start\",\"messageId\":\"g9\"}\n\ndata: {\"type\":\"finish\"}\n\ndata: [DONE]\n\n").build()
                     path == "/tasks" -> json("[$task,$codeTask]")
-                    path == "/opencode/tasks/tk2" -> json("""{"task":$codeTask,"reachable":true,"error":null,"sessionStatus":"busy",
+                    path == "/opencode/tasks/tk2" -> json("""{"task":$codeTask,"reachable":true,"error":null,"sessionStatus":"busy","model":$codeModel,
                       "messages":[{"id":"cm1","role":"user","createdAt":1,"completedAt":null,"model":null,"error":null,"parts":[{"type":"text","text":"Group OAuth with the providers."}]},
                         {"id":"cm1b","role":"assistant","createdAt":2,"completedAt":3,"model":"opencode/iceman-free","error":null,"parts":[{"type":"reasoning","text":"Look at the settings first."},{"type":"tool","tool":"bash","status":"completed","title":"find . -name '*.tsx' -path '*settings*'","input":"find .","output":"apps/web/src/settings-page.tsx"},{"type":"tool","tool":"read","status":"completed","title":"apps/web/src/settings-page.tsx","input":"","output":"…"}]},
                         {"id":"cm1c","role":"assistant","createdAt":3,"completedAt":4,"model":"opencode/iceman-free","error":null,"parts":[{"type":"tool","tool":"bash","status":"completed","title":"pnpm lint","input":"pnpm lint","output":"ok"},{"type":"tool","tool":"bash","status":"completed","title":"git status","input":"git status","output":"clean"},{"type":"tool","tool":"read","status":"completed","title":"apps/web/src/oauth.tsx","input":"","output":"…"}]},
@@ -141,6 +144,8 @@ class ScreensTest {
                     path == "/opencode/instances" && request.method == "GET" -> json(if (paired) """[{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}]""" else "[]")
                     path == "/opencode/instances/pair" -> { paired = true; json("""{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}""") }
                     path == "/opencode/tasks/tk2/permissions/per1" -> json("""{"ok":true}""")
+                    path == "/opencode/tasks/tk2/models" -> json("""{"current":$codeModel,"models":[{"providerID":"openai","providerName":"OpenAI","id":"gpt-5","name":"GPT-5","variants":[],"input":["text","image"]},{"providerID":"opencode","providerName":"OpenCode","id":"glm-5.3-flash-free","name":"GLM-5.3-Flash Free","variants":["low","high","max"],"input":["text","image"]},{"providerID":"opencode","providerName":"OpenCode","id":"iceman-free","name":"Iceman Free","variants":[],"input":["text"]}]}""")
+                    path == "/opencode/tasks/tk2/model" -> { codeModel = """{"providerID":"opencode","id":"glm-5.3-flash-free","variant":"high","name":"GLM-5.3-Flash Free","input":["text","image"]}"""; json(codeModel) }
                     path == "/tasks/tk1" -> json(task)
                     path == "/tasks/tk1/instruction" -> json(task)
                     path == "/artifacts/art_r1" -> json(artifact)
@@ -400,6 +405,18 @@ class ScreensTest {
         compose.onNodeWithContentDescription("Send").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/prompt" } }
         assertEquals("""{"text":"Keep the animations.","delivery":"queue"}""", posts.first { it.first == "/opencode/tasks/tk2/prompt" }.second)
+        // The session's model is shown in the field; it changes from there, with its effort.
+        waitFor("GPT-5")
+        compose.onNodeWithTag("code-model").performClick()
+        waitFor("Iceman Free")
+        compose.onNodeWithText("GLM-5.3-Flash Free").performClick()
+        waitFor("Effort for GLM-5.3-Flash Free")
+        shoot("code-model-sheet-dark")
+        compose.onNodeWithText("high").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/model" } }
+        assertEquals("""{"providerID":"opencode","id":"glm-5.3-flash-free","variant":"high"}""", posts.first { it.first == "/opencode/tasks/tk2/model" }.second)
+        waitFor("GLM-5.3-Flash Free")
+        shoot("code-composer-dark")
         // What changed opens from the pill above the field; back returns to the session.
         compose.onNodeWithTag("code-changes-pill").performClick()
         waitFor("apps/web/src/settings-page.tsx")
@@ -415,6 +432,18 @@ class ScreensTest {
         // Android back returns to the page that opened the workspace.
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Weekly recap")
+    }
+
+    /** Files attached in the code workspace go with the instruction, as multipart, to that task's session. */
+    @Test fun filesAttachedToAnOpenCodeInstructionAreSentWithIt() {
+        val client = OpenDotsClient(MemorySessionStore(serverUrl = server.url("/").toString(), sessionCookie = "tok123"))
+        kotlinx.coroutines.runBlocking {
+            client.codePrompt("tk2", "Read these.", "queue", listOf("notes.txt" to "à garder\n".toByteArray().toRequestBody("text/plain".toMediaType())))
+        }
+        val body = posts.last { it.first == "/opencode/tasks/tk2/prompt" }.second
+        assertTrue(body.contains("name=\"text\"") && body.contains("Read these."))
+        assertTrue(body.contains("name=\"delivery\"") && body.contains("queue"))
+        assertTrue(body.contains("name=\"file\"; filename=\"notes.txt\"") && body.contains("à garder"))
     }
 
     /** `opencode pair --remote`: its one-time link is pasted (or scanned) and the server redeems it. */

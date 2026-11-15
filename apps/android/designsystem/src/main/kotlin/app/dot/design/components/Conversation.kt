@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -301,6 +302,8 @@ fun DotComposer(
     focusRequester: FocusRequester? = null,
     header: (@Composable ColumnScope.() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
+    /** Two-line layout (a coding agent's): the text on top, then [footer]'s controls (attach, model…) and Send. */
+    footer: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val c = Dot.colors
     val interaction = remember { MutableInteractionSource() }
@@ -315,6 +318,26 @@ fun DotComposer(
             .border(DotSpacing.hairline * 2, outline, ComposerShape),
     ) {
         if (header != null) Column(Modifier.padding(start = DotSpacing.l, end = DotSpacing.s, top = DotSpacing.m), content = header)
+        if (footer != null) {
+            Box(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(start = DotSpacing.l, end = DotSpacing.l, top = 12.dp, bottom = 4.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) Text(placeholder, style = Dot.type.body, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                BasicTextField(
+                    value = value, onValueChange = onValueChange, enabled = enabled,
+                    textStyle = Dot.type.body.copy(color = c.textPrimary), cursorBrush = SolidColor(c.accent), interactionSource = interaction, maxLines = 8,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier).semantics { if (placeholder.isNotEmpty()) contentDescription = placeholder },
+                )
+            }
+            Row(Modifier.fillMaxWidth().padding(start = DotSpacing.xs, end = DotSpacing.xs, bottom = DotSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                footer()
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    if (busy && !canSend && onStop != null) DotStopButton(onStop)
+                    else DotPrimaryButton(Icons.Outlined.ArrowUpward, stringResource(R.string.ds_send), onClick = onSend, enabled = enabled && canSend)
+                }
+            }
+            return@Column
+        }
         Row(Modifier.padding(horizontal = DotSpacing.xs, vertical = DotSpacing.xs), verticalAlignment = Alignment.Bottom) {
             if (leading != null) leading() else Spacer(Modifier.width(DotSpacing.m))
             Box(Modifier.weight(1f).heightIn(min = 48.dp).padding(horizontal = DotSpacing.xs, vertical = 12.dp), contentAlignment = Alignment.CenterStart) {

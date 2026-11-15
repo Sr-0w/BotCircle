@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, ChevronRightIcon, FileIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, TerminalSquareIcon, WifiOffIcon, WrenchIcon, XIcon } from 'lucide-react';
-import { ACTIVE_TASK_STATUSES, type OpencodeDiffDTO, type OpencodeFileNodeDTO, type OpencodeMessageDTO, type OpencodePartDTO, type OpencodeWorkspaceDTO } from '@opendots/shared';
+import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, TerminalSquareIcon, WifiOffIcon, WrenchIcon, XIcon } from 'lucide-react';
+import { ACTIVE_TASK_STATUSES, OPENCODE_FILES_MAX_COUNT, type OpencodeCurrentModelDTO, type OpencodeModelDTO, type OpencodeDiffDTO, type OpencodeFileNodeDTO, type OpencodeMessageDTO, type OpencodePartDTO, type OpencodeWorkspaceDTO } from '@opendots/shared';
 import { toast } from 'sonner';
 import { MessageResponse } from '@/components/ai-elements/message';
 import { Shimmer } from '@/components/ai-elements/shimmer';
@@ -22,6 +22,8 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
   const [view, setView] = useState<View>('session'), [text, setText] = useState(''), [sending, setSending] = useState(false);
   // While OpenCode works, a message is either folded into the current work (steer) or handled after it (queue).
   const [delivery, setDelivery] = useState<'steer' | 'queue'>('steer');
+  const [files, setFiles] = useState<File[]>([]), [picking, setPicking] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const agents = useStore((s) => s.agents);
   const reload = useCallback(() => { api.codeWorkspace(taskId).then((value) => { setData(value); setError(''); }).catch((e) => setError(e.message)); }, [taskId]);
   useEffect(() => { setData(null); setView('session'); reload(); }, [reload]);
@@ -38,9 +40,9 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
 
   async function send() {
     const value = text.trim();
-    if (!value || sending) return;
+    if ((!value && !files.length) || sending) return;
     setSending(true);
-    try { const result = await api.codePrompt(taskId, value, busy ? delivery : undefined); setText(''); stick.current = true; if (result.queued) toast.success(t(result.delivery === 'steer' ? 'Consigne intégrée au travail en cours' : 'Placée à la suite du travail en cours')); reload(); }
+    try { const result = await api.codePrompt(taskId, value, busy ? delivery : undefined, files); setText(''); setFiles([]); stick.current = true; if (result.queued) toast.success(t(result.delivery === 'steer' ? 'Consigne intégrée au travail en cours' : 'Placée à la suite du travail en cours')); reload(); }
     catch (e) { toast.error((e as Error).message); } finally { setSending(false); }
   }
   const task = data?.task;
@@ -74,7 +76,12 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
           <div className="mx-auto max-w-3xl space-y-4">
             {!data.reachable && <p role="status" className="flex items-start gap-2 text-muted-foreground text-xs"><WifiOffIcon className="mt-0.5 size-3.5 shrink-0" />{t('Instance injoignable : l’état affiché est le dernier connu, pas un résultat.')} {data.error}</p>}
             {data.messages.length === 0 && <p className="text-muted-foreground text-sm">{data.reachable ? t('La session n’a pas encore de message.') : t('Les messages ne peuvent pas être lus pour l’instant.')}</p>}
-            {blocks.map((block, index) => block.kind === 'user' ? <div key={block.key} className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl bg-secondary px-3.5 py-2 text-sm" data-code-message="user">{block.text}</div>
+            {blocks.map((block, index) => block.kind === 'user' ? (
+              <div key={block.key} className="ml-auto flex w-fit max-w-[85%] flex-col items-end gap-1" data-code-message="user">
+                {block.files.length > 0 && <div className="flex flex-wrap justify-end gap-1">{block.files.map((name, i) => <span key={i} className="flex items-center gap-1 rounded-lg border px-2 py-0.5 text-muted-foreground text-xs"><FileIcon className="size-3" />{name}</span>)}</div>}
+                {block.text && <div className="whitespace-pre-wrap rounded-2xl bg-secondary px-3.5 py-2 text-sm">{block.text}</div>}
+              </div>
+            )
               : block.kind === 'prose' ? <div key={block.key} className="text-sm" data-code-message="assistant"><MessageResponse>{block.text}</MessageResponse></div>
               : block.kind === 'failure' ? <p key={block.key} className="text-destructive text-sm">{block.text}</p>
               : <WorkGroup key={block.key} parts={block.parts} live={busy && index === blocks.length - 1} />)}
@@ -121,19 +128,40 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
               </button>
             </div>
           )}
-          <form className="mx-auto max-w-3xl rounded-3xl border bg-card px-3 py-2 focus-within:border-ring" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-            {busy && text.trim() && (
+          {picking && <ModelMenu taskId={taskId} current={data.model} onClose={() => setPicking(false)} onPicked={() => { setPicking(false); reload(); }} />}
+          <form className="mx-auto max-w-3xl rounded-3xl border bg-card px-3 pt-2 pb-1.5 focus-within:border-ring" onSubmit={(event) => { event.preventDefault(); void send(); }}
+            onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles((current) => [...current, ...Array.from(event.dataTransfer.files)].slice(0, OPENCODE_FILES_MAX_COUNT)); }}>
+            {files.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5" data-code-attachments>
+                {files.map((file, index) => (
+                  <span key={`${file.name}-${index}`} className="flex max-w-56 items-center gap-1.5 rounded-lg bg-secondary py-1 pr-1 pl-2 text-xs">
+                    {file.type.startsWith('image/') ? <ImageIcon className="size-3 shrink-0" /> : <FileIcon className="size-3 shrink-0" />}<span className="truncate">{file.name}</span>
+                    <button type="button" className="rounded p-0.5 hover:bg-accent" aria-label={t('Retirer {v0}', { v0: file.name })} onClick={() => setFiles(files.filter((_, i) => i !== index))}><XIcon className="size-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {busy && (text.trim() || files.length > 0) && (
               <button type="button" role="switch" aria-checked={delivery === 'queue'} onClick={() => setDelivery(delivery === 'steer' ? 'queue' : 'steer')} className="mb-1 flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground" data-code-delivery={delivery}>
                 <ArrowUpDownIcon className="size-3" />{t(delivery === 'steer' ? 'L’intégrer maintenant' : 'Après ce travail')}
               </button>
             )}
-            <div className="flex items-end gap-2">
-              <textarea value={text} onChange={(event) => setText(event.target.value)} rows={1} maxLength={8000} disabled={sending || !data.reachable} placeholder={data.reachable ? t('Écrire directement à OpenCode…') : t('Instance injoignable')} aria-label={t('Écrire directement à OpenCode…')}
-                onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
-                className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none" />
-              {task && active && !text.trim()
-                ? <Button type="button" size="icon" variant="secondary" className="size-9 shrink-0 rounded-full" aria-label={t('Arrêter')} onClick={() => void taskAction(task, 'cancel').then(reload)}><SquareIcon className="size-3 fill-current" /></Button>
-                : <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full" disabled={sending || !text.trim() || !data.reachable} aria-label={t('Envoyer')}>{sending ? <LoaderIcon className="animate-spin" /> : <ArrowUpIcon />}</Button>}
+            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={1} maxLength={8000} disabled={sending || !data.reachable} placeholder={data.reachable ? t('Écrire directement à OpenCode…') : t('Instance injoignable')} aria-label={t('Écrire directement à OpenCode…')}
+              onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
+              onPaste={(event) => { const pasted = Array.from(event.clipboardData.files); if (pasted.length) { event.preventDefault(); setFiles((current) => [...current, ...pasted].slice(0, OPENCODE_FILES_MAX_COUNT)); } }}
+              className="block max-h-40 min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-sm outline-none" />
+            <div className="flex items-center gap-1">
+              <input ref={fileInput} type="file" multiple hidden onChange={(event) => { const picked = Array.from(event.target.files ?? []); event.target.value = ''; setFiles((current) => [...current, ...picked].slice(0, OPENCODE_FILES_MAX_COUNT)); }} />
+              <Button type="button" size="icon" variant="ghost" className="size-8 rounded-full" aria-label={t('Joindre des fichiers')} title={t('Joindre des fichiers')} disabled={!data.reachable || files.length >= OPENCODE_FILES_MAX_COUNT} onClick={() => fileInput.current?.click()}><PlusIcon /></Button>
+              <button type="button" onClick={() => setPicking(!picking)} disabled={!data.reachable} aria-label={t('Modèle')} aria-expanded={picking} className="flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-muted-foreground text-xs hover:bg-accent hover:text-foreground disabled:opacity-50" data-code-model>
+                <span className="truncate">{data.model ? data.model.name ?? data.model.id : t('Modèle')}</span>
+                {data.model?.variant && <span className="shrink-0 text-muted-foreground/70">{data.model.variant}</span>}
+                <ChevronDownIcon className="size-3 shrink-0" />
+              </button>
+              <span className="flex-1" />
+              {task && active && !text.trim() && !files.length
+                ? <Button type="button" size="icon" variant="secondary" className="size-8 shrink-0 rounded-full" aria-label={t('Arrêter')} onClick={() => void taskAction(task, 'cancel').then(reload)}><SquareIcon className="size-3 fill-current" /></Button>
+                : <Button type="submit" size="icon" className="size-8 shrink-0 rounded-full" disabled={sending || (!text.trim() && !files.length) || !data.reachable} aria-label={t('Envoyer')}>{sending ? <LoaderIcon className="animate-spin" /> : <ArrowUpIcon />}</Button>}
             </div>
           </form>
         </div>
@@ -142,9 +170,62 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
   );
 }
 
+/** The instance's models, searchable, grouped by provider; the effort (variant) when the model has some. */
+function ModelMenu({ taskId, current, onClose, onPicked }: { taskId: string; current: OpencodeCurrentModelDTO | null; onClose: () => void; onPicked: () => void }) {
+  const [models, setModels] = useState<OpencodeModelDTO[] | null>(null), [error, setError] = useState(''), [query, setQuery] = useState('');
+  const [chosen, setChosen] = useState<OpencodeModelDTO | null>(null), [saving, setSaving] = useState(false);
+  useEffect(() => { api.codeModels(taskId).then((value) => setModels(value.models)).catch((e) => setError(e.message)); }, [taskId]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (models ?? []).filter((m) => !q || `${m.name} ${m.id} ${m.providerName}`.toLowerCase().includes(q)).slice(0, 300);
+  }, [models, query]);
+  const groups = useMemo(() => { const map = new Map<string, OpencodeModelDTO[]>(); for (const m of visible) map.set(m.providerName, [...(map.get(m.providerName) ?? []), m]); return [...map]; }, [visible]);
+  async function pick(model: OpencodeModelDTO, variant: string | null) {
+    setSaving(true);
+    try { await api.codeSetModel(taskId, { providerID: model.providerID, id: model.id, variant }); toast.success(t('Modèle : {v0}', { v0: model.name })); onPicked(); }
+    catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+  }
+  return (
+    <div className="mx-auto mb-2 flex max-h-[50vh] max-w-3xl flex-col overflow-hidden rounded-2xl border bg-popover shadow-lg" data-code-model-menu onKeyDown={(event) => event.key === 'Escape' && onClose()}>
+      <div className="flex items-center gap-2 border-b px-3 py-2">
+        <SearchIcon className="size-3.5 text-muted-foreground" />
+        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Chercher un modèle…')} aria-label={t('Chercher un modèle…')} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        <Button size="icon" variant="ghost" className="size-6" aria-label={t('Fermer')} onClick={onClose}><XIcon /></Button>
+      </div>
+      {chosen && chosen.variants.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-2 text-xs" data-code-variants>
+          <span className="text-muted-foreground">{t('Effort pour {v0} :', { v0: chosen.name })}</span>
+          {[null, ...chosen.variants].map((variant) => <button key={variant ?? 'default'} type="button" disabled={saving} onClick={() => void pick(chosen, variant)} className={cn('rounded-full border px-2.5 py-0.5 hover:bg-accent', current && current.id === chosen.id && (current.variant ?? null) === variant && 'border-primary')}>{variant ?? t('par défaut')}</button>)}
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        {error && <p className="px-3 py-2 text-destructive text-xs">{error}</p>}
+        {!models && !error && <LoaderIcon className="m-3 size-4 animate-spin" />}
+        {models && !visible.length && <p className="px-3 py-2 text-muted-foreground text-xs">{t('Aucun modèle trouvé.')}</p>}
+        {groups.map(([provider, list]) => (
+          <div key={provider}>
+            <p className="px-3 pt-2 pb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">{provider}</p>
+            {list.map((model) => {
+              const on = current?.providerID === model.providerID && current.id === model.id;
+              return (
+                <button key={`${model.providerID}/${model.id}`} type="button" disabled={saving} onClick={() => model.variants.length ? setChosen(model) : void pick(model, null)} className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent', chosen === model && 'bg-accent')}>
+                  <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                  {model.input.includes('image') && <EyeIcon className="size-3 shrink-0 text-muted-foreground" aria-label={t('Lit les images')} />}
+                  {model.variants.length > 0 && <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground" />}
+                  {on && <CheckIcon className="size-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type View = 'session' | 'changes' | 'files' | 'exchanges';
 type WorkBlock = { kind: 'work'; key: string; parts: OpencodePartDTO[] };
-type Block = { kind: 'user'; key: string; text: string } | { kind: 'prose'; key: string; text: string } | { kind: 'failure'; key: string; text: string } | WorkBlock;
+type Block = { kind: 'user'; key: string; text: string; files: string[] } | { kind: 'prose'; key: string; text: string } | { kind: 'failure'; key: string; text: string } | WorkBlock;
 type ToolPart = Extract<OpencodePartDTO, { type: 'tool' }>;
 
 const runningOf = (parts: OpencodePartDTO[]) => [...parts].reverse().find((p): p is ToolPart => p.type === 'tool' && (p.status === 'running' || p.status === 'pending'));
@@ -158,7 +239,8 @@ function codeBlocks(messages: OpencodeMessageDTO[]): Block[] {
     if (message.role === 'user') {
       flush();
       const body = message.parts.flatMap((p) => p.type === 'text' ? [p.text] : []).join('\n\n').trim();
-      if (body) out.push({ kind: 'user', key: `u-${message.id}`, text: body });
+      const files = message.parts.flatMap((p) => p.type === 'file' ? [p.filename ?? p.mime] : []);
+      if (body || files.length) out.push({ kind: 'user', key: `u-${message.id}`, text: body, files });
       continue;
     }
     message.parts.forEach((part, index) => {

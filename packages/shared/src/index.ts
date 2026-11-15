@@ -358,6 +358,8 @@ export interface TaskExternalRef {
   promptedAt?: number;
   /** `true` tant que l'instance ne répond pas : l'état affiché est le dernier connu, pas un échec. */
   unreachable?: boolean;
+  /** Modèle choisi dans BotCircle pour cette session (OpenCode 1.x le reçoit avec chaque consigne). */
+  model?: OpencodeModelRef | null;
 }
 
 export interface TaskDTO {
@@ -433,6 +435,16 @@ export interface OpencodePermissionDTO { id: string; permission: string; pattern
 export interface OpencodeQuestionDTO { id: string; questions: { question: string; header: string; options: string[]; multiple: boolean }[] }
 export interface OpencodeExchangeDTO { seq: number; taskId: string; author: 'user' | 'companion' | 'opencode'; agentId: string | null; kind: string; text: string; original: string | null; createdAt: string }
 export interface OpencodeFileNodeDTO { name: string; path: string; type: 'file' | 'directory' }
+/** Un modèle d'une instance OpenCode : `variant` est l'effort de raisonnement (low, medium, high…) quand il en a. */
+export interface OpencodeModelRef { providerID: string; id: string; variant?: string | null }
+export interface OpencodeModelDTO { providerID: string; providerName: string; id: string; name: string; variants: string[]; input: string[] }
+/** Le modèle de la session, tel qu'OpenCode l'utilisera pour la prochaine consigne. */
+export interface OpencodeCurrentModelDTO extends OpencodeModelRef { name: string | null; input: string[] | null }
+export interface OpencodeModelsDTO { current: OpencodeCurrentModelDTO | null; models: OpencodeModelDTO[] }
+/** Fichiers joints à une consigne : envoyés à OpenCode, jamais conservés par BotCircle. */
+export const OPENCODE_FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const OPENCODE_FILES_MAX_BYTES = 20 * 1024 * 1024;
+export const OPENCODE_FILES_MAX_COUNT = 8;
 
 /** L'espace de code d'une tâche : la session exacte, son état réel, ce qui attend l'utilisateur. */
 export interface OpencodeWorkspaceDTO {
@@ -448,6 +460,8 @@ export interface OpencodeWorkspaceDTO {
   questions: OpencodeQuestionDTO[];
   diffs: OpencodeDiffDTO[];
   exchanges: OpencodeExchangeDTO[];
+  /** Modèle de la session ; null s'il n'est pas connu (instance injoignable). */
+  model: OpencodeCurrentModelDTO | null;
 }
 
 // --- Chats généraux (sans compagnon propriétaire) ---------------------------------

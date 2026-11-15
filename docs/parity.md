@@ -65,6 +65,7 @@ States: ✅ available · ◐ partial · ✗ missing · — not relevant on that 
 | Secure sign-in card and takeover (#23) | ✅ | ✅ | `securelogin.test`, `ui-work-smoke`, `ScreensTest.aSignIn…` | No credential form on either: by design, see docs/computer-use.md |
 | OpenCode instances: add, check, edit, remove (#31) | ✅ | ✅ | `ui-work-smoke` | |
 | OpenCode pairing with `opencode pair --remote`: paste the link or scan its QR code | ✅ paste · QR where `BarcodeDetector` exists | ✅ paste · QR (Play services scanner) | `opencode-v2.test`, `opencode-real-check`, `ScreensTest.anOpenCodeMachineIsPaired…` | QR scanning itself is not exercised by the Robolectric test |
+| OpenCode: session model shown in the field, model + effort picker, files attached to an instruction | ✅ | ✅ | `opencode-real-check`, `ui-work-smoke`, `ScreensTest.anOpenCodeTask…`, `ScreensTest.filesAttached…` | Picking a file on Android is not exercised by Robolectric |
 | Follow-up while OpenCode works: fold in now (steer) or after (queue) | ✅ | ✅ | `opencode.test`, `ScreensTest.anOpenCodeTask…` | OpenCode 1.x always queues |
 | OpenCode task card and code workspace (session, changes, files, exchanges, prompts, permissions, stop) | ✅ side pane / full view | ✅ full screen | `opencode.test`, `ui-work-smoke`, `ScreensTest.anOpenCodeTask…`, `live-model-check` | Fakes of OpenCode 1.x/2.x, and a real OpenCode 2.3.0 (`opencode-real-check`) |
 | Start an OpenCode task directly, without a companion | ✗ | ✗ | | Delegation goes through a companion |

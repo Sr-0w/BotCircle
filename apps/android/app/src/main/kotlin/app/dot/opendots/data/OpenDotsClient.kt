@@ -279,9 +279,20 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun deleteOpencodeInstance(id: String) { json("DELETE", "/opencode/instances/$id") }
     suspend fun codeWorkspace(taskId: String): CodeWorkspace = get("/opencode/tasks/$taskId")
     /** Written by the user in the workspace: attributed to the user, sent to the task's own session. */
-    /** [delivery] (steer or queue) only matters while OpenCode is working. */
-    suspend fun codePrompt(taskId: String, text: String, delivery: String? = null): PromptResult =
-        OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/prompt", buildJsonObject { put("text", text); if (delivery != null) put("delivery", delivery) }))
+    /**
+     * [delivery] (steer or queue) only matters while OpenCode is working. [files] (name, body) go to OpenCode on the
+     * development machine with the instruction; BotCircle does not keep them.
+     */
+    suspend fun codePrompt(taskId: String, text: String, delivery: String? = null, files: List<Pair<String, RequestBody>> = emptyList()): PromptResult {
+        if (files.isEmpty()) return OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/prompt", buildJsonObject { put("text", text); if (delivery != null) put("delivery", delivery) }))
+        val form = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("text", text)
+        if (delivery != null) form.addFormDataPart("delivery", delivery)
+        files.forEach { (name, body) -> form.addFormDataPart("file", name, body) }
+        return OdJson.decodeFromJsonElement(raw("POST", "/opencode/tasks/$taskId/prompt", form.build()))
+    }
+    suspend fun codeModels(taskId: String): OpencodeModels = get("/opencode/tasks/$taskId/models")
+    suspend fun codeSetModel(taskId: String, model: OpencodeModel, variant: String?): OpencodeCurrentModel =
+        OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/model", buildJsonObject { put("providerID", model.providerID); put("id", model.id); if (variant != null) put("variant", variant) }))
     /** [reply] is once, always or reject. */
     suspend fun codePermission(taskId: String, requestId: String, reply: String) { json("POST", "/opencode/tasks/$taskId/permissions/$requestId", buildJsonObject { put("reply", reply) }) }
     suspend fun codeQuestion(taskId: String, requestId: String, answers: List<List<String>>) {

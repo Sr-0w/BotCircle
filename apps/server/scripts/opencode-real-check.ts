@@ -67,6 +67,31 @@ try {
   assert.ok(!read.binary && read.content.includes('mul'));
   ok(`fichiers du projet lus sur la machine : ${files.map((f) => f.name).join(', ')}`);
 
+  // 2b. Model: listed, switched for the session, used for the next instruction; files attached to a prompt reach it.
+  const models = await svc.taskModels(done);
+  assert.ok(models.models.length > 0 && models.current);
+  ok(`modèles proposés par l’instance : ${models.models.length} ; modèle de la session : ${models.current!.name ?? models.current!.id}`);
+  const vision = models.models.find((m) => m.input.includes('image') && `${m.providerID}/${m.id}` === (process.env.OPENCODE_VISION_MODEL ?? 'opencode/glm-5.3-flash-free'))!;
+  const textOnly = models.models.find((m) => !m.input.includes('image'));
+  const square = (await import('sharp')).default({ create: { width: 32, height: 32, channels: 3, background: '#ff0000' } }).png().toBuffer();
+  const attached = [{ name: 'secret.txt', mime: 'text/plain', data: Buffer.from('The secret word is PAPRIKA.\n') }, { name: 'square.png', mime: 'image/png', data: await square }];
+  if (textOnly) {
+    await svc.setTaskModel((await getTask(task.id))!, textOnly);
+    await assert.rejects(svc.instructOpencode((await getTask(task.id))!, 'x', 'user', null, undefined, attached), /ne lit pas les images/);
+    ok(`image refusée avant l’envoi pour un modèle sans vision (${textOnly.name})`);
+  }
+  const chosen = await svc.setTaskModel((await getTask(task.id))!, { providerID: vision.providerID, id: vision.id, variant: vision.variants.includes('low') ? 'low' : null });
+  assert.equal((await svc.workspace((await getTask(task.id))!)).model?.id, vision.id);
+  await svc.instructOpencode((await getTask(task.id))!, 'What is the secret word in secret.txt, and the colour of square.png? Answer in one line, without tools.', 'user', null, undefined, attached);
+  await until('réponse avec fichiers', async () => { await svc.syncTask((await getTask(task.id))!); return !['running', 'queued'].includes((await getTask(task.id))!.status); }, 120);
+  const seen = (await getTask(task.id))!;
+  assert.equal(seen.status, 'completed', seen.error ?? '');
+  assert.match(seen.result ?? '', /paprika/i); assert.match(seen.result ?? '', /red|rouge/i);
+  const lastUser = (await svc.workspace(seen)).messages.filter((m) => m.role === 'user').at(-1)!;
+  assert.deepEqual(lastUser.parts.filter((p) => p.type === 'file').map((p) => (p as { filename: string }).filename), ['secret.txt', 'square.png']);
+  assert.ok(!JSON.stringify(lastUser).includes('UEFQUklLQ'));
+  ok(`modèle changé pour ${chosen.name}${chosen.variant ? ` (${chosen.variant})` : ''} ; fichiers joints lus par le modèle : « ${(seen.result ?? '').replace(/\s+/g, ' ').slice(0, 80)} » ; seuls leurs noms reviennent dans l’espace de code`);
+
   // 3. Continue the same session; a refused permission ends the turn as a failure with OpenCode's reason.
   const before = (await getTask(task.id))!.external!.sessionId;
   await svc.instructOpencode(done, 'Now run the shell command `ls` and tell me its output.', 'user');

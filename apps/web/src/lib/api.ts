@@ -37,6 +37,7 @@ import type {
   MemoryDTO,
   ModelConfig,
   TeamThreadDTO,
+  OpencodeModelsDTO, OpencodeModelRef, OpencodeCurrentModelDTO,
 } from "@opendots/shared";
 import type { UIMessage } from "ai";
 import type { MessageMetadata } from "@opendots/shared";
@@ -161,7 +162,18 @@ export const api = {
   opencodeSessions: (id: string, directory?: string) => request<OpencodeSessionDTO[]>('GET', `/opencode/instances/${id}/sessions${directory ? `?directory=${encodeURIComponent(directory)}` : ''}`),
   opencodeExchanges: () => request<OpencodeExchangeDTO[]>('GET', '/opencode/exchanges'),
   codeWorkspace: (taskId: string) => request<OpencodeWorkspaceDTO>('GET', `/opencode/tasks/${taskId}`),
-  codePrompt: (taskId: string, text: string, delivery?: 'steer' | 'queue') => request<{ queued: boolean; delivery: 'steer' | 'queue' | null }>('POST', `/opencode/tasks/${taskId}/prompt`, { text, ...(delivery ? { delivery } : {}) }),
+  /** With files, sent as multipart: they go to OpenCode on the development machine and are not kept by BotCircle. */
+  codePrompt: async (taskId: string, text: string, delivery?: 'steer' | 'queue', files: File[] = []) => {
+    if (!files.length) return request<{ queued: boolean; delivery: 'steer' | 'queue' | null }>('POST', `/opencode/tasks/${taskId}/prompt`, { text, ...(delivery ? { delivery } : {}) });
+    const body = new FormData(); body.set('text', text); if (delivery) body.set('delivery', delivery);
+    for (const file of files) body.append('file', file, file.name);
+    const response = await fetch(`/api/opencode/tasks/${taskId}/prompt`, { method: 'POST', headers: { 'x-opendots-client': '1' }, body });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) { if (response.status === 401) window.dispatchEvent(new Event('opendots:unauthorized')); throw new ApiError(value.error ?? 'Envoi impossible.', response.status); }
+    return value as { queued: boolean; delivery: 'steer' | 'queue' | null };
+  },
+  codeModels: (taskId: string) => request<OpencodeModelsDTO>('GET', `/opencode/tasks/${taskId}/models`),
+  codeSetModel: (taskId: string, model: OpencodeModelRef) => request<OpencodeCurrentModelDTO>('POST', `/opencode/tasks/${taskId}/model`, model),
   codePermission: (taskId: string, requestId: string, reply: 'once' | 'always' | 'reject') => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/permissions/${requestId}`, { reply }),
   codeQuestion: (taskId: string, requestId: string, answers: string[][]) => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/questions/${requestId}`, { answers }),
   codeFiles: (taskId: string, path: string) => request<OpencodeFileNodeDTO[]>('GET', `/opencode/tasks/${taskId}/files?path=${encodeURIComponent(path)}`),

@@ -14,7 +14,12 @@ export class OpencodeHttpError extends Error {
 
 export interface OpencodeTarget { baseUrl: string; username: string; password: string | null }
 
-export interface RawSession { id: string; title: string; directory: string; projectID?: string; parentID?: string; summary?: { additions: number; deletions: number; files: number }; time: { created: number; updated: number } }
+export interface ModelRef { providerID: string; id: string; variant?: string | null }
+export interface RawModel { providerID: string; providerName: string; id: string; name: string; variants: string[]; input: string[] }
+/** A file sent with a prompt, inline. */
+export interface PromptFile { name: string; mime: string; data: Buffer }
+export interface PromptOptions { files?: PromptFile[]; model?: ModelRef | null }
+export interface RawSession { model?: ModelRef | null; id: string; title: string; directory: string; projectID?: string; parentID?: string; summary?: { additions: number; deletions: number; files: number }; time: { created: number; updated: number } }
 export type RawStatus = { type: 'idle' } | { type: 'busy' } | { type: 'retry'; attempt: number; message: string; next: number };
 export interface RawPart { id: string; type: string; text?: string; tool?: string; files?: string[]; filename?: string; mime?: string; state?: { status: 'pending' | 'running' | 'completed' | 'error'; input?: unknown; output?: string; title?: string; error?: string } }
 export interface RawMessage { info: { id: string; role: 'user' | 'assistant'; time: { created: number; completed?: number }; modelID?: string; providerID?: string; error?: { name?: string; data?: { message?: string } } }; parts: RawPart[] }
@@ -59,7 +64,14 @@ export class OpencodeV1Client {
   statuses = (directory?: string | null) => this.call<Record<string, RawStatus>>('GET', '/session/status', { directory });
   messages = (id: string, directory?: string | null, limit = 60) => this.call<RawMessage[]>('GET', `/session/${encodeURIComponent(id)}/message`, { directory, query: { limit } });
   /** Envoi sans attente : si la session travaille déjà, OpenCode place le message à la suite (il n'interrompt pas l'étape en cours). */
-  prompt = (id: string, text: string, directory?: string | null) => this.call<void>('POST', `/session/${encodeURIComponent(id)}/prompt_async`, { directory, body: { parts: [{ type: 'text', text }] } });
+  prompt = (id: string, text: string, directory?: string | null, options: PromptOptions = {}) => this.call<void>('POST', `/session/${encodeURIComponent(id)}/prompt_async`, {
+    directory, timeoutMs: 60_000,
+    body: {
+      parts: [{ type: 'text', text }, ...(options.files ?? []).map((f) => ({ type: 'file', mime: f.mime, filename: f.name, url: `data:${f.mime};base64,${f.data.toString('base64')}` }))],
+      ...(options.model ? { model: { providerID: options.model.providerID, modelID: options.model.id } } : {}),
+    },
+  });
+  providers = () => this.call<{ providers: { id: string; name?: string; models: Record<string, { id?: string; name?: string; attachment?: boolean; modalities?: { input?: string[] } }> }[]; default?: Record<string, string> }>('GET', '/config/providers');
   abort = (id: string, directory?: string | null) => this.call<boolean>('POST', `/session/${encodeURIComponent(id)}/abort`, { directory });
   diff = (id: string, directory?: string | null) => this.call<RawDiff[]>('GET', `/session/${encodeURIComponent(id)}/diff`, { directory });
   permissions = (directory?: string | null) => this.call<RawPermission[]>('GET', '/permission', { directory });
@@ -87,7 +99,11 @@ export interface OpencodeApi {
   statuses(directory?: string | null): Promise<Record<string, RawStatus>>;
   messages(id: string, directory?: string | null, limit?: number): Promise<RawMessage[]>;
   /** Returns how the message was delivered: folded into the work in progress, or queued after it. */
-  prompt(id: string, text: string, directory?: string | null, delivery?: Delivery): Promise<Delivery | null>;
+  prompt(id: string, text: string, directory?: string | null, delivery?: Delivery, options?: PromptOptions): Promise<Delivery | null>;
+  /** Models the instance offers (its configured providers). */
+  models(directory?: string | null): Promise<RawModel[]>;
+  /** Switches the session's model where the server keeps one (2.x); 1.x takes the model with each prompt. */
+  setModel(sessionId: string, model: ModelRef, directory?: string | null): Promise<void>;
   abort(id: string, directory?: string | null): Promise<unknown>;
   diff(id: string, directory?: string | null): Promise<RawDiff[]>;
   permissions(sessionId: string, directory?: string | null): Promise<RawPermission[]>;
@@ -110,7 +126,15 @@ export class V1Api implements OpencodeApi {
   statuses = async (directory?: string | null) => Object.fromEntries(Object.entries(await this.c.statuses(directory)).filter(([, s]) => s.type !== 'idle'));
   messages = (id: string, directory?: string | null, limit?: number) => this.c.messages(id, directory, limit);
   // 1.x has a single mode: a message sent while the session works is handled after it.
-  prompt = async (id: string, text: string, directory?: string | null) => { await this.c.prompt(id, text, directory); return null; };
+  prompt = async (id: string, text: string, directory?: string | null, _delivery?: Delivery, options?: PromptOptions) => { await this.c.prompt(id, text, directory, options); return null; };
+  models = async () => {
+    const { providers } = await this.c.providers();
+    return providers.flatMap((p) => Object.entries(p.models ?? {}).map(([key, m]) => ({
+      providerID: p.id, providerName: p.name ?? p.id, id: m.id ?? key, name: m.name ?? key, variants: [],
+      input: m.modalities?.input ?? (m.attachment ? ['text', 'image', 'pdf'] : ['text']),
+    })));
+  };
+  setModel = async () => {};
   abort = (id: string, directory?: string | null) => this.c.abort(id, directory);
   diff = (id: string, directory?: string | null) => this.c.diff(id, directory);
   permissions = async (sessionId: string, directory?: string | null) => (await this.c.permissions(directory)).filter((p) => p.sessionID === sessionId);
@@ -127,11 +151,11 @@ export class V1Api implements OpencodeApi {
 type V2ToolState = { status: 'streaming'; input: string } | { status: 'running'; input: Record<string, unknown> } | { status: 'completed'; input: Record<string, unknown>; content?: { type: string; text?: string; uri?: string }[] } | { status: 'error'; input: Record<string, unknown>; error: { type: string; message: string }; content?: { type: string; text?: string }[] };
 type V2Content = { type: 'text'; text: string } | { type: 'reasoning'; text: string } | { type: 'tool'; id: string; name: string; state: V2ToolState };
 type V2Message =
-  | { id: string; type: 'user'; time: { created: number }; text: string }
+  | { id: string; type: 'user'; time: { created: number }; text: string; files?: { name?: string; mime?: string }[] }
   | { id: string; type: 'assistant'; time: { created: number; completed?: number }; model?: { id: string; providerID: string }; content: V2Content[]; error?: { type: string; message: string } }
   | { id: string; type: 'idle'; time: { created: number }; outcome?: 'succeeded' | 'failed' | 'interrupted' }
   | { id: string; type: string; time: { created: number } };
-type V2Session = { id: string; title?: string; parentID?: string; location: { directory: string }; time: { created: number; updated: number }; outcome?: string };
+type V2Session = { model?: ModelRef | null; id: string; title?: string; parentID?: string; location: { directory: string }; time: { created: number; updated: number }; outcome?: string };
 type V2Field = { key: string; title?: string; description?: string; type: string; options?: { value: string; label: string }[]; required?: boolean; hidden?: boolean };
 
 const v2Title = (name: string, input: unknown) => {
@@ -145,7 +169,11 @@ const toolText = (content?: { type: string; text?: string; uri?: string }[]) => 
 export function normalizeV2Messages(messages: V2Message[]): RawMessage[] {
   const out: RawMessage[] = [];
   for (const m of messages) {
-    if (m.type === 'user') out.push({ info: { id: m.id, role: 'user', time: { created: m.time.created } }, parts: [{ id: `${m.id}-t`, type: 'text', text: (m as { text: string }).text }] });
+    if (m.type === 'user') {
+      const u = m as Extract<V2Message, { type: 'user' }>;
+      // Only the name and type of an attached file: its bytes stay on the development machine.
+      out.push({ info: { id: u.id, role: 'user', time: { created: u.time.created } }, parts: [{ id: `${u.id}-t`, type: 'text', text: u.text }, ...(u.files ?? []).map((f, index) => ({ id: `${u.id}-f${index}`, type: 'file', filename: f.name, mime: f.mime }))] });
+    }
     else if (m.type === 'assistant') {
       const a = m as Extract<V2Message, { type: 'assistant' }>;
       const parts: RawPart[] = a.content.map((c, index): RawPart => {
@@ -207,17 +235,29 @@ export class OpencodeV2Client implements OpencodeApi {
 
   health = async () => { const info = await this.call<{ version: string; hostname?: string | null }>('GET', '/api/info', { timeoutMs: 8_000 }); return { healthy: true, version: info.version, hostname: info.hostname ?? null }; };
   projects = async () => (await this.call<{ id: string; canonical?: string; worktree?: string; name?: string }[]>('GET', '/api/project')).map((p) => ({ id: p.id, worktree: p.canonical ?? p.worktree ?? '', name: p.name }));
-  private toSession = (s: V2Session): RawSession => ({ id: s.id, title: s.title ?? '', directory: s.location?.directory ?? '', parentID: s.parentID, time: s.time });
+  private toSession = (s: V2Session): RawSession => ({ model: s.model ?? null, id: s.id, title: s.title ?? '', directory: s.location?.directory ?? '', parentID: s.parentID, time: s.time });
   sessions = async (directory?: string | null, limit = 30) => (await this.call<{ data: V2Session[] }>('GET', '/api/session', { query: { limit: Math.min(limit, 200), parentID: 'null', ...(directory ? { directory } : {}) } })).data.map(this.toSession);
   session = async (id: string) => this.toSession((await this.call<{ data: V2Session }>('GET', `/api/session/${encodeURIComponent(id)}`)).data);
   createSession = async (title: string, directory?: string | null) => this.toSession((await this.call<{ data: V2Session }>('POST', '/api/session', { body: { title, ...(directory ? { location: { directory } } : {}) } })).data);
   statuses = async () => Object.fromEntries(Object.keys((await this.call<{ data: Record<string, { type: string }> }>('GET', '/api/session/active')).data).map((id) => [id, { type: 'busy' } as RawStatus]));
   // The server caps every page at 200 items.
   messages = async (id: string, _directory?: string | null, limit = 60) => normalizeV2Messages((await this.call<{ data: V2Message[] }>('GET', `/api/session/${encodeURIComponent(id)}/message`, { query: { order: 'desc', limit: Math.min(limit, 200) } })).data.reverse());
-  prompt = async (id: string, text: string, _directory?: string | null, delivery?: Delivery) => {
-    const result = await this.call<{ data?: { delivery?: Delivery } }>('POST', `/api/session/${encodeURIComponent(id)}/prompt`, { body: { text, ...(delivery ? { delivery } : {}) } });
+  prompt = async (id: string, text: string, _directory?: string | null, delivery?: Delivery, options: PromptOptions = {}) => {
+    if (options.model) await this.setModel(id, options.model);
+    const files = (options.files ?? []).map((f) => ({ uri: `data:${f.mime};base64,${f.data.toString('base64')}`, name: f.name }));
+    const result = await this.call<{ data?: { delivery?: Delivery } }>('POST', `/api/session/${encodeURIComponent(id)}/prompt`, { body: { text, ...(files.length ? { files } : {}), ...(delivery ? { delivery } : {}) }, timeoutMs: files.length ? 60_000 : 15_000 });
     return result?.data?.delivery ?? delivery ?? null;
   };
+  models = async (directory?: string | null) => {
+    const [models, providers] = await Promise.all([
+      this.call<{ data: { id: string; providerID: string; name?: string; enabled?: boolean; status?: string; variants?: { id: string }[]; capabilities?: { input?: string[] } }[] }>('GET', '/api/model', { query: locationQuery(directory) }),
+      this.call<{ data: { id: string; name?: string }[] }>('GET', '/api/provider', { query: locationQuery(directory) }).catch(() => ({ data: [] })),
+    ]);
+    const names = new Map(providers.data.map((p) => [p.id, p.name ?? p.id]));
+    return models.data.filter((m) => m.enabled !== false && m.status !== 'deprecated')
+      .map((m) => ({ providerID: m.providerID, providerName: names.get(m.providerID) ?? m.providerID, id: m.id, name: m.name ?? m.id, variants: (m.variants ?? []).map((v) => v.id), input: m.capabilities?.input ?? ['text'] }));
+  };
+  setModel = async (sessionId: string, model: ModelRef) => { await this.call<void>('POST', `/api/session/${encodeURIComponent(sessionId)}/model`, { body: { model: { id: model.id, providerID: model.providerID, ...(model.variant ? { variant: model.variant } : {}) } } }); };
   abort = (id: string) => this.call<{ interrupted: boolean }>('POST', `/api/session/${encodeURIComponent(id)}/interrupt`);
   /** The whole session, from its first request to its latest one (2.x diffs one turn by default). */
   diff = async (id: string) => {

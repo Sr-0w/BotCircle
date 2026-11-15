@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   ACTIVE_TASK_STATUSES, type OpencodeDiffDTO, type OpencodeExchangeDTO, type OpencodeFileNodeDTO, type OpencodeInstanceDTO, type OpencodeMessageDTO, type OpencodePartDTO,
-  type OpencodeProjectDTO, type OpencodeSessionDTO, type OpencodeWorkspaceDTO, type TaskExternalRef,
+  type OpencodeProjectDTO, type OpencodeSessionDTO, type OpencodeWorkspaceDTO, type TaskExternalRef, type OpencodeCurrentModelDTO, type OpencodeModelRef, type OpencodeModelsDTO,
+  OPENCODE_FILE_MAX_BYTES, OPENCODE_FILES_MAX_BYTES, OPENCODE_FILES_MAX_COUNT,
 } from '@opendots/shared';
 import { publish } from '../bus.ts';
 import { accountKey } from '../auth/context.ts';
@@ -11,7 +12,7 @@ import { log } from '../journal.ts';
 import { decryptSecret, encryptSecret } from '../secrets.ts';
 import { addTaskEvent, getTask, registerTaskProvider, toTaskDTO, updateTask, type TaskRow } from '../tasks/service.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
-import { detectApi, OpencodeHttpError, OpencodeUnreachable, OpencodeV1Client, OpencodeV2Client, parsePairingLink, redeemPairingCode, V1Api, type Delivery, type OpencodeApi, type OpencodeTarget, type RawMessage, type RawPart, type RawSession } from './client.ts';
+import { detectApi, OpencodeHttpError, OpencodeUnreachable, OpencodeV1Client, OpencodeV2Client, parsePairingLink, redeemPairingCode, V1Api, type Delivery, type OpencodeApi, type OpencodeTarget, type PromptFile, type RawMessage, type RawModel, type RawPart, type RawSession } from './client.ts';
 
 /*
  * OpenCode dans BotCircle. OpenCode fait le code sur sa machine ; BotCircle tient l'accès, la propriété de la
@@ -210,12 +211,67 @@ async function context(task: TaskRow) {
   return { ext, instance, client: await clientFor(instance) };
 }
 
+// --- Modèles -----------------------------------------------------------------------------
+
+/** The models of an instance change rarely; they are read at most every five minutes, per account and instance. */
+const modelCache = new Map<string, { at: number; models: RawModel[] }>();
+async function instanceModels(instance: InstanceRow, client: OpencodeApi, directory: string | null, fresh = false): Promise<RawModel[]> {
+  const key = `${accountKey()}:${instance.id}`;
+  const hit = modelCache.get(key);
+  if (hit && !fresh && Date.now() - hit.at < 5 * 60_000) return hit.models;
+  const models = await client.models(directory);
+  modelCache.set(key, { at: Date.now(), models });
+  return models;
+}
+const sameModel = (a: OpencodeModelRef, b: { providerID: string; id: string }) => a.providerID === b.providerID && a.id === b.id;
+
+/** The model the session will use next: the one OpenCode keeps (2.x), else the one chosen here, else the last one used. */
+async function currentModel(task: TaskRow, client: OpencodeApi, instance: InstanceRow, session: RawSession | null, messages: RawMessage[] | null): Promise<OpencodeCurrentModelDTO | null> {
+  const ext = task.external!;
+  const lastUsed = messages ? [...messages].reverse().find((m) => m.info.role === 'assistant' && m.info.modelID) : undefined;
+  const ref: OpencodeModelRef | null = session?.model ?? ext.model ?? (lastUsed ? { providerID: lastUsed.info.providerID ?? '', id: lastUsed.info.modelID! } : null);
+  if (!ref) return null;
+  const info = (await instanceModels(instance, client, ext.directory).catch(() => [] as RawModel[])).find((m) => sameModel(ref, m));
+  return { providerID: ref.providerID, id: ref.id, variant: ref.variant && ref.variant !== 'default' ? ref.variant : null, name: info?.name ?? null, input: info?.input ?? null };
+}
+
+export async function taskModels(task: TaskRow): Promise<OpencodeModelsDTO> {
+  const { ext, client, instance } = await context(task);
+  const [models, session] = await Promise.all([instanceModels(instance, client, ext.directory, true), client.session(ext.sessionId, ext.directory).catch(() => null)]);
+  return { current: await currentModel(task, client, instance, session, session?.model ? null : await client.messages(ext.sessionId, ext.directory, 20).catch(() => null)), models: models.map((m) => ({ ...m })) };
+}
+
+/** The user picks the session's model; OpenCode uses it from the next instruction on. */
+export async function setTaskModel(task: TaskRow, ref: OpencodeModelRef): Promise<OpencodeCurrentModelDTO> {
+  const { ext, client, instance } = await context(task);
+  const info = (await instanceModels(instance, client, ext.directory)).find((m) => sameModel(ref, m));
+  if (!info) throw new OpencodeError('Ce modèle n’est pas proposé par cette instance OpenCode.');
+  const variant = ref.variant && info.variants.includes(ref.variant) ? ref.variant : null;
+  await client.setModel(ext.sessionId, { providerID: info.providerID, id: info.id, variant }, ext.directory);
+  await patchExternal(task, { model: { providerID: info.providerID, id: info.id, variant } }, {});
+  await exchange(task, { author: 'user', kind: 'model', text: `Modèle : ${info.name}${variant ? ` (${variant})` : ''}` });
+  return { providerID: info.providerID, id: info.id, variant, name: info.name, input: info.input };
+}
+
+/** Files are checked before they leave: size, count, and whether the model can read them at all. */
+function checkFiles(files: PromptFile[], model: OpencodeCurrentModelDTO | null) {
+  if (files.length > OPENCODE_FILES_MAX_COUNT) throw new OpencodeError(`${OPENCODE_FILES_MAX_COUNT} fichiers au plus par message.`);
+  if (files.some((f) => f.data.length > OPENCODE_FILE_MAX_BYTES)) throw new OpencodeError('Un fichier ne peut pas dépasser 10 Mo.');
+  if (files.reduce((n, f) => n + f.data.length, 0) > OPENCODE_FILES_MAX_BYTES) throw new OpencodeError('Les fichiers joints ne peuvent pas dépasser 20 Mo au total.');
+  const input = model?.input;
+  if (!input) return;
+  const name = model.name ?? model.id;
+  if (files.some((f) => f.mime.startsWith('image/')) && !input.includes('image')) throw new OpencodeError(`${name} ne lit pas les images : choisis un modèle qui les accepte, ou retire l’image.`);
+  if (files.some((f) => f.mime === 'application/pdf') && !input.includes('pdf')) throw new OpencodeError(`${name} ne lit pas les PDF : choisis un modèle qui les accepte, ou retire le PDF.`);
+}
+
 /** Une consigne dans LA session de la tâche. Si elle travaille, OpenCode la traite à la suite ; sinon elle relance la session. */
-export async function instructOpencode(task: TaskRow, instruction: string, author: 'user' | 'companion', original?: string | null, delivery?: Delivery): Promise<{ queued: boolean; delivery: Delivery | null }> {
-  const { ext, client } = await context(task);
+export async function instructOpencode(task: TaskRow, instruction: string, author: 'user' | 'companion', original?: string | null, delivery?: Delivery, files: PromptFile[] = []): Promise<{ queued: boolean; delivery: Delivery | null }> {
+  const { ext, client, instance } = await context(task);
+  if (files.length) checkFiles(files, await currentModel(task, client, instance, await client.session(ext.sessionId, ext.directory).catch(() => null), null));
   const busy = Boolean((await client.statuses(ext.directory))[ext.sessionId]);
-  const delivered = await client.prompt(ext.sessionId, instruction, ext.directory, busy ? delivery : undefined);
-  await exchange(task, { author, kind: 'instruction', text: instruction, original });
+  const delivered = await client.prompt(ext.sessionId, instruction, ext.directory, busy ? delivery : undefined, { files, model: client.version === 'v1' ? ext.model ?? null : null });
+  await exchange(task, { author, kind: 'instruction', text: files.length ? `${instruction}\n\nFichiers joints : ${files.map((f) => f.name).join(', ')}` : instruction, original });
   // Une session terminée repart : la carte redevient « en cours », le prochain résultat sera un nouveau résultat.
   await patchExternal(task, { promptedAt: Date.now(), unreachable: false }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
   return { queued: busy, delivery: busy ? (delivered ?? 'queue') : null };
@@ -254,10 +310,10 @@ export async function sessionDiffs(task: TaskRow): Promise<OpencodeDiffDTO[]> {
 /** L'espace de code d'une tâche. Injoignable : on le dit, avec le dernier état connu de la tâche. */
 export async function workspace(task: TaskRow): Promise<OpencodeWorkspaceDTO> {
   const exchanges = await listExchanges({ taskId: task.id });
-  const base = { task: await toTaskDTO(task), exchanges, session: null, messages: [], permissions: [], questions: [], diffs: [] };
+  const base = { task: await toTaskDTO(task), exchanges, session: null, messages: [], permissions: [], questions: [], diffs: [], model: null };
   let ctx;
   try { ctx = await context(task); } catch (error) { return { ...base, reachable: false, error: errorMessage(error), sessionStatus: 'unknown' }; }
-  const { ext, client } = ctx;
+  const { ext, client, instance } = ctx;
   try {
     const [session, statuses, messages, permissions, questions, diffs] = await Promise.all([
       client.session(ext.sessionId, ext.directory), client.statuses(ext.directory), client.messages(ext.sessionId, ext.directory, 80),
@@ -270,6 +326,7 @@ export async function workspace(task: TaskRow): Promise<OpencodeWorkspaceDTO> {
       permissions: permissions.filter((p) => p.sessionID === ext.sessionId).map((p) => ({ id: p.id, permission: p.permission, patterns: p.patterns ?? [] })),
       questions: questions.filter((q) => q.sessionID === ext.sessionId).map((q) => ({ id: q.id, questions: q.questions.map((x) => ({ question: x.question, header: x.header, options: x.options.map((o) => o.label), multiple: Boolean(x.multiple) })) })),
       diffs: diffs.map(toDiff),
+      model: await currentModel(task, client, instance, session, messages).catch(() => null),
     };
   } catch (error) {
     if (error instanceof OpencodeUnreachable || error instanceof OpencodeHttpError) return { ...base, reachable: false, error: error.message, sessionStatus: 'unknown' };

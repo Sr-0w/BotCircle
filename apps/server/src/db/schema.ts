@@ -478,7 +478,7 @@ export const opencodeExchanges = pgTable(
     /** `user` (saisi dans l'espace de code), `companion` ou `opencode`. */
     author: text('author').$type<'user' | 'companion' | 'opencode'>().notNull(),
     agentId: text('agent_id'),
-    kind: text('kind').$type<'delegation' | 'instruction' | 'response' | 'question' | 'permission' | 'result' | 'failure' | 'stop'>().notNull(),
+    kind: text('kind').$type<'delegation' | 'instruction' | 'response' | 'question' | 'permission' | 'result' | 'failure' | 'stop' | 'model'>().notNull(),
     text: text('text').notNull(),
     original: text('original'),
     createdAt: ts('created_at').notNull().defaultNow(),

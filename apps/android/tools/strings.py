@@ -342,6 +342,14 @@ S = {
  "code_thought": ('Thought', 'A réfléchi'),
  "hide": ('Hide', 'Masquer'),
  "show": ('Show', 'Afficher'),
+ "code_model": ('Model', 'Modèle'),
+ "code_model_set": ('Model: %s', 'Modèle : %s'),
+ "code_effort_for": ('Effort for %1$s', 'Effort pour %1$s'),
+ "code_effort_default": ('default', 'par défaut'),
+ "code_model_search": ('Search models…', 'Chercher un modèle…'),
+ "code_model_none": ('No model found.', 'Aucun modèle trouvé.'),
+ "code_reads_images": ('Reads images', 'Lit les images'),
+ "code_file_too_large": ('A file can’t exceed 10 MB.', 'Un fichier ne peut pas dépasser 10 Mo.'),
 }
 P = {
  "code_active": (("%d task running", "%d tasks running"), ("%d tâche en cours", "%d tâches en cours")),

@@ -507,6 +507,8 @@ data class CodeFile(val path: String = "", val binary: Boolean = false, val cont
 @Serializable
 data class CodeWorkspace(
     val task: BgTask,
+    /** The model OpenCode will use for the next instruction; null when unknown. */
+    val model: OpencodeCurrentModel? = null,
     /** busy, idle, retry, or unknown when the instance does not answer. */
     val sessionStatus: String = "unknown",
     /** False: the instance does not answer; lists are empty and the task shows its last known state. */
@@ -518,6 +520,18 @@ data class CodeWorkspace(
     val diffs: List<CodeDiff> = emptyList(),
     val exchanges: List<CodeExchange> = emptyList(),
 )
+
+/** A model of an OpenCode instance; [variants] are its efforts (low, medium, high…). [input]: text, image, pdf… */
+@Immutable
+@Serializable
+data class OpencodeModel(val providerID: String, val providerName: String = "", val id: String, val name: String = "", val variants: List<String> = emptyList(), val input: List<String> = emptyList())
+
+@Immutable
+@Serializable
+data class OpencodeCurrentModel(val providerID: String, val id: String, val variant: String? = null, val name: String? = null, val input: List<String>? = null)
+
+@Serializable
+data class OpencodeModels(val current: OpencodeCurrentModel? = null, val models: List<OpencodeModel> = emptyList())
 
 @Serializable
 data class PromptResult(val queued: Boolean = false, val delivery: String? = null)

@@ -1,6 +1,22 @@
 package app.dot.opendots.ui
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.runtime.mutableStateListOf
+import app.dot.design.components.DotBottomSheet
+import app.dot.opendots.data.OpencodeCurrentModel
+import app.dot.opendots.data.OpencodeModel
+import app.dot.opendots.data.PickedFile
+import app.dot.opendots.data.describeFile
+import app.dot.opendots.data.fileBody
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.heightIn
@@ -275,6 +291,17 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
     var menu by remember { mutableStateOf(false) }
     // While OpenCode works, a message is folded into the current work (steer) or handled after it (queue).
     var delivery by rememberSaveable(taskId) { mutableStateOf("steer") }
+    // Files to send with the next instruction: read from the phone when sent, straight to OpenCode.
+    val files = remember(taskId) { mutableStateListOf<PickedFile>() }
+    var picking by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val tooLarge = stringResource(R.string.code_file_too_large)
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.take(CODE_FILES_MAX - files.size).forEach { uri ->
+            val picked = describeFile(context, uri)
+            if (picked.size > CODE_FILE_MAX_BYTES) app.notify(tooLarge) else files += picked
+        }
+    }
     val live = ui.tasks[taskId]
     val failed = stringResource(R.string.generic_error)
     val queued = stringResource(R.string.code_queued)
@@ -347,7 +374,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                         if (space.messages.isEmpty()) item(key = "empty") { Text(stringResource(if (space.reachable) R.string.code_no_message else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
                         items(blocks, key = { it.key }) { block ->
                             when (block) {
-                                is CodeBlock.User -> CodeUserBubble(block.text)
+                                is CodeBlock.User -> CodeUserBubble(block.text, block.files)
                                 is CodeBlock.Prose -> DotMarkdown(block.text)
                                 is CodeBlock.Failure -> Text(block.text, style = Dot.type.callout, color = c.danger)
                                 is CodeBlock.Work -> CodeWorkGroup(block, live = busy && block === blocks.last())
@@ -416,11 +443,22 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                     placeholder = stringResource(if (space?.reachable == false) R.string.code_offline else R.string.code_write),
                     enabled = space?.reachable != false,
                     busy = busy && task?.active == true,
+                    canSend = draft.isNotBlank() || files.isNotEmpty(),
                     onStop = stop,
-                    // While OpenCode works, one quiet switch says when the message is taken into account.
-                    header = if (busy && draft.isNotBlank()) {
+                    header = if (files.isEmpty() && !(busy && (draft.isNotBlank() || files.isNotEmpty()))) null else {
                         {
-                            Row(
+                            if (files.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = DotSpacing.xs).testTag("code-attachments"), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                                files.forEachIndexed { index, file ->
+                                    Row(Modifier.clip(DotShapes.medium).background(c.surfaceRaised).padding(start = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(if (file.isImage) Icons.Outlined.Image else Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(14.dp), tint = c.textSecondary)
+                                        Spacer(Modifier.width(DotSpacing.xs))
+                                        Text(file.name, style = Dot.type.caption, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.widthIn(max = 160.dp))
+                                        DotIconButton(Icons.Outlined.Close, stringResource(R.string.remove_file, file.name), onClick = { files.removeAt(index) }, tint = c.textSecondary)
+                                    }
+                                }
+                            }
+                            // While OpenCode works, one quiet switch says when the message is taken into account.
+                            if (busy && (draft.isNotBlank() || files.isNotEmpty())) Row(
                                 Modifier.clip(DotShapes.pill).clickable(role = Role.Switch) { delivery = if (delivery == "steer") "queue" else "steer" }.padding(vertical = DotSpacing.xs).testTag("code-delivery"),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -429,10 +467,32 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                                 Text(stringResource(if (delivery == "steer") R.string.code_steer else R.string.code_queue), style = Dot.type.caption, color = c.textSecondary)
                             }
                         }
-                    } else null,
-                    onSend = { val text = draft.trim(); draft = ""; app.run { val result = app.client.codePrompt(taskId, text, if (busy) delivery else null); if (result.queued) app.notify(if (result.delivery == "steer") steered else queued); revision++ } },
+                    },
+                    footer = {
+                        DotIconButton(Icons.Outlined.Add, stringResource(R.string.attach_files), onClick = { picker.launch(arrayOf("*/*")) }, tint = c.textSecondary, enabled = space?.reachable != false && files.size < CODE_FILES_MAX)
+                        // The session's model, as a coding agent shows it: tap to change it (and its effort).
+                        Row(
+                            Modifier.clip(DotShapes.pill).clickable(enabled = space?.reachable != false, role = Role.Button, onClickLabel = stringResource(R.string.code_model)) { picking = true }
+                                .heightIn(min = 40.dp).padding(horizontal = DotSpacing.s).widthIn(max = 220.dp).testTag("code-model"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val model = space?.model
+                            Text(model?.name ?: model?.id ?: stringResource(R.string.code_model), style = Dot.type.callout, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            model?.variant?.let { Text("  $it", style = Dot.type.callout, color = c.textTertiary, maxLines = 1) }
+                            Icon(Icons.Outlined.ExpandMore, null, Modifier.padding(start = 2.dp).size(16.dp), tint = c.textTertiary)
+                        }
+                    },
+                    onSend = {
+                        val text = draft.trim(); val sending = files.toList(); draft = ""; files.clear()
+                        app.run {
+                            val result = app.client.codePrompt(taskId, text, if (busy) delivery else null, sending.map { it.name to fileBody(context, it) })
+                            if (result.queued) app.notify(if (result.delivery == "steer") steered else queued)
+                            revision++
+                        }
+                    },
                 )
             }
+            if (picking) CodeModelSheet(app, taskId, space?.model, onDismiss = { picking = false }) { picking = false; revision++ }
         } else Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
     }
 }
@@ -441,7 +501,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
 private sealed interface CodeBlock {
     val key: String
     val size: Int get() = 1
-    data class User(override val key: String, val text: String) : CodeBlock
+    data class User(override val key: String, val text: String, val files: List<String> = emptyList()) : CodeBlock
     data class Prose(override val key: String, val text: String) : CodeBlock
     data class Failure(override val key: String, val text: String) : CodeBlock
     data class Work(override val key: String, val parts: List<CodePart>) : CodeBlock {
@@ -460,7 +520,8 @@ private fun codeBlocks(messages: List<CodeMessage>): List<CodeBlock> {
         if (message.role == "user") {
             flush()
             val body = message.parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }.trim()
-            if (body.isNotEmpty()) out += CodeBlock.User("u-${message.id}", body)
+            val attached = message.parts.filter { it.type == "file" }.map { it.filename ?: "file" }
+            if (body.isNotEmpty() || attached.isNotEmpty()) out += CodeBlock.User("u-${message.id}", body, attached)
             continue
         }
         message.parts.forEachIndexed { index, part ->
@@ -476,6 +537,66 @@ private fun codeBlocks(messages: List<CodeMessage>): List<CodeBlock> {
     return out
 }
 
+private const val CODE_FILES_MAX = 8
+private const val CODE_FILE_MAX_BYTES = 10L * 1024 * 1024
+
+/** The instance's models, searchable, by provider; a model with efforts asks which one. */
+@Composable
+private fun CodeModelSheet(app: AppState, taskId: String, current: OpencodeCurrentModel?, onDismiss: () -> Unit, onPicked: () -> Unit) {
+    val c = Dot.colors
+    var models by remember { mutableStateOf<List<OpencodeModel>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var chosen by remember { mutableStateOf<OpencodeModel?>(null) }
+    val failed = stringResource(R.string.generic_error)
+    val picked = stringResource(R.string.code_model_set)
+    LaunchedEffect(taskId) { runCatching { app.client.codeModels(taskId) }.onSuccess { models = it.models }.onFailure { error = it.message?.ifBlank { null } ?: failed } }
+    fun pick(model: OpencodeModel, variant: String?) = app.run { app.client.codeSetModel(taskId, model, variant); app.notify(picked.format(model.name)); onPicked() }
+    val list = models
+    DotBottomSheet(onDismiss) {
+        Text(stringResource(R.string.code_model), style = Dot.type.title, color = c.textPrimary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).semantics { heading() })
+        val target = chosen
+        if (target != null) {
+            Column(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).testTag("code-variants")) {
+                Text(stringResource(R.string.code_effort_for, target.name), style = Dot.type.callout, color = c.textSecondary)
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(Modifier.padding(top = DotSpacing.s), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                    (listOf<String?>(null) + target.variants).forEach { variant ->
+                        DotFilterChip(variant ?: stringResource(R.string.code_effort_default), current?.id == target.id && current.variant == variant, { pick(target, variant) }, radio = true)
+                    }
+                }
+            }
+            return@DotBottomSheet
+        }
+        DotTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter), placeholder = stringResource(R.string.code_model_search))
+        when {
+            error != null -> Text(error.orEmpty(), style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(DotSpacing.gutter))
+            list == null -> Box(Modifier.fillMaxWidth().padding(DotSpacing.xl), contentAlignment = Alignment.Center) { DotSpinner() }
+            else -> {
+                val q = query.trim().lowercase()
+                val visible = list.filter { q.isEmpty() || "${it.name} ${it.id} ${it.providerName}".lowercase().contains(q) }.take(300)
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), contentPadding = PaddingValues(vertical = DotSpacing.s)) {
+                    if (visible.isEmpty()) item { Text(stringResource(R.string.code_model_none), style = Dot.type.callout, color = c.textSecondary, modifier = Modifier.padding(DotSpacing.gutter)) }
+                    visible.groupBy { it.providerName }.forEach { (provider, group) ->
+                        item(key = "h-$provider") { Text(provider.uppercase(), style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter).padding(top = DotSpacing.m, bottom = DotSpacing.xs)) }
+                        items(group, key = { "${it.providerID}/${it.id}" }) { model ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable(role = Role.Button) { if (model.variants.isEmpty()) pick(model, null) else chosen = model }.heightIn(min = 48.dp).padding(horizontal = DotSpacing.gutter),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(model.name, style = Dot.type.body, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                if ("image" in model.input) Icon(Icons.Outlined.Visibility, stringResource(R.string.code_reads_images), Modifier.padding(start = DotSpacing.s).size(16.dp), tint = c.textTertiary)
+                                if (current?.providerID == model.providerID && current.id == model.id) Icon(Icons.Outlined.Check, null, Modifier.padding(start = DotSpacing.s).size(18.dp), tint = c.accent)
+                                else if (model.variants.isNotEmpty()) Icon(Icons.Outlined.ChevronRight, null, Modifier.padding(start = DotSpacing.s).size(18.dp), tint = c.textTertiary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private enum class ToolKind { Command, Read, Edit, Search, Other }
 
 private fun toolKind(tool: String): ToolKind = when (tool.lowercase()) {
@@ -487,9 +608,16 @@ private fun toolKind(tool: String): ToolKind = when (tool.lowercase()) {
 }
 
 @Composable
-private fun CodeUserBubble(text: String) {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-        Text(text, style = Dot.type.body, color = Dot.colors.textPrimary, modifier = Modifier.fillMaxWidth(0.85f).wrapContentWidth(Alignment.End).clip(DotShapes.large).background(Dot.colors.surfaceRaised).padding(horizontal = DotSpacing.l, vertical = DotSpacing.m).testTag("code-user"))
+private fun CodeUserBubble(text: String, files: List<String>) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(DotSpacing.xs)) {
+        files.forEach { name ->
+            Row(Modifier.clip(DotShapes.medium).border(DotSpacing.hairline * 2, Dot.colors.border, DotShapes.medium).padding(horizontal = DotSpacing.s, vertical = DotSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(14.dp), tint = Dot.colors.textSecondary)
+                Spacer(Modifier.width(DotSpacing.xs))
+                Text(name, style = Dot.type.caption, color = Dot.colors.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            }
+        }
+        if (text.isNotEmpty()) Text(text, style = Dot.type.body, color = Dot.colors.textPrimary, modifier = Modifier.fillMaxWidth(0.85f).wrapContentWidth(Alignment.End).clip(DotShapes.large).background(Dot.colors.surfaceRaised).padding(horizontal = DotSpacing.l, vertical = DotSpacing.m).testTag("code-user"))
     }
 }
 
