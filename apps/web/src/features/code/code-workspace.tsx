@@ -19,6 +19,8 @@ import { TASK_STATUS_LABELS, taskAction, TaskStatusIcon } from '../chat/attachme
 export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { taskId: string; expanded?: boolean; onToggleExpand?: () => void; onClose: () => void }) {
   const [data, setData] = useState<OpencodeWorkspaceDTO | null>(null), [error, setError] = useState('');
   const [tab, setTab] = useState('session'), [text, setText] = useState(''), [sending, setSending] = useState(false);
+  // While OpenCode works, a message is either folded into the current work (steer) or handled after it (queue).
+  const [delivery, setDelivery] = useState<'steer' | 'queue'>('steer');
   const agents = useStore((s) => s.agents);
   const reload = useCallback(() => { api.codeWorkspace(taskId).then((value) => { setData(value); setError(''); }).catch((e) => setError(e.message)); }, [taskId]);
   useEffect(() => { setData(null); reload(); }, [reload]);
@@ -34,7 +36,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
     const value = text.trim();
     if (!value || sending) return;
     setSending(true);
-    try { const { queued } = await api.codePrompt(taskId, value); setText(''); stick.current = true; if (queued) toast.success(t('Placée à la suite du travail en cours')); reload(); }
+    try { const result = await api.codePrompt(taskId, value, data?.sessionStatus === 'busy' ? delivery : undefined); setText(''); stick.current = true; if (result.queued) toast.success(t(result.delivery === 'steer' ? 'Consigne intégrée au travail en cours' : 'Placée à la suite du travail en cours')); reload(); }
     catch (e) { toast.error((e as Error).message); } finally { setSending(false); }
   }
   const task = data?.task;
@@ -98,6 +100,12 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
               </div>
             ))}
           </TabsContent>
+          {data.sessionStatus === 'busy' && (
+            <div className="flex shrink-0 items-center gap-1.5 border-t px-3 pt-2 text-xs" role="radiogroup" aria-label={t('Pendant que OpenCode travaille')}>
+              <span className="text-muted-foreground">{t('Pendant que OpenCode travaille :')}</span>
+              {([['steer', 'L’intégrer maintenant'], ['queue', 'Après ce travail']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={delivery === value} onClick={() => setDelivery(value)} className={cn('rounded-full border px-2.5 py-0.5', delivery === value ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-accent')}>{t(label)}</button>)}
+            </div>
+          )}
           <form className="flex shrink-0 items-end gap-2 border-t p-3" onSubmit={(event) => { event.preventDefault(); void send(); }}>
             <textarea value={text} onChange={(event) => setText(event.target.value)} rows={1} maxLength={8000} disabled={sending || !data.reachable} placeholder={data.reachable ? t('Écrire directement à OpenCode…') : t('Instance injoignable')} aria-label={t('Écrire directement à OpenCode…')}
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}

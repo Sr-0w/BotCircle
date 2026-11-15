@@ -35,7 +35,7 @@ function fakeOpencode(url: URL, init?: RequestInit) {
   if (path === '/session/status') return json(oc.busy ? { ses_smoke: { type: 'busy' } } : {});
   if (path === '/session/ses_smoke/message') return json(oc.messages);
   if (path === '/session/ses_smoke/diff') return json([{ path: 'apps/web/src/settings-page.tsx', status: 'modified', additions: 12, deletions: 4, patch: '@@ -1,2 +1,2 @@\n-ancien\n+nouveau' }]);
-  if (path === '/session/ses_smoke/prompt_async') { const text = JSON.parse(String(init!.body)).parts[0].text; oc.prompts.push(text); oc.messages.push({ info: { id: `m_u${oc.messages.length}`, role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'p', type: 'text', text }] }); return new Response(null, { status: 204 }); }
+  if (path === '/session/ses_smoke/prompt_async') { const text = JSON.parse(String(init!.body)).parts[0].text; oc.prompts.push(text); if (!oc.messages.some((m) => m.info.role === 'user' && m.parts[0]?.text === text)) oc.messages.push({ info: { id: `m_u${oc.messages.length}`, role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'p', type: 'text', text }] }); return new Response(null, { status: 204 }); }
   if (path === '/session/ses_smoke/abort') { oc.busy = false; return json(true); }
   if (path === '/permission' || path === '/question') return json([]);
   if (path === '/file') return json([{ name: 'apps', path: 'apps', type: 'directory', ignored: false }, { name: 'README.md', path: 'README.md', type: 'file', ignored: false }]);
@@ -168,7 +168,25 @@ try {
 
   // --- OpenCode (#31) : instance contrôlée, carte unique, espace de code sur la session exacte.
   await page.goto(`${origin}/#/settings/opencode`);
-  await page.getByRole('button', { name: 'Ajouter une instance' }).click();
+  // Jumelage par lien contre un VRAI OpenCode 2, quand il y en a un (OPENCODE_URL / OPENCODE_PASSWORD).
+  if (process.env.OPENCODE_URL && process.env.OPENCODE_PASSWORD) {
+    const issued = await (await nativeFetch(`${process.env.OPENCODE_URL}/api/pair`, { method: 'POST', headers: { authorization: `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_PASSWORD}`).toString('base64')}` } })).json() as { code: string };
+    const link = `${process.env.OPENCODE_URL}/auth/connect/${issued.code}`;
+    await page.getByRole('button', { name: 'Jumeler avec un lien' }).click();
+    await page.getByLabel('Lien affiché par opencode pair').fill(link);
+    await page.getByRole('button', { name: 'Jumeler', exact: true }).click();
+    const paired = page.locator('[data-instance-state="online"]').filter({ hasText: /jumelée jusqu’au/ });
+    await paired.waitFor({ timeout: 20_000 });
+    await shot('11-opencode-paired');
+    // Le même lien une seconde fois : refus explicite.
+    await page.getByRole('button', { name: 'Jumeler avec un lien' }).click();
+    await page.getByLabel('Lien affiché par opencode pair').fill(link);
+    await page.getByRole('button', { name: 'Jumeler', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: /expiré ou a déjà servi/ }).waitFor();
+    await page.getByRole('button', { name: 'Annuler' }).click();
+    console.log('Chromium : jumelage par lien contre un vrai OpenCode ' + (await paired.textContent())?.match(/OpenCode [\d.]+/)?.[0]);
+  }
+  await page.getByRole('button', { name: 'Adresse et mot de passe' }).click();
   await page.getByLabel('Nom', { exact: true }).fill('PC de dev');
   await page.getByLabel('Adresse de l’API').fill('https://code.example.test');
   await page.getByLabel('Mot de passe', { exact: true }).fill('smoke-secret');
@@ -181,7 +199,7 @@ try {
   await shot('9-opencode-instances');
   let codeTaskId = '';
   await withAccount(account, async () => {
-    const [instance] = await listInstances();
+    const instance = (await listInstances()).find((i) => i.name === 'PC de dev')!;
     const task = await startOpencodeTask({ agentId: ariId, conversationId: await mainConversationId(ariId), instance, title: 'Refactor des réglages', instruction: 'Regroupe OAuth avec les fournisseurs.', original: 'range les réglages', requestedBy: 'agent' });
     codeTaskId = task.id;
     await saveMessage(await mainConversationId(ariId), { id: 'code-fixture', role: 'assistant', parts: [

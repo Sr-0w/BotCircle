@@ -154,13 +154,14 @@ export const api = {
     const { id, ...body } = input;
     return request<OpencodeInstanceDTO>(id ? 'PUT' : 'POST', id ? `/opencode/instances/${id}` : '/opencode/instances', body);
   },
+  pairOpencode: (link: string, defaultDirectory?: string | null) => request<OpencodeInstanceDTO>('POST', '/opencode/instances/pair', { link, defaultDirectory: defaultDirectory || null }),
   checkOpencodeInstance: (id: string) => request<OpencodeInstanceDTO>('POST', `/opencode/instances/${id}/check`),
   deleteOpencodeInstance: (id: string) => request<{ ok: boolean }>('DELETE', `/opencode/instances/${id}`),
   opencodeProjects: (id: string) => request<OpencodeProjectDTO[]>('GET', `/opencode/instances/${id}/projects`),
   opencodeSessions: (id: string, directory?: string) => request<OpencodeSessionDTO[]>('GET', `/opencode/instances/${id}/sessions${directory ? `?directory=${encodeURIComponent(directory)}` : ''}`),
   opencodeExchanges: () => request<OpencodeExchangeDTO[]>('GET', '/opencode/exchanges'),
   codeWorkspace: (taskId: string) => request<OpencodeWorkspaceDTO>('GET', `/opencode/tasks/${taskId}`),
-  codePrompt: (taskId: string, text: string) => request<{ queued: boolean }>('POST', `/opencode/tasks/${taskId}/prompt`, { text }),
+  codePrompt: (taskId: string, text: string, delivery?: 'steer' | 'queue') => request<{ queued: boolean; delivery: 'steer' | 'queue' | null }>('POST', `/opencode/tasks/${taskId}/prompt`, { text, ...(delivery ? { delivery } : {}) }),
   codePermission: (taskId: string, requestId: string, reply: 'once' | 'always' | 'reject') => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/permissions/${requestId}`, { reply }),
   codeQuestion: (taskId: string, requestId: string, answers: string[][]) => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/questions/${requestId}`, { answers }),
   codeFiles: (taskId: string, path: string) => request<OpencodeFileNodeDTO[]>('GET', `/opencode/tasks/${taskId}/files?path=${encodeURIComponent(path)}`),
