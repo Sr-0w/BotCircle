@@ -5,29 +5,51 @@ session a task belongs to, what was said, and what you see.
 
 ## How it connects (and why)
 
-BotCircle talks to the HTTP API of `opencode serve` — the same API the OpenCode TUI and web client use, described by
-its OpenAPI spec (checked against the published SDK `@opencode-ai/sdk` 1.19, API v2). Authentication is HTTP Basic
-(`OPENCODE_SERVER_PASSWORD`, username `opencode` by default).
+BotCircle talks to the HTTP API of `opencode serve` — the same API the OpenCode TUI, web and mobile clients use. Two
+generations exist and both are supported; the server detects which one answers (`GET /api/info`, otherwise
+`GET /global/health`) and remembers it per instance:
 
-Options considered:
+- **OpenCode 2.x** (`@opencode/cli`, protocol `@opencode/protocol`): everything under `/api/…` — sessions with a
+  `location`, one assistant message per step, `prompt` with `delivery: steer | queue`, `interrupt`, forms, permissions,
+  diff between turns, files. Verified end to end against a real `opencode serve` 2.3.0
+  (`apps/server/scripts/opencode-real-check.ts`).
+- **OpenCode 1.x** (`@opencode-ai/sdk` 1.19): `/session`, `/global/health`, `prompt_async`.
 
-| Option | Verdict |
-|---|---|
-| **Call the OpenCode HTTP API from the BotCircle server** | Chosen. Upstream-supported, versioned by an OpenAPI spec, covers sessions, prompts, status, permissions, diffs and files. No extra component to install or keep in sync. |
-| Fork / embed OpenCode Web | Not done. It is a separate SolidJS app with its own design system and state; re-skinning it to Quiet UI and keeping it merged with upstream would cost more than rendering the API natively, and it would not exist on Android. |
-| An BotCircle daemon on the development machine | Not needed: everything required is in the upstream API. It would only help with NAT traversal, which a private network already solves. |
+### Pairing (recommended): `opencode pair --remote`
 
-What upstream does **not** provide: reaching a machine behind NAT. `opencode serve` listens on an address; something
-must make that address reachable from the BotCircle server — a private network (Tailscale, WireGuard), an SSH tunnel
-or an HTTPS reverse proxy. Never expose the port without a password.
+```bash
+opencode pair --remote
+```
+
+It prints a one-time link `https://<id>.opentunnel.xyz/auth/connect/<code>` and its QR code. `--remote` publishes
+the instance through OpenTunnel, so it works behind a NAT without opening a port. In **Settings → OpenCode → Pair with
+a link**, paste the link (Web, Android) or scan the QR code (Web where the browser has `BarcodeDetector`, Android
+through the Google Play services scanner, which needs no camera permission for the app).
+
+- The BotCircle **server** redeems the code (`GET /auth/connect/<code>`, `Accept: application/json`) and keeps the
+  token it gets, encrypted at rest, never returned. Requests then use HTTP Basic `opencode:<token>`.
+- The link works **once, for 5 minutes**. Don't open it in a browser or scan it with the phone's camera app: that
+  uses it up. Pairing lasts **30 days**; the card shows "paired until …". When it expires or is revoked, the instance
+  shows it and asks for a new `opencode pair --remote`; pairing again the same address renews it in place.
+
+### Address and password
 
 ```bash
 OPENCODE_SERVER_PASSWORD=choose-one opencode serve --hostname 0.0.0.0 --port 4096
 ```
 
-Then add the instance in **Settings → OpenCode** (Web or Android): name, address, password, default project
-directory. The password is encrypted at rest and never returned. Allow a companion from its profile:
-"Delegate code to OpenCode".
+The BotCircle server must reach that address: a private network (Tailscale, WireGuard), an SSH tunnel or an HTTPS
+reverse proxy. Never expose the port without a password. Add it in **Settings → OpenCode → Address and password**.
+
+Options considered:
+
+| Option | Verdict |
+|---|---|
+| **Call the OpenCode HTTP API from the BotCircle server** | Chosen. Upstream-supported, covers sessions, prompts, status, permissions, diffs and files. Pairing and OpenTunnel come from upstream too. |
+| Fork / embed OpenCode Web | Not done. A separate app with its own design system; re-skinning it to Quiet UI and keeping it merged would cost more than rendering the API natively, and it would not exist on Android. |
+| A BotCircle daemon on the development machine | Not needed: `opencode pair --remote` already solves NAT traversal. |
+
+Allow a companion from its profile: "Delegate code to OpenCode".
 
 ## What a delegation is
 
@@ -41,8 +63,11 @@ session id and the directory, so an instruction can never land in another sessio
 - **Completion is delivered.** When the session goes idle with a finished answer, the companion that delegated is
   woken with OpenCode's own report and the changed files, exactly once. It reviews (`opencode_changes`) and either
   continues the same session or reports to you. "Finished" means the session stopped, not that tests passed.
-- **Follow-ups** go to the same session. If it is busy, OpenCode queues the message behind the current work — it does
-  not interrupt it. If it had finished, the session restarts in the same context and the card runs again.
+- **Follow-ups** go to the same session. While it works, the message is either folded into the current work
+  (`steer`, default) or handled after it (`queue`) — the companion picks with `opencode_send mode`, you pick in the
+  workspace. With OpenCode 1.x it is always queued. If it had finished, the session restarts in the same context.
+  The current turn is everything after the last user message, so a queued instruction must be answered before the
+  task completes.
 - **Permissions and questions** from OpenCode suspend only that task. You answer them in the code workspace; the
   reply goes to that session and gives the companion no access of its own.
 
@@ -70,5 +95,5 @@ Opening a card opens that session: beside the chat on desktop (expandable), full
   through the workspace.
 - Starting a task from the UI without a companion, and browsing sessions created outside BotCircle from the UI, are
   not offered (a companion can list and resume such sessions with `opencode_projects` and `session_id`).
-- It has been exercised against a fake server that speaks the documented API and with a real model driving the
-  companion — not yet against a real OpenCode instance.
+- Tested against fakes of both API generations, with a real model driving the companion, and against a real
+  OpenCode 2.3.0 (pairing, single-use link, edit, diff, files, permission, stop).

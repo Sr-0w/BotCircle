@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -271,11 +272,16 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     /** [body] holds name, baseUrl, username, defaultDirectory and, only when it changes, password. */
     suspend fun saveOpencodeInstance(id: String?, body: JsonObject): OpencodeInstance =
         OdJson.decodeFromJsonElement(json(if (id == null) "POST" else "PUT", "/opencode/instances" + (id?.let { "/$it" } ?: ""), body))
+    /** The one-time link of `opencode pair` (or its QR code): the server redeems it and keeps the session token. */
+    suspend fun pairOpencode(link: String, defaultDirectory: String?): OpencodeInstance =
+        OdJson.decodeFromJsonElement(json("POST", "/opencode/instances/pair", buildJsonObject { put("link", link.trim()); if (defaultDirectory.isNullOrBlank()) put("defaultDirectory", JsonNull) else put("defaultDirectory", defaultDirectory.trim()) }))
     suspend fun checkOpencodeInstance(id: String): OpencodeInstance = OdJson.decodeFromJsonElement(json("POST", "/opencode/instances/$id/check"))
     suspend fun deleteOpencodeInstance(id: String) { json("DELETE", "/opencode/instances/$id") }
     suspend fun codeWorkspace(taskId: String): CodeWorkspace = get("/opencode/tasks/$taskId")
     /** Written by the user in the workspace: attributed to the user, sent to the task's own session. */
-    suspend fun codePrompt(taskId: String, text: String): PromptResult = OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/prompt", buildJsonObject { put("text", text) }))
+    /** [delivery] (steer or queue) only matters while OpenCode is working. */
+    suspend fun codePrompt(taskId: String, text: String, delivery: String? = null): PromptResult =
+        OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/prompt", buildJsonObject { put("text", text); if (delivery != null) put("delivery", delivery) }))
     /** [reply] is once, always or reject. */
     suspend fun codePermission(taskId: String, requestId: String, reply: String) { json("POST", "/opencode/tasks/$taskId/permissions/$requestId", buildJsonObject { put("reply", reply) }) }
     suspend fun codeQuestion(taskId: String, requestId: String, answers: List<List<String>>) {

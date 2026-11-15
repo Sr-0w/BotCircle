@@ -10,8 +10,8 @@ android {
         applicationId = "app.dot.opendots"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.1.0-alpha.11"
+        versionCode = 12
+        versionName = "0.1.0-alpha.12"
     }
     buildTypes {
         release {
@@ -39,6 +39,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    // QR codes (OpenCode pairing): the system scanner UI, no camera permission for the app.
+    implementation(libs.play.services.code.scanner)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.junit)

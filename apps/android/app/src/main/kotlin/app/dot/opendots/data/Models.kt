@@ -451,6 +451,10 @@ data class OpencodeInstance(
     val state: String = "unknown",
     val lastError: String? = null,
     val activeTasks: Int = 0,
+    val apiVersion: String? = null,
+    /** `pairing`: connected with the one-time link of `opencode pair`; the token expires at [tokenExpiresAt]. */
+    val authKind: String = "password",
+    val tokenExpiresAt: String? = null,
 )
 
 /** One part of an OpenCode message; which fields are set depends on [type] (text, reasoning, tool, patch, file). */
@@ -503,6 +507,8 @@ data class CodeFile(val path: String = "", val binary: Boolean = false, val cont
 @Serializable
 data class CodeWorkspace(
     val task: BgTask,
+    /** busy, idle, retry, or unknown when the instance does not answer. */
+    val sessionStatus: String = "unknown",
     /** False: the instance does not answer; lists are empty and the task shows its last known state. */
     val reachable: Boolean = true,
     val error: String? = null,
@@ -514,7 +520,7 @@ data class CodeWorkspace(
 )
 
 @Serializable
-data class PromptResult(val queued: Boolean = false)
+data class PromptResult(val queued: Boolean = false, val delivery: String? = null)
 
 // --- Memory, journal, team exchanges ----------------------------------------------------------------------------
 

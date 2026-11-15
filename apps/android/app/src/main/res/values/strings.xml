@@ -56,6 +56,7 @@
     <string name="chats_none_found">No chat found</string>
     <string name="close">Close</string>
     <string name="code_add">Add an instance</string>
+    <string name="code_add_manual">Address and password</string>
     <string name="code_allow_always">Always allow</string>
     <string name="code_allow_once">Allow once</string>
     <string name="code_answer">Answer</string>
@@ -65,10 +66,12 @@
     <string name="code_check">Check</string>
     <string name="code_deny">Deny</string>
     <string name="code_directory">Default project directory</string>
+    <string name="code_directory_optional">Default project directory (optional)</string>
     <string name="code_edit">Edit</string>
-    <string name="code_expose_note">On the development machine, run: OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. The BotCircle server must reach that address: use a private network, an SSH tunnel or an HTTPS reverse proxy, never an open port without a password.</string>
+    <string name="code_expose_note">Simplest: on the development machine, run `opencode pair --remote`, then pair here with its link or QR code; it works even behind a NAT. Otherwise, with an address and a password: OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0, reachable by the BotCircle server through a private network, an SSH tunnel or an HTTPS reverse proxy, never an open port without a password.</string>
     <string name="code_files_changed">Files changed: %1$s</string>
     <string name="code_instances_note">Development machines your companions delegate code to</string>
+    <string name="code_link">Link printed by opencode pair</string>
     <string name="code_name_hint">Dev PC</string>
     <string name="code_never_checked">Never checked</string>
     <string name="code_no_change">OpenCode reports no changed file in this session.</string>
@@ -79,11 +82,21 @@
     <string name="code_online">Online</string>
     <string name="code_open">Open code workspace</string>
     <string name="code_original">Original request</string>
+    <string name="code_pair">Pair with a link</string>
+    <string name="code_pair_button">Pair</string>
+    <string name="code_pair_note">On the development machine, run `opencode pair --remote`. Scan its QR code here, or paste its link. It works once, for 5 minutes; pairing lasts 30 days. Don’t scan it with the phone’s camera app: that would use it up in the browser.</string>
+    <string name="code_paired">paired</string>
+    <string name="code_paired_until">paired until %1$s</string>
     <string name="code_permission">OpenCode asks for permission</string>
+    <string name="code_queue">After this work</string>
     <string name="code_queued">Queued behind the work in progress</string>
     <string name="code_remove_note">Past tasks and exchanges stay available.</string>
     <string name="code_remove_title">Remove this instance?</string>
     <string name="code_save">Save and check</string>
+    <string name="code_scan">Scan the QR code</string>
+    <string name="code_scan_unavailable">The QR scanner is not available on this phone (Google Play services). Paste the link instead.</string>
+    <string name="code_steer">Fold it in now</string>
+    <string name="code_steered">Folded into the work in progress</string>
     <string name="code_stop">Stop</string>
     <string name="code_tab_changes">Changes</string>
     <string name="code_tab_exchanges">Exchanges</string>
@@ -94,6 +107,7 @@
     <string name="code_unreachable">Instance unreachable: this is the last known state, not a result.</string>
     <string name="code_url">API address</string>
     <string name="code_user">Username</string>
+    <string name="code_while_working">While OpenCode works:</string>
     <string name="code_workspace">Code workspace</string>
     <string name="code_write">Write to OpenCode directly…</string>
     <string name="codex_connect">Connect ChatGPT</string>

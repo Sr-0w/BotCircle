@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -85,6 +86,7 @@ import app.dot.opendots.data.CodeQuestion
 import app.dot.opendots.data.CodeWorkspace
 import app.dot.opendots.data.OpencodeInstance
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -100,12 +102,13 @@ fun OpencodeInstancesPage(app: AppState, onBack: () -> Unit) {
     var editing by remember { mutableStateOf<OpencodeInstance?>(null) }
     var adding by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<OpencodeInstance?>(null) }
+    var pairing by remember { mutableStateOf(false) }
     LaunchedEffect(revision) { runCatching { app.client.opencodeInstances() }.onSuccess { instances = it }.onFailure { instances = emptyList(); app.notify(it.message?.ifBlank { null } ?: AppState.FAILED) } }
     QuietPage("OpenCode", onBack, subtitle = stringResource(R.string.code_instances_note)) {
         val list = instances
         when {
             list == null -> item { Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) } }
-            list.isEmpty() && !adding -> item { EmptyState(Icons.Outlined.Terminal, stringResource(R.string.code_no_instance), stringResource(R.string.code_expose_note)) }
+            list.isEmpty() && !adding && !pairing -> item { EmptyState(Icons.Outlined.Terminal, stringResource(R.string.code_no_instance), stringResource(R.string.code_expose_note)) }
             else -> items(list, key = { it.id }) { instance ->
                 val c = Dot.colors
                 DotCard(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xs).testTag("instance-${instance.state}")) {
@@ -119,7 +122,11 @@ fun OpencodeInstancesPage(app: AppState, onBack: () -> Unit) {
                         Text(stringResource(when (instance.state) { "online" -> R.string.code_online; "offline" -> R.string.code_offline; else -> R.string.code_never_checked }), style = Dot.type.caption, color = if (instance.state == "offline") c.danger else c.textSecondary)
                     }
                     Text(
-                        if (instance.state == "offline") instance.lastError.orEmpty() else listOfNotNull(instance.version?.let { "OpenCode $it" }, if (instance.activeTasks > 0) pluralStringResource(R.plurals.code_active, instance.activeTasks, instance.activeTasks) else null).joinToString(" · "),
+                        if (instance.state == "offline") instance.lastError.orEmpty() else listOfNotNull(
+                            instance.version?.let { "OpenCode $it" },
+                            if (instance.activeTasks > 0) pluralStringResource(R.plurals.code_active, instance.activeTasks, instance.activeTasks) else null,
+                            if (instance.authKind == "pairing") instance.tokenExpiresAt?.let { stringResource(R.string.code_paired_until, formatWhen(it).substringBefore(",")) } ?: stringResource(R.string.code_paired) else null,
+                        ).joinToString(" · "),
                         style = Dot.type.caption, color = if (instance.state == "offline") c.danger else c.textSecondary, modifier = Modifier.padding(top = DotSpacing.xs),
                     )
                     Spacer(Modifier.height(DotSpacing.m))
@@ -131,10 +138,15 @@ fun OpencodeInstancesPage(app: AppState, onBack: () -> Unit) {
                 }
             }
         }
-        if (adding || editing != null) item(key = "form") {
+        if (pairing) item(key = "pair") {
+            PairForm(app, onCancel = { pairing = false }) { pairing = false; revision++ }
+        } else if (adding || editing != null) item(key = "form") {
             InstanceForm(editing, onCancel = { adding = false; editing = null }) { body -> app.run { app.client.saveOpencodeInstance(editing?.id, body); adding = false; editing = null; revision++ } }
         } else item(key = "add") {
-            Box(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l)) { DotButton(stringResource(R.string.code_add), { adding = true }, style = ButtonStyle.Secondary) }
+            Row(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                DotButton(stringResource(R.string.code_pair), { pairing = true })
+                DotButton(stringResource(R.string.code_add_manual), { adding = true }, style = ButtonStyle.Secondary)
+            }
         }
         item(key = "help") { Text(stringResource(R.string.code_expose_note), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s)) }
     }
@@ -144,6 +156,53 @@ fun OpencodeInstancesPage(app: AppState, onBack: () -> Unit) {
             confirmLabel = stringResource(R.string.file_revoke), dismissLabel = stringResource(R.string.cancel),
             onConfirm = { removing = null; app.run { app.client.deleteOpencodeInstance(instance.id); revision++ } }, onDismiss = { removing = null }, destructive = true,
         )
+    }
+}
+
+/**
+ * Pairing with the one-time link of `opencode pair --remote`: pasted, or read from its QR code with the system scanner
+ * (Google Play services, no camera permission for the app). Scanning it with the phone's own camera app would open
+ * it in a browser and use it up.
+ */
+@Composable
+private fun PairForm(app: AppState, onCancel: () -> Unit, onPaired: () -> Unit) {
+    val context = LocalContext.current
+    var link by rememberSaveable { mutableStateOf("") }
+    var directory by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val failed = stringResource(R.string.generic_error)
+    val noScanner = stringResource(R.string.code_scan_unavailable)
+    val pairedLabel = stringResource(R.string.code_paired)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun pair(value: String) {
+        if (value.isBlank() || busy) return
+        busy = true; error = null
+        scope.launch {
+            runCatching { app.client.pairOpencode(value, directory) }
+                .onSuccess { app.notify("${it.name} · $pairedLabel"); onPaired() }
+                .onFailure { error = it.message?.ifBlank { null } ?: failed }
+            busy = false
+        }
+    }
+    Column(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("pair-form"), verticalArrangement = Arrangement.spacedBy(DotSpacing.m)) {
+        Text(stringResource(R.string.code_pair_note), style = Dot.type.callout, color = Dot.colors.textSecondary)
+        DotButton(stringResource(R.string.code_scan), {
+            runCatching {
+                com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(
+                    context, com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder().setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE).build(),
+                ).startScan()
+                    .addOnSuccessListener { code -> code.rawValue?.trim()?.let { link = it; pair(it) } }
+                    .addOnFailureListener { error = noScanner }
+            }.onFailure { error = noScanner }
+        }, style = ButtonStyle.Secondary)
+        DotTextField(link, { link = it.trim(); error = null }, Modifier.fillMaxWidth(), label = stringResource(R.string.code_link), placeholder = "https://….opentunnel.xyz/auth/connect/…", keyboardType = KeyboardType.Uri)
+        DotTextField(directory, { directory = it.trim() }, Modifier.fillMaxWidth(), label = stringResource(R.string.code_directory_optional), placeholder = "/home/me/projects/app", imeAction = ImeAction.Done)
+        error?.let { Text(it, style = Dot.type.callout, color = Dot.colors.danger, modifier = Modifier.testTag("pair-error")) }
+        Row(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+            DotButton(stringResource(R.string.code_pair_button), { pair(link) }, enabled = link.isNotBlank() && !busy, loading = busy, compact = true)
+            DotButton(stringResource(R.string.cancel), onCancel, style = ButtonStyle.Ghost, compact = true)
+        }
     }
 }
 
@@ -188,9 +247,12 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
     var tab by rememberSaveable(taskId) { mutableStateOf(CodeTab.Session) }
     var draft by rememberSaveable(taskId) { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
+    // While OpenCode works, a message is folded into the current work (steer) or handled after it (queue).
+    var delivery by rememberSaveable(taskId) { mutableStateOf("steer") }
     val live = ui.tasks[taskId]
     val failed = stringResource(R.string.generic_error)
     val queued = stringResource(R.string.code_queued)
+    val steered = stringResource(R.string.code_steered)
     // While the session works the state is re-read; at rest only server events refresh it.
     LaunchedEffect(taskId, revision, live?.status, live?.completedSteps, live?.currentActionSummary) {
         runCatching { app.client.codeWorkspace(taskId) }.onSuccess { data = it; error = null }.onFailure { error = it.message?.ifBlank { null } ?: failed }
@@ -269,12 +331,17 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                 }
             }
         }
+        if (space?.sessionStatus == "busy") Row(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xs), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.code_while_working), style = Dot.type.caption, color = c.textSecondary)
+            DotFilterChip(stringResource(R.string.code_steer), delivery == "steer", { delivery = "steer" }, radio = true)
+            DotFilterChip(stringResource(R.string.code_queue), delivery == "queue", { delivery = "queue" }, radio = true)
+        }
         Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)).padding(horizontal = DotSpacing.m).padding(bottom = DotSpacing.s)) {
             DotComposer(
                 value = draft, onValueChange = { draft = it },
                 placeholder = stringResource(if (space?.reachable == false) R.string.code_offline else R.string.code_write),
                 enabled = space?.reachable != false,
-                onSend = { val text = draft.trim(); draft = ""; app.run { if (app.client.codePrompt(taskId, text).queued) app.notify(queued); revision++ } },
+                onSend = { val text = draft.trim(); draft = ""; app.run { val result = app.client.codePrompt(taskId, text, if (space?.sessionStatus == "busy") delivery else null); if (result.queued) app.notify(if (result.delivery == "steer") steered else queued); revision++ } },
             )
         }
     }

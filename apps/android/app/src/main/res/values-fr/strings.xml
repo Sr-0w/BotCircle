@@ -56,6 +56,7 @@
     <string name="chats_none_found">Aucun chat trouvé</string>
     <string name="close">Fermer</string>
     <string name="code_add">Ajouter une instance</string>
+    <string name="code_add_manual">Adresse et mot de passe</string>
     <string name="code_allow_always">Toujours autoriser</string>
     <string name="code_allow_once">Autoriser cette fois</string>
     <string name="code_answer">Répondre</string>
@@ -65,10 +66,12 @@
     <string name="code_check">Contrôler</string>
     <string name="code_deny">Refuser</string>
     <string name="code_directory">Dossier du projet par défaut</string>
+    <string name="code_directory_optional">Dossier du projet par défaut (facultatif)</string>
     <string name="code_edit">Modifier</string>
-    <string name="code_expose_note">Sur la machine de développement, lance : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. Le serveur BotCircle doit joindre cette adresse : réseau privé, tunnel SSH ou reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
+    <string name="code_expose_note">Le plus simple : sur la machine de développement, lance `opencode pair --remote`, puis jumelle-la ici avec son lien ou son QR code ; ça marche même derrière un NAT. Sinon, avec une adresse et un mot de passe : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0, joignable par le serveur BotCircle via un réseau privé, un tunnel SSH ou un reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
     <string name="code_files_changed">Fichiers modifiés : %1$s</string>
     <string name="code_instances_note">Les machines de développement où tes compagnons délèguent du code</string>
+    <string name="code_link">Lien affiché par opencode pair</string>
     <string name="code_name_hint">PC de dev</string>
     <string name="code_never_checked">Jamais contrôlée</string>
     <string name="code_no_change">OpenCode ne signale aucun fichier modifié dans cette session.</string>
@@ -79,11 +82,21 @@
     <string name="code_online">En ligne</string>
     <string name="code_open">Ouvrir l’espace de code</string>
     <string name="code_original">Demande d’origine</string>
+    <string name="code_pair">Jumeler avec un lien</string>
+    <string name="code_pair_button">Jumeler</string>
+    <string name="code_pair_note">Sur la machine de développement, lance `opencode pair --remote`. Scanne ici son QR code, ou colle son lien. Il sert une fois, 5 minutes ; le jumelage dure 30 jours. Ne le scanne pas avec l’appareil photo du téléphone : il serait consommé par le navigateur.</string>
+    <string name="code_paired">jumelée</string>
+    <string name="code_paired_until">jumelée jusqu’au %1$s</string>
     <string name="code_permission">OpenCode demande une autorisation</string>
+    <string name="code_queue">Après ce travail</string>
     <string name="code_queued">Placée à la suite du travail en cours</string>
     <string name="code_remove_note">Les tâches et échanges passés restent consultables.</string>
     <string name="code_remove_title">Retirer cette instance ?</string>
     <string name="code_save">Enregistrer et contrôler</string>
+    <string name="code_scan">Scanner le QR code</string>
+    <string name="code_scan_unavailable">Le scanner de QR code n’est pas disponible sur ce téléphone (services Google Play). Colle plutôt le lien.</string>
+    <string name="code_steer">L’intégrer maintenant</string>
+    <string name="code_steered">Intégrée au travail en cours</string>
     <string name="code_stop">Arrêter</string>
     <string name="code_tab_changes">Changements</string>
     <string name="code_tab_exchanges">Échanges</string>
@@ -94,6 +107,7 @@
     <string name="code_unreachable">Instance injoignable : l’état affiché est le dernier connu, pas un résultat.</string>
     <string name="code_url">Adresse de l’API</string>
     <string name="code_user">Utilisateur</string>
+    <string name="code_while_working">Pendant que OpenCode travaille :</string>
     <string name="code_workspace">Espace de code</string>
     <string name="code_write">Écrire directement à OpenCode…</string>
     <string name="codex_connect">Connecter ChatGPT</string>

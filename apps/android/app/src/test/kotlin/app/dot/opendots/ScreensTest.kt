@@ -58,6 +58,7 @@ class ScreensTest {
     private val out = File("build/shots").apply { mkdirs() }
     private var onboarded = true
     private var signedIn = true
+    private var paired = false
 
     private val agents = """[
       {"id":"a1","name":"Ari","named":true,"color":"#7C6CF2","description":"Concise and a bit playful.","effectiveModel":{"provider":"openrouter","model":"anthropic/claude-sonnet-5.5"},"state":"available","lastMessagePreview":"12,418 lines across 163 files.","unread":0,"mainConversationId":"c1"},
@@ -133,7 +134,9 @@ class ScreensTest {
                       "permissions":[{"id":"per1","permission":"bash","patterns":["rm -rf dist"]}],"questions":[],
                       "diffs":[{"path":"apps/web/src/settings-page.tsx","status":"modified","additions":12,"deletions":4,"patch":"@@ -1 +1 @@\n-old\n+new"}],
                       "exchanges":[{"seq":1,"taskId":"tk2","author":"companion","agentId":"a1","kind":"delegation","text":"Group OAuth with the providers.","original":"tidy the settings","createdAt":"2026-11-13T09:01:00Z"}]}""")
-                    path == "/opencode/tasks/tk2/prompt" -> json("""{"queued":true}""")
+                    path == "/opencode/tasks/tk2/prompt" -> json("""{"queued":true,"delivery":"queue"}""")
+                    path == "/opencode/instances" && request.method == "GET" -> json(if (paired) """[{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}]""" else "[]")
+                    path == "/opencode/instances/pair" -> { paired = true; json("""{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}""") }
                     path == "/opencode/tasks/tk2/permissions/per1" -> json("""{"ok":true}""")
                     path == "/tasks/tk1" -> json(task)
                     path == "/tasks/tk1/instruction" -> json(task)
@@ -379,10 +382,12 @@ class ScreensTest {
         compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/permissions/per1" } }
         assertEquals("""{"reply":"once"}""", posts.first { it.first == "/opencode/tasks/tk2/permissions/per1" }.second)
         // Writing here goes to the task's own session, as the user.
+        // OpenCode is working: the message can wait for the end of this work instead of being folded in.
+        compose.onNodeWithText("After this work").performClick()
         compose.onNodeWithContentDescription("Write to OpenCode directly…").performTextInput("Keep the animations.")
         compose.onNodeWithContentDescription("Send").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/prompt" } }
-        assertEquals("""{"text":"Keep the animations."}""", posts.first { it.first == "/opencode/tasks/tk2/prompt" }.second)
+        assertEquals("""{"text":"Keep the animations.","delivery":"queue"}""", posts.first { it.first == "/opencode/tasks/tk2/prompt" }.second)
         compose.onNodeWithText("Changes · 1").performClick()
         waitFor("apps/web/src/settings-page.tsx")
         compose.onNodeWithText("Exchanges").performClick()
@@ -391,6 +396,25 @@ class ScreensTest {
         // Android back returns to the page that opened the workspace.
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Weekly recap")
+    }
+
+    /** `opencode pair --remote`: its one-time link is pasted (or scanned) and the server redeems it. */
+    @Test fun anOpenCodeMachineIsPairedWithTheLinkOfOpencodePair() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        waitFor("Venty")
+        tab("Settings")
+        tapUntil("OpenCode", "Pair with a link")
+        compose.onNodeWithText("Pair with a link").performClick()
+        waitFor("Scan the QR code")
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("pair-form")))[0].performTextInput("https://8fbd.opentunnel.xyz/auth/connect/ZXcLiAFp9to8r6uD7cWV3w")
+        shoot("opencode-pair-dark")
+        compose.onNodeWithText("Pair").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/opencode/instances/pair" } }
+        assertEquals("""{"link":"https://8fbd.opentunnel.xyz/auth/connect/ZXcLiAFp9to8r6uD7cWV3w","defaultDirectory":null}""", posts.first { it.first == "/opencode/instances/pair" }.second)
+        waitFor("devbox")
+        waitFor("paired until")
     }
 
     @Test fun aCompanionsMemoryCanBeReadAndForgotten() {
