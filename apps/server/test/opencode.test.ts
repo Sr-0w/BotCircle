@@ -192,10 +192,15 @@ describe('OpenCode', () => {
   it('poursuit la même session : consigne en file, relance après la fin, attribution exacte', async () => {
     const { agent, task } = await start('Suite');
     fake.work('ses_1', [{ tool: 'edit', status: 'running' }]);
-    expect(await instructOpencode((await getTask(task.id))!, 'Garde les animations.', 'companion', 'garde les anims')).toEqual({ queued: true });
+    expect(await instructOpencode((await getTask(task.id))!, 'Garde les animations.', 'companion', 'garde les anims')).toEqual({ queued: true, delivery: 'queue' }); // 1.x has only one mode: after the current work
     fake.finish('ses_1', 'Fait.');
+    // The queued instruction has not been answered yet: the task is not over, whatever the session status says.
     await syncTask((await getTask(task.id))!);
-    expect((await getTask(task.id))!.status).toBe('completed');
+    expect((await getTask(task.id))!.status).toBe('running');
+    fake.work('ses_1', [{ tool: 'edit', status: 'completed' }]);
+    fake.finish('ses_1', 'Animations gardées.');
+    await syncTask((await getTask(task.id))!);
+    expect((await getTask(task.id))!).toMatchObject({ status: 'completed', result: 'Animations gardées.' });
     // L'utilisateur relance depuis l'espace de code : même session, même carte, de nouveau en cours.
     await sendInstruction(task.id, 'Lance les tests.', 'user');
     const again = (await getTask(task.id))!;

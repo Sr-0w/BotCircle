@@ -17,7 +17,7 @@ export function opencodeTools(ctx: ToolContext): ToolSet {
   /** Sans nom : la seule instance connectée. Plusieurs instances : le compagnon doit choisir, jamais deviner. */
   async function pick(ref?: string): Promise<InstanceRow> {
     const all = await listInstances();
-    if (!all.length) throw new OpencodeError('Aucune instance OpenCode n’est connectée. L’utilisateur en ajoute une dans Paramètres → OpenCode (adresse et mot de passe ne se donnent jamais dans la conversation).');
+    if (!all.length) throw new OpencodeError('Aucune instance OpenCode n’est connectée. L’utilisateur lance `opencode pair --remote` sur sa machine, puis colle le lien (ou scanne le QR code) dans Paramètres → OpenCode → Jumeler. Un mot de passe ne se donne jamais dans la conversation.');
     if (ref) { const found = await findInstance(ref); if (!found) throw new OpencodeError(`Instance « ${ref} » inconnue. Instances : ${all.map((i) => i.name).join(', ')}.`); return found; }
     if (all.length > 1) throw new OpencodeError(`Plusieurs instances sont connectées (${all.map((i) => i.name).join(', ')}) : demande à l'utilisateur laquelle utiliser, puis précise instance.`);
     return all[0];
@@ -79,13 +79,17 @@ export function opencodeTools(ctx: ToolContext): ToolSet {
     opencode_send: tool({
       description:
         "Envoie une consigne à LA MÊME session OpenCode : précision, contrainte, correction, « lance les tests », ou suite après la fin. " +
-        "Si la session travaille, la consigne est placée à la suite : elle n'interrompt pas l'étape en cours (dis « je lui ai transmis », pas « il s'est arrêté »). Si la session était terminée, elle repart dans le même contexte.",
-      inputSchema: z.object({ task_id: z.string().optional(), instruction: z.string().min(1).max(8000), user_request: z.string().max(4000).optional().describe("Les mots de l'utilisateur, si tu les reformules") }).strict(),
-      execute: async ({ task_id, instruction, user_request }) => {
+        "Elle n'interrompt jamais l'étape en cours : dis « je lui ai transmis », pas « il s'est arrêté ». Si la session était terminée, elle repart dans le même contexte.",
+      inputSchema: z.object({
+        task_id: z.string().optional(), instruction: z.string().min(1).max(8000),
+        user_request: z.string().max(4000).optional().describe("Les mots de l'utilisateur, si tu les reformules"),
+        mode: z.enum(['steer', 'queue']).optional().describe("Si la session travaille (OpenCode 2) : steer = intégrée au travail en cours dès son étape suivante (une correction, une contrainte) ; queue = traitée après la fin du travail en cours (une tâche de plus). Par défaut steer."),
+      }).strict(),
+      execute: async ({ task_id, instruction, user_request, mode }) => {
         try {
           const row = await mine(task_id);
-          const { queued } = await instructOpencode(row, instruction, 'companion', user_request);
-          return { ok: true as const, delivered: true, queued, taskId: row.id, note: queued ? 'Queued behind the work in progress; it does not interrupt the current step.' : 'The session was idle and has been restarted with this instruction.' };
+          const { queued, delivery } = await instructOpencode(row, instruction, 'companion', user_request, mode ?? 'steer');
+          return { ok: true as const, delivered: true, queued, delivery, taskId: row.id, note: !queued ? 'The session was idle and has been restarted with this instruction.' : delivery === 'steer' ? 'Folded into the work in progress from its next step; nothing was interrupted.' : 'Queued: handled after the current work ends; it does not interrupt it.' };
         } catch (error) { return fail(error); }
       },
     }),

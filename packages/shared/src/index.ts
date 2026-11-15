@@ -410,6 +410,11 @@ export interface OpencodeInstanceDTO {
   lastSeenAt: string | null;
   lastError: string | null;
   activeTasks: number;
+  /** `v2` = OpenCode 2.x; null until first reached. */
+  apiVersion: 'v1' | 'v2' | null;
+  /** `pairing`: connected with a one-time link from `opencode pair`; its token expires (`tokenExpiresAt`). */
+  authKind: 'password' | 'pairing';
+  tokenExpiresAt: string | null;
 }
 
 export interface OpencodeProjectDTO { id: string; worktree: string; name: string | null }

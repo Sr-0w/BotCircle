@@ -455,6 +455,11 @@ export const opencodeInstances = pgTable('opencode_instances', {
   version: text('version'),
   lastSeenAt: ts('last_seen_at'),
   lastError: text('last_error'),
+  /** `v2` (OpenCode 2.x, /api/…) or `v1`; detected on each check. */
+  apiVersion: text('api_version').$type<'v1' | 'v2'>(),
+  /** `pairing`: the secret is a session token from `opencode pair`, which expires; `password`: the server password. */
+  authKind: text('auth_kind').$type<'password' | 'pairing'>().notNull().default('password'),
+  tokenExpiresAt: ts('token_expires_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
 

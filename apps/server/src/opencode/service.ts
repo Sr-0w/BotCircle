@@ -11,7 +11,7 @@ import { log } from '../journal.ts';
 import { decryptSecret, encryptSecret } from '../secrets.ts';
 import { addTaskEvent, getTask, registerTaskProvider, toTaskDTO, updateTask, type TaskRow } from '../tasks/service.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
-import { OpencodeClient, OpencodeHttpError, OpencodeUnreachable, type RawMessage, type RawPart, type RawSession } from './client.ts';
+import { detectApi, OpencodeHttpError, OpencodeUnreachable, OpencodeV1Client, OpencodeV2Client, parsePairingLink, redeemPairingCode, V1Api, type Delivery, type OpencodeApi, type OpencodeTarget, type RawMessage, type RawPart, type RawSession } from './client.ts';
 
 /*
  * OpenCode dans BotCircle. OpenCode fait le code sur sa machine ; BotCircle tient l'accès, la propriété de la
@@ -28,8 +28,14 @@ let fetcher: typeof fetch = (...args) => fetch(...args);
 /** Pour les tests : remplace l'accès réseau. */
 export function setOpencodeFetch(next: typeof fetch | null) { fetcher = next ?? ((...args) => fetch(...args)); }
 
-function clientFor(row: InstanceRow) {
-  return new OpencodeClient({ baseUrl: row.baseUrl, username: row.username, password: row.password ? decryptSecret(row.password) : null }, fetcher);
+const targetOf = (row: InstanceRow): OpencodeTarget => ({ baseUrl: row.baseUrl, username: row.username, password: row.password ? decryptSecret(row.password) : null });
+/** The API an instance speaks, as last detected; an instance never checked is detected now. */
+async function clientFor(row: InstanceRow): Promise<OpencodeApi> {
+  if (row.apiVersion === 'v2') return new OpencodeV2Client(targetOf(row), fetcher);
+  if (row.apiVersion === 'v1') return new V1Api(new OpencodeV1Client(targetOf(row), fetcher));
+  const api = await detectApi(targetOf(row), fetcher);
+  await db().update(schema.opencodeInstances).set({ apiVersion: api.version }).where(eq(schema.opencodeInstances.id, row.id));
+  return api;
 }
 
 // --- Instances -----------------------------------------------------------------------
@@ -53,6 +59,7 @@ export async function toInstanceDTO(row: InstanceRow): Promise<OpencodeInstanceD
     id: row.id, name: row.name, baseUrl: row.baseUrl, username: row.username, hasPassword: Boolean(row.password), defaultDirectory: row.defaultDirectory,
     version: row.version, state: row.lastError ? 'offline' : row.lastSeenAt ? 'online' : 'unknown',
     lastSeenAt: row.lastSeenAt?.toISOString() ?? null, lastError: row.lastError, activeTasks: await activeCount(row.id),
+    apiVersion: row.apiVersion ?? null, authKind: row.authKind, tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
   };
 }
 
@@ -71,10 +78,14 @@ export async function findInstance(ref: string): Promise<InstanceRow | null> {
 export async function checkInstance(row: InstanceRow): Promise<InstanceRow> {
   let patch: Partial<InstanceRow>;
   try {
-    const health = await clientFor(row).health();
+    const api = await detectApi(targetOf(row), fetcher);
+    const health = await api.health();
     if (!health?.healthy) throw new OpencodeUnreachable('L’instance ne se déclare pas en bonne santé.');
-    patch = { version: health.version ?? null, lastSeenAt: new Date(), lastError: null };
-  } catch (error) { patch = { lastError: errorMessage(error).slice(0, 300) }; }
+    patch = { version: health.version ?? null, apiVersion: api.version, lastSeenAt: new Date(), lastError: null };
+  } catch (error) {
+    const expired = row.authKind === 'pairing' && error instanceof OpencodeHttpError && (error.status === 401 || error.status === 403);
+    patch = { lastError: expired ? 'Le jumelage a expiré ou a été révoqué : relance `opencode pair --remote` et colle le nouveau lien.' : errorMessage(error).slice(0, 300) };
+  }
   const [updated] = await db().update(schema.opencodeInstances).set(patch).where(eq(schema.opencodeInstances.id, row.id)).returning();
   if ((row.lastError ?? null) !== (updated.lastError ?? null) || row.version !== updated.version) publish({ type: 'opencode.changed' });
   return updated;
@@ -93,11 +104,35 @@ export async function saveInstance(input: { id?: string; name: string; baseUrl: 
     if (!existing) throw new OpencodeError('Instance introuvable.');
     // Mot de passe : absent = inchangé, null ou vide = retiré, texte = remplacé.
     const password = input.password === undefined ? existing.password : input.password ? encryptSecret(input.password) : null;
-    [row] = await db().update(schema.opencodeInstances).set({ ...values, password }).where(eq(schema.opencodeInstances.id, input.id)).returning();
+    // A password typed by hand replaces a paired token.
+    const auth = input.password === undefined ? {} : { authKind: 'password' as const, tokenExpiresAt: null };
+    [row] = await db().update(schema.opencodeInstances).set({ ...values, password, ...auth }).where(eq(schema.opencodeInstances.id, input.id)).returning();
   } else {
     [row] = await db().insert(schema.opencodeInstances).values({ id: newId('oc'), ...values, password: input.password ? encryptSecret(input.password) : null }).returning();
   }
   row = await checkInstance(row);
+  publish({ type: 'opencode.changed' });
+  return row;
+}
+
+/**
+ * Connects a machine from the one-time link of `opencode pair` (or `opencode pair --remote`, through OpenTunnel): the
+ * code is redeemed for a session token, kept encrypted like a password. Pairing the same address again renews it.
+ */
+export async function pairInstance(input: { link: string; name?: string | null; defaultDirectory?: string | null }): Promise<InstanceRow> {
+  const { baseUrl, code } = parsePairingLink(input.link);
+  const { token, expiresAt } = await redeemPairingCode(baseUrl, code, fetcher);
+  const target = { baseUrl, username: 'opencode', password: token };
+  const api = await detectApi(target, fetcher);
+  const health = await api.health();
+  const existing = (await listInstances()).find((i) => i.baseUrl === baseUrl);
+  const taken = new Set((await listInstances()).filter((i) => i.id !== existing?.id).map((i) => i.name.toLowerCase()));
+  let name = (input.name?.trim() || existing?.name || (health as { hostname?: string | null }).hostname || 'OpenCode').slice(0, 60);
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${name.replace(/ \d+$/, '')} ${n}`;
+  const values = { name, baseUrl, username: 'opencode', password: encryptSecret(token), authKind: 'pairing' as const, tokenExpiresAt: expiresAt, apiVersion: api.version, version: health.version ?? null, lastSeenAt: new Date(), lastError: null, defaultDirectory: input.defaultDirectory?.trim() || existing?.defaultDirectory || null };
+  const [row] = existing
+    ? await db().update(schema.opencodeInstances).set(values).where(eq(schema.opencodeInstances.id, existing.id)).returning()
+    : await db().insert(schema.opencodeInstances).values({ id: newId('oc'), ...values }).returning();
   publish({ type: 'opencode.changed' });
   return row;
 }
@@ -112,12 +147,12 @@ export async function deleteInstance(id: string) {
 const toSession = (s: RawSession, busy: boolean): OpencodeSessionDTO => ({ id: s.id, title: s.title, directory: s.directory, updatedAt: s.time.updated, busy, additions: s.summary?.additions ?? 0, deletions: s.summary?.deletions ?? 0, files: s.summary?.files ?? 0 });
 
 export async function instanceProjects(row: InstanceRow): Promise<OpencodeProjectDTO[]> {
-  return (await clientFor(row).projects()).map((p) => ({ id: p.id, worktree: p.worktree, name: p.name ?? null }));
+  return (await (await clientFor(row)).projects()).map((p) => ({ id: p.id, worktree: p.worktree, name: p.name ?? null }));
 }
 export async function instanceSessions(row: InstanceRow, directory?: string | null): Promise<OpencodeSessionDTO[]> {
-  const client = clientFor(row), dir = directory ?? row.defaultDirectory;
+  const client = await clientFor(row), dir = directory ?? row.defaultDirectory;
   const [sessions, statuses] = await Promise.all([client.sessions(dir), client.statuses(dir).catch(() => ({} as Record<string, { type: string }>))]);
-  return sessions.map((s) => toSession(s, (statuses[s.id]?.type ?? 'idle') !== 'idle'));
+  return sessions.map((s) => toSession(s, Boolean(statuses[s.id]) && statuses[s.id].type !== 'idle'));
 }
 
 // --- Échanges ---------------------------------------------------------------------------
@@ -142,7 +177,7 @@ async function patchExternal(task: TaskRow, patch: Partial<TaskExternalRef>, mor
  * consigne. La tâche n'existe dans le registre qu'une fois la consigne acceptée par l'instance.
  */
 export async function startOpencodeTask(input: { agentId: string; conversationId: string; instance: InstanceRow; directory?: string | null; sessionId?: string | null; title: string; instruction: string; original?: string | null; requestedBy: 'agent' | 'user' }): Promise<TaskRow> {
-  const client = clientFor(input.instance);
+  const client = await clientFor(input.instance);
   const directory = input.directory?.trim() || input.instance.defaultDirectory || null;
   const session = input.sessionId ? await client.session(input.sessionId, directory) : await client.createSession(input.title.slice(0, 120), directory);
   if (input.sessionId) {
@@ -172,18 +207,18 @@ async function context(task: TaskRow) {
   if (task.provider !== 'opencode' || !ext) throw new OpencodeError('Cette tâche n’est pas une session OpenCode.');
   const instance = await getInstance(ext.instanceId);
   if (!instance) throw new OpencodeError('L’instance OpenCode de cette tâche a été retirée.');
-  return { ext, instance, client: clientFor(instance) };
+  return { ext, instance, client: await clientFor(instance) };
 }
 
 /** Une consigne dans LA session de la tâche. Si elle travaille, OpenCode la traite à la suite ; sinon elle relance la session. */
-export async function instructOpencode(task: TaskRow, instruction: string, author: 'user' | 'companion', original?: string | null): Promise<{ queued: boolean }> {
+export async function instructOpencode(task: TaskRow, instruction: string, author: 'user' | 'companion', original?: string | null, delivery?: Delivery): Promise<{ queued: boolean; delivery: Delivery | null }> {
   const { ext, client } = await context(task);
-  const busy = ((await client.statuses(ext.directory))[ext.sessionId]?.type ?? 'idle') !== 'idle';
-  await client.prompt(ext.sessionId, instruction, ext.directory);
+  const busy = Boolean((await client.statuses(ext.directory))[ext.sessionId]);
+  const delivered = await client.prompt(ext.sessionId, instruction, ext.directory, busy ? delivery : undefined);
   await exchange(task, { author, kind: 'instruction', text: instruction, original });
   // Une session terminée repart : la carte redevient « en cours », le prochain résultat sera un nouveau résultat.
-  await patchExternal(task, { promptedAt: Date.now(), unreachable: false }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, currentAction: busy ? 'Consigne placée à la suite du travail en cours' : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
-  return { queued: busy };
+  await patchExternal(task, { promptedAt: Date.now(), unreachable: false }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
+  return { queued: busy, delivery: busy ? (delivered ?? 'queue') : null };
 }
 
 registerTaskProvider('opencode', {
@@ -226,7 +261,7 @@ export async function workspace(task: TaskRow): Promise<OpencodeWorkspaceDTO> {
   try {
     const [session, statuses, messages, permissions, questions, diffs] = await Promise.all([
       client.session(ext.sessionId, ext.directory), client.statuses(ext.directory), client.messages(ext.sessionId, ext.directory, 80),
-      client.permissions(ext.directory).catch(() => []), client.questions(ext.directory).catch(() => []), client.diff(ext.sessionId, ext.directory).catch(() => []),
+      client.permissions(ext.sessionId, ext.directory).catch(() => []), client.questions(ext.sessionId, ext.directory).catch(() => []), client.diff(ext.sessionId, ext.directory).catch(() => []),
     ]);
     const status = statuses[ext.sessionId]?.type ?? 'idle';
     return {
@@ -245,15 +280,15 @@ export async function workspace(task: TaskRow): Promise<OpencodeWorkspaceDTO> {
 /** La décision de l'utilisateur va à la bonne session ; elle ne donne au compagnon aucun droit sur la machine. */
 export async function replyPermission(task: TaskRow, requestId: string, reply: 'once' | 'always' | 'reject') {
   const { ext, client } = await context(task);
-  if (!(await client.permissions(ext.directory)).some((p) => p.id === requestId && p.sessionID === ext.sessionId)) throw new OpencodeError('Cette demande n’attend plus de réponse.');
-  await client.replyPermission(requestId, reply, ext.directory);
+  if (!(await client.permissions(ext.sessionId, ext.directory)).some((p) => p.id === requestId)) throw new OpencodeError('Cette demande n’attend plus de réponse.');
+  await client.replyPermission(ext.sessionId, requestId, reply, ext.directory);
   await exchange(task, { author: 'user', kind: 'permission', text: reply === 'reject' ? 'Autorisation refusée' : reply === 'always' ? 'Autorisation accordée (toujours)' : 'Autorisation accordée (cette fois)' });
   await syncTask((await getTask(task.id))!);
 }
 export async function replyQuestion(task: TaskRow, requestId: string, answers: string[][]) {
   const { ext, client } = await context(task);
-  if (!(await client.questions(ext.directory)).some((q) => q.id === requestId && q.sessionID === ext.sessionId)) throw new OpencodeError('Cette question n’attend plus de réponse.');
-  await client.replyQuestion(requestId, answers, ext.directory);
+  if (!(await client.questions(ext.sessionId, ext.directory)).some((q) => q.id === requestId)) throw new OpencodeError('Cette question n’attend plus de réponse.');
+  await client.replyQuestion(ext.sessionId, requestId, answers, ext.directory);
   await exchange(task, { author: 'user', kind: 'question', text: `Réponse : ${answers.map((a) => a.join(', ')).join(' · ')}` });
   await syncTask((await getTask(task.id))!);
 }
@@ -299,12 +334,15 @@ export async function syncTask(task: TaskRow): Promise<void> {
   const ext = task.external;
   const instance = await getInstance(ext.instanceId);
   if (!instance) { await updateTask(task.id, { status: 'failed', finishedAt: new Date(), error: 'L’instance OpenCode a été retirée.', currentAction: null }); return; }
-  const client = clientFor(instance);
+  let client: OpencodeApi;
   try {
-    const [statuses, messages, permissions, questions] = await Promise.all([client.statuses(ext.directory), client.messages(ext.sessionId, ext.directory, 60), client.permissions(ext.directory).catch(() => []), client.questions(ext.directory).catch(() => [])]);
+    client = await clientFor(instance);
+    const [statuses, messages, permissions, questions] = await Promise.all([client.statuses(ext.directory), client.messages(ext.sessionId, ext.directory, 60), client.permissions(ext.sessionId, ext.directory).catch(() => []), client.questions(ext.sessionId, ext.directory).catch(() => [])]);
     const status = statuses[ext.sessionId] ?? { type: 'idle' as const };
-    const since = (ext.promptedAt ?? 0) - 2000;
-    const recent = messages.filter((m) => m.info.time.created >= since);
+    // The current turn is what follows the latest request in the session. Using the transcript rather than clocks
+    // keeps this right when the development machine's clock differs from the server's.
+    const lastRequest = messages.map((m) => m.info.role).lastIndexOf('user');
+    const recent = lastRequest >= 0 ? messages.slice(lastRequest + 1) : messages;
     const tools = recent.flatMap((m) => m.parts.filter((p) => p.type === 'tool' && p.state));
     const done = tools.filter((p) => p.state!.status === 'completed' || p.state!.status === 'error').length;
     const running = [...tools].reverse().find((p) => p.state!.status === 'running' || p.state!.status === 'pending');
@@ -324,7 +362,9 @@ export async function syncTask(task: TaskRow): Promise<void> {
     if (status.type === 'idle' && lastAssistant && lastAssistant.info.id !== ext.seenMessageId && (lastAssistant.info.time.completed || lastAssistant.info.error)) {
       const failure = errorOf(lastAssistant);
       const diffs = await client.diff(ext.sessionId, ext.directory).then((d) => d.map(toDiff)).catch(() => null);
-      await conclude(task, instance.name, failure ? 'failed' : 'completed', failure ?? textOf(lastAssistant), lastAssistant.info.id, diffs, done);
+      // 2.x splits a turn into one message per step: the answer is the latest step that has text.
+      const answer = [...recent].reverse().find((m) => m.info.role === 'assistant' && textOf(m));
+      await conclude(task, instance.name, failure ? 'failed' : 'completed', failure ?? (answer ? textOf(answer) : ''), lastAssistant.info.id, diffs, done);
       return;
     }
     const next = { status: 'running' as const, blocker: null, requiresUserInput: false, phase: status.type === 'idle' ? 'En attente de la réponse d’OpenCode' : 'Travail en cours', currentAction: activity, completedSteps: Math.max(task.completedSteps, done) };

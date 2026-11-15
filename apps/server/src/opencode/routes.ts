@@ -4,7 +4,7 @@ import { getTask, TaskError } from '../tasks/service.ts';
 import { OpencodeHttpError, OpencodeUnreachable } from './client.ts';
 import {
   checkInstance, deleteInstance, getInstance, instanceProjects, instanceSessions, instructOpencode, listExchanges, listFiles, listInstances, OpencodeError, readFile,
-  replyPermission, replyQuestion, saveInstance, syncTask, toInstanceDTO, workspace,
+  pairInstance, replyPermission, replyQuestion, saveInstance, syncTask, toInstanceDTO, workspace,
 } from './service.ts';
 
 const instanceSchema = z.object({
@@ -28,6 +28,11 @@ export function opencodeRoutes() {
 
   app.get('/instances', async (c) => c.json(await Promise.all((await listInstances()).map(toInstanceDTO))));
   app.post('/instances', async (c) => c.json(await toInstanceDTO(await saveInstance(instanceSchema.parse(await c.req.json())))));
+  // Lien d'appairage de `opencode pair --remote` (ou son QR code) : le code est échangé ici, une seule fois.
+  app.post('/instances/pair', async (c) => {
+    const body = z.object({ link: z.string().min(10).max(2000), name: z.string().max(60).nullable().optional(), defaultDirectory: z.string().max(1000).nullable().optional() }).strict().parse(await c.req.json());
+    return c.json(await toInstanceDTO(await pairInstance(body)));
+  });
   app.put('/instances/:id', async (c) => c.json(await toInstanceDTO(await saveInstance({ id: c.req.param('id'), ...instanceSchema.parse(await c.req.json()) }))));
   app.post('/instances/:id/check', async (c) => c.json(await toInstanceDTO(await checkInstance(await instance(c.req.param('id'))))));
   app.delete('/instances/:id', async (c) => { await deleteInstance(c.req.param('id')); return c.json({ ok: true }); });
@@ -38,8 +43,8 @@ export function opencodeRoutes() {
   app.get('/tasks/:id', async (c) => { const row = await task(c.req.param('id')); await syncTask(row).catch(() => {}); return c.json(await workspace((await getTask(row.id))!)); });
   // Consigne saisie par l'utilisateur dans l'espace de code : attribuée à l'utilisateur, pas à un compagnon.
   app.post('/tasks/:id/prompt', async (c) => {
-    const { text } = z.object({ text: z.string().min(1).max(8000) }).strict().parse(await c.req.json());
-    return c.json(await instructOpencode(await task(c.req.param('id')), text.trim(), 'user'));
+    const { text, delivery } = z.object({ text: z.string().min(1).max(8000), delivery: z.enum(['steer', 'queue']).optional() }).strict().parse(await c.req.json());
+    return c.json(await instructOpencode(await task(c.req.param('id')), text.trim(), 'user', null, delivery));
   });
   app.post('/tasks/:id/permissions/:requestId', async (c) => {
     const { reply } = z.object({ reply: z.enum(['once', 'always', 'reject']) }).strict().parse(await c.req.json());
