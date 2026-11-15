@@ -77,6 +77,27 @@ try {
     return `tâche « ${task.title} », ${done.completedSteps} étape(s) ; ${bubblesBefore} bulle(s) avant le résultat ; « ça en est où ? » ${asked ? 'a interrogé task_status' : 'N’A PAS interrogé task_status'} ; résultat : ${messageText(after[0]).replace(/\s+/g, ' ').slice(0, 110)}…`;
   });
 
+  await check('#21 exécute ce qu’il annonce : pas d’annonces répétées sans action, et une relance obtient un résultat', async () => {
+    const ari = await companion('Méthodique');
+    const turn = await say(ari.id, ari.conv, 'Mémorise ces cinq faits, un par un, puis confirme : 1) mon chat s’appelle Pixel 2) je suis allergique aux noix 3) mon bureau est au 3e étage 4) je préfère le thé au café 5) mon anniversaire est le 9 mars.');
+    assert.equal(turn.error, null, String(turn.error));
+    const message = (await loadMessages(ari.conv, { limit: 6 })).messages.at(-1)!;
+    const calls = message.parts.filter((p) => p.type === 'tool-memory_remember').length;
+    const bubbles = message.parts.flatMap((p: any) => p.type === 'text' ? [p.text] : p.type === 'tool-text_user' ? [p.input?.text ?? ''] : []).map((t: string) => t.trim()).filter(Boolean);
+    assert.ok(calls >= 5, `${calls} mémorisation(s) au lieu de 5`);
+    // Une annonce = une bulle au futur (« je vais… ») ; elles ne doivent ni se répéter ni dépasser les actions.
+    const announcements = bubbles.filter((t: string) => /\b(je vais|je m[’']en occupe|je commence|je poursuis|je reprends)\b/i.test(t));
+    const normalized = bubbles.map((t: string) => t.toLowerCase().replace(/[^a-zà-ÿ ]/g, '').slice(0, 60));
+    const duplicates = normalized.length - new Set(normalized).size;
+    assert.ok(announcements.length <= 1, `${announcements.length} annonces pour ${calls} actions : ${announcements.join(' | ').slice(0, 300)}`);
+    assert.equal(duplicates, 0, `${duplicates} bulle(s) répétée(s)`);
+    const nudge = await say(ari.id, ari.conv, 'Tu n’as encore rien livré ? Dis-moi exactement ce qui est fait.');
+    assert.equal(nudge.error, null, String(nudge.error));
+    assert.ok(/pixel/i.test(nudge.text) && /noix/i.test(nudge.text), `la relance n’obtient pas l’état réel : ${nudge.text.slice(0, 200)}`);
+    assert.ok(!/^\s*(je vais|je commence|je m[’']en occupe)/i.test(nudge.text), `la relance obtient une nouvelle promesse : ${nudge.text.slice(0, 160)}`);
+    return `${calls} actions, ${bubbles.length} bulle(s) dont ${announcements.length} annonce ; relance : « ${nudge.text.replace(/\s+/g, ' ').slice(0, 110)}… »`;
+  });
+
   await check('#30 lit un fichier joint à la demande, puis remet un vrai fichier', async () => {
     const ari = await companion('Lectrice');
     const file = await createArtifact({ bytes: new TextEncoder().encode('# Réunion du 12\n\nDécision : la livraison est fixée au vendredi 21.\nBudget validé : 4 200 euros.\n'), name: 'compte-rendu.md', authorKind: 'user', source: 'upload', conversationId: ari.conv });
