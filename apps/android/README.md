@@ -8,8 +8,14 @@ It speaks the same HTTP API as the web app, so it works with any OpenDots server
 - One conversation per companion, with streamed replies, Markdown, code blocks and images.
 - Reasoning and tool calls tucked behind a "Worked for…" line; terminal output and search results on demand.
 - Approvals, "ready to send" email drafts and question forms, answered in the thread.
-- Image attachments (system photo picker), replies, reactions, stop.
-- Full-screen pages, no drawer: Companions (home), Tasks, Approvals and Settings behind a quiet bottom bar; a
+- Attachments of any type (system document picker): images are shown to the model, every other file is handed over
+  unchanged and shown as a file card (name, type, size, Open, Save, Access with history and revoke).
+- Background tasks as a single card updated in place (status, current step, actions run, Details / Pause / Cancel),
+  listed under Tasks with their journal.
+- Chats: free threads that belong to no companion, with their own model; `@Name` brings a companion in and its answer
+  is signed.
+- Replies, reactions, stop.
+- Full-screen pages, no drawer: Companions (home), Chats, Tasks, Approvals and Settings behind a quiet bottom bar; a
   conversation, a companion's profile (name, model, permissions) and its computer are pushed pages.
 - A companion's computer, live, with optional take-over (mouse and keyboard).
 - System, light, dark and true-black OLED themes; English and French.
@@ -21,8 +27,9 @@ Connectors, skills, memory and the desktop viewer are still managed from the web
 The app has no hamburger menu and no side drawer. This replaces the "side drawer" recommendation of section 8 of the
 original Quiet UI spec for OpenDots Android (issue #28): do not reintroduce it.
 
-- Top level: Companions, Tasks, Approvals, Settings, switched with the bottom bar. Android back returns to Companions.
+- Top level: Companions, Chats, Tasks, Approvals, Settings, switched with the bottom bar. Android back returns to Companions.
 - Companions → conversation → profile → model picker or computer. Back always leads to the page that opened the current one.
+- Chats → chat → chat settings → model picker.
 - The app reopens on the conversation it was left on.
 
 ## Modules
@@ -45,6 +52,10 @@ Settings → Quiet UI catalog shows every token and component, plus a scrolling 
 ```
 
 The tests drive the real app against a fake OpenDots engine and write a PNG of each screen to `app/build/shots`.
+
+## Strings
+
+`res/values{,-fr}/strings.xml` are generated: edit `tools/strings.py`, then run `python3 tools/strings.py app/src/main/res`.
 
 ## Release
 

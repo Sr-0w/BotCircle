@@ -79,6 +79,15 @@ fun ActionCard(part: Part.Tool, message: ChatMessage, env: MessageEnv) {
             val to = out.str("to") ?: input?.str("to").orEmpty()
             InfoCard(Icons.AutoMirrored.Outlined.Chat, stringResource(R.string.message_sent_to, to), input?.str("message"))
         }
+        (part.name == "task_start" || part.name == "invoke_agent") && out.str("taskId") != null -> {
+            val taskId = out.str("taskId")!!
+            val task = env.tasks[taskId]
+            LaunchedEffect(taskId, task == null) { if (task == null) env.onNeedTask(taskId) }
+            TaskCard(
+                task, onDetails = { env.onOpenTask(taskId) }, onAction = { env.onTaskAction(taskId, it) },
+                agent = if (part.name == "invoke_agent") env.agents.firstOrNull { it.id == (task?.agentId ?: out.str("agentId")) } else null,
+            )
+        }
         part.name == "ask_user" && out.str("requestId") != null -> {
             val questions = remember(part.input) {
                 input?.arr("questions").orEmpty().mapNotNull { q -> runCatching { OdJson.decodeFromJsonElement<AskQuestion>(q) }.getOrNull() }

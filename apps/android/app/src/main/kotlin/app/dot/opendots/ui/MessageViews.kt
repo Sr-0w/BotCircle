@@ -41,6 +41,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +71,7 @@ import app.dot.opendots.chat.presentAssistantTurn
 import app.dot.opendots.chat.userText
 import app.dot.opendots.data.Agent
 import app.dot.opendots.data.Approval
+import app.dot.opendots.data.BgTask
 import app.dot.opendots.data.ChatMessage
 import app.dot.opendots.data.MailDraft
 import app.dot.opendots.data.Part
@@ -105,6 +107,15 @@ class MessageEnv(
     val onOpenWeb: () -> Unit,
     val onOpenImage: (String) -> Unit,
     val onShowWork: () -> Unit = {},
+    /** Background tasks by id, kept current by the server. */
+    val tasks: Map<String, BgTask> = emptyMap(),
+    val onNeedTask: (String) -> Unit = {},
+    val onOpenTask: (String) -> Unit = {},
+    val onTaskAction: (taskId: String, action: String) -> Unit = { _, _ -> },
+    val fileActions: FileActions? = null,
+    val onFileAccess: ((String) -> Unit)? = null,
+    /** General chats sign every answer: the assistant, or the companion that contributed. */
+    val attribution: Boolean = false,
 )
 
 @Composable
@@ -148,11 +159,25 @@ private fun UserMessage(message: ChatMessage, env: MessageEnv, modifier: Modifie
                     }
                 }
                 if (text.isNotEmpty()) Text(text, style = Dot.type.body, color = Dot.colors.textPrimary)
-                files.forEach { file -> AttachedImage(file, env) }
+                files.forEach { file -> if (file.mediaType.startsWith("image/")) AttachedImage(file, env) else FileCard(file, env.fileActions, onAccess = env.onFileAccess) }
             }
             MessageMenu(menu, { menu = false }, text, message.id, "user", env)
         }
         Reactions(message.id, message.meta.reactions, env)
+    }
+}
+
+/** Who answered, in a general chat: the companion that contributed, otherwise the assistant and its model. */
+@Composable
+private fun Author(message: ChatMessage, env: MessageEnv) {
+    val agent = message.meta.agentId?.let { id -> env.agents.firstOrNull { it.id == id } }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("author")) {
+        if (agent != null) { CompanionOrb(agent, size = 16.dp); Spacer(Modifier.width(DotSpacing.s)) }
+        Text(
+            when { agent != null -> agentDisplayName(agent); message.meta.agentId != null -> stringResource(R.string.a_companion); else -> stringResource(R.string.assistant) },
+            style = Dot.type.label, color = Dot.colors.textPrimary,
+        )
+        if (message.meta.agentId == null && !message.meta.model.isNullOrBlank()) Text("  ·  " + message.meta.model, style = Dot.type.caption, color = Dot.colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -167,6 +192,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
     val haptics = LocalHapticFeedback.current
     val firstText = turn.bubbles.firstOrNull { it is Bubble.Text }?.key
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+        if (env.attribution && turn.bubbles.isNotEmpty()) Author(message, env)
         if (turn.bubbles.isNotEmpty()) {
             Box {
                 // Each sentence the companion sends is its own bubble, like an instant-messaging thread.
@@ -189,6 +215,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                                 )
                             }
                             is Bubble.Image -> AttachedImage(bubble.file, env)
+                            is Bubble.File -> FileCard(bubble.file, env.fileActions, size = bubble.size, caption = bubble.caption, onAccess = env.onFileAccess)
                         }
                     }
                 }

@@ -62,6 +62,9 @@ fun parseServerEvent(raw: JsonObject): ServerEvent? {
         "draft.changed" -> decode("draft") { OdJson.decodeFromJsonElement<MailDraft>(it) }?.let(ServerEvent::DraftChanged)
         "activity.changed" -> ServerEvent.ActivityChanged(raw.str("agentId").orEmpty())
         "settings.changed" -> ServerEvent.SettingsChanged
+        "task.changed" -> decode("task") { OdJson.decodeFromJsonElement<BgTask>(it) }?.let(ServerEvent::TaskChanged)
+        "chat.changed" -> ServerEvent.ChatChanged(raw.str("chatId").orEmpty(), raw.bool("deleted") == true)
+        "artifact.changed" -> ServerEvent.ArtifactChanged(raw.str("artifactId").orEmpty())
         else -> ServerEvent.Other(type)
     }
 }

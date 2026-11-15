@@ -155,4 +155,37 @@ class ProtocolTest {
         assertEquals(MdBlock.Table(listOf("a", "b"), listOf(listOf("1", "2"))), blocks[5])
         assertEquals(MdBlock.Code("kotlin", "val x = 1"), blocks[6])
     }
+
+    @Test fun filesAndTasksLeaveTheWorkPanel() {
+        val message = parseMessage(obj("""{"id":"m","role":"assistant","parts":[
+          {"type":"tool-task_start","toolCallId":"a","state":"output-available","input":{"title":"Report"},"output":{"ok":true,"status":"queued","taskId":"task_1"}},
+          {"type":"tool-artifact_publish_to_chat","toolCallId":"b","state":"output-available","input":{},"output":{"ok":true,"status":"published","caption":"The report","artifact":{"id":"art_1","url":"/api/artifacts/art_1/content","name":"report.pdf","mediaType":"application/pdf","size":2048}}},
+          {"type":"tool-artifact_publish_to_chat","toolCallId":"c","state":"output-available","input":{},"output":{"ok":false,"error":"denied"}},
+          {"type":"file","url":"/api/artifacts/art_2/content","filename":"data.csv","mediaType":"text/csv"}]}"""))!!
+        val turn = presentAssistantTurn(message)
+        assertEquals(listOf("task_start"), turn.actions.map { it.name })
+        val files = turn.bubbles.filterIsInstance<Bubble.File>()
+        assertEquals(listOf("report.pdf", "data.csv"), files.map { it.file.filename })
+        assertEquals(2048L, files[0].size)
+        assertEquals("The report", files[0].caption)
+        // A refused publication is not a delivered file: it stays in the work panel as a failed step.
+        assertEquals(listOf("artifact_publish_to_chat"), turn.tools.map { it.name })
+        assertEquals("art_2", app.dot.opendots.data.artifactIdFromUrl("https://od.example.com/api/artifacts/art_2/content?download=1"))
+        assertNull(app.dot.opendots.data.artifactIdFromUrl("/api/attachments/abc"))
+    }
+
+    @Test fun mentionsResolveOnCompanionNames() {
+        val agents = listOf(app.dot.opendots.data.Agent("a1", "Dev", named = true), app.dot.opendots.data.Agent("a2", "Devon", named = true), app.dot.opendots.data.Agent("a3", "Ari", named = true))
+        assertEquals(listOf("a2"), app.dot.opendots.data.findMentions("hey @devon, look", agents))
+        assertEquals(listOf("a1", "a3").sorted(), app.dot.opendots.data.findMentions("@Dev and @ari please", agents).sorted())
+        assertTrue(app.dot.opendots.data.findMentions("mail me at x@dev.io", agents).isEmpty())
+    }
+
+    @Test fun taskAndChatEventsAreUnderstood() {
+        val event = parseServerEvent(obj("""{"type":"task.changed","task":{"id":"task_1","agentId":"a1","conversationId":"c1","title":"Report","status":"waiting_for_user","blocker":"Needs the password","completedSteps":3,"futureField":1}}"""))
+        val task = (event as ServerEvent.TaskChanged).task
+        assertTrue(task.active)
+        assertEquals("Needs the password", task.line)
+        assertEquals(ServerEvent.ChatChanged("ch1", true), parseServerEvent(obj("""{"type":"chat.changed","chatId":"ch1","deleted":true}""")))
+    }
 }

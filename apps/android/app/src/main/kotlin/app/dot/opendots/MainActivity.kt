@@ -59,6 +59,14 @@ import app.dot.design.components.DotSnackbar
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Forum
+import app.dot.opendots.data.Agent
+import app.dot.opendots.ui.ChatSettingsPage
+import app.dot.opendots.ui.ChatsPage
+import app.dot.opendots.ui.FilesSheet
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
@@ -140,10 +148,10 @@ fun OpenDotsRoot(app: AppState, ui: AppUiState) {
 
 
 /** Top-level destinations, shown with the bottom navigation bar. */
-private enum class Tab { Companions, Tasks, Approvals, Settings }
+private enum class Tab { Companions, Chats, Tasks, Approvals, Settings }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private enum class Page { None, Chat, Profile, Model, Desktop, Catalog }
+private enum class Page { None, Chat, Profile, Model, Desktop, Catalog, GeneralChat, ChatSettings, ChatModel }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -160,6 +168,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         page = when (page) {
             Page.Model, Page.Desktop -> Page.Profile
             Page.Profile -> Page.Chat
+            Page.ChatModel -> Page.ChatSettings
+            Page.ChatSettings -> Page.GeneralChat
             else -> Page.None
         }
     }
@@ -179,11 +189,15 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         label = "page",
     ) { current ->
         val agent = ui.currentAgent
+        val chat = ui.currentChat
+        var companionFiles by remember { mutableStateOf(false) }
+        val chatPage = current == Page.GeneralChat || current == Page.ChatSettings || current == Page.ChatModel
         when {
-            current == Page.None || agent == null && current != Page.Catalog -> Column(Modifier.fillMaxSize()) {
+            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && !chatPage) -> Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
                     when (tab) {
                         Tab.Companions -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
+                        Tab.Chats -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
                         Tab.Tasks -> TasksScreen(app, ui)
                         Tab.Approvals -> ApprovalsScreen(app, ui)
                         Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb)
@@ -192,7 +206,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 DotBottomBar(
                     items = listOf(
                         DotBottomBarItem(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.companions), badge = ui.agents.any { it.unread > 0 }),
-                        DotBottomBarItem(Icons.Outlined.CalendarMonth, stringResource(R.string.tasks_short)),
+                        DotBottomBarItem(Icons.Outlined.Forum, stringResource(R.string.chats)),
+                        DotBottomBarItem(Icons.Outlined.CalendarMonth, stringResource(R.string.tasks_short), badge = ui.activeTasks.any { it.status == "waiting_for_user" }),
                         DotBottomBarItem(Icons.Outlined.Shield, stringResource(R.string.approvals), badge = ui.pendingApprovals.isNotEmpty()),
                         DotBottomBarItem(Icons.Outlined.Settings, stringResource(R.string.settings)),
                     ),
@@ -202,7 +217,18 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             }
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
             current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile })
-            current == Page.Profile -> CompanionProfilePage(agent!!, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onChangeModel = { page = Page.Model }) { patch -> app.updateAgent(agent.id, patch) }
+            current == Page.GeneralChat -> ChatScreen(
+                app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
+                onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat,
+            )
+            current == Page.ChatSettings -> ChatSettingsPage(app, ui, chat!!, onBack = ::back, onChangeModel = { page = Page.ChatModel }, onDeleted = { page = Page.None })
+            current == Page.ChatModel -> ModelPickerPage(app, chat!!.title, chat.effectiveModel, onBack = ::back) { provider, model ->
+                app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model) } })
+            }
+            current == Page.Profile -> {
+                CompanionProfilePage(agent!!, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onChangeModel = { page = Page.Model }, onOpenFiles = { companionFiles = true }) { patch -> app.updateAgent(agent.id, patch) }
+                if (companionFiles) FilesSheet(app, ui, stringResource(R.string.files), agentId = agent.id, conversationId = null) { companionFiles = false }
+            }
             current == Page.Model -> ModelPickerPage(app, agent!!, onBack = ::back)
             else -> DesktopScreen(app, agent!!, onBack = ::back)
         }

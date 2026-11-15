@@ -9,6 +9,9 @@ import app.dot.opendots.data.Activity
 import app.dot.opendots.data.Agent
 import app.dot.opendots.data.ApiException
 import app.dot.opendots.data.Approval
+import app.dot.opendots.data.BgTask
+import app.dot.opendots.data.ChatTarget
+import app.dot.opendots.data.GeneralChat
 import app.dot.opendots.data.MailDraft
 import app.dot.opendots.data.ModelInfo
 import app.dot.opendots.data.OpenDotsClient
@@ -52,6 +55,11 @@ data class AppUiState(
     val requests: Map<String, UserRequest> = emptyMap(),
     val drafts: Map<String, MailDraft> = emptyMap(),
     val activities: List<Activity>? = null,
+    /** Background tasks known to the app, kept current by server events. */
+    val tasks: Map<String, BgTask> = emptyMap(),
+    /** General chats, most recent first. */
+    val chats: List<GeneralChat> = emptyList(),
+    val currentChatId: String? = null,
     val connected: Boolean = true,
     val paused: Boolean = false,
     val busy: Boolean = false,
@@ -60,6 +68,8 @@ data class AppUiState(
     val reduceTransparency: Boolean = false,
 ) {
     val currentAgent: Agent? get() = agents.firstOrNull { it.id == currentAgentId } ?: agents.firstOrNull()
+    val currentChat: GeneralChat? get() = chats.firstOrNull { it.id == currentChatId }
+    val activeTasks: List<BgTask> get() = tasks.values.filter { it.active }.sortedByDescending { it.createdAt }
     val pendingApprovals: List<Approval> get() = approvals.values.filter { it.status == "pending" }.sortedByDescending { it.createdAt }
 }
 
@@ -110,6 +120,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
             )
         }
         runCatching { client.approvals() }.onSuccess { list -> _state.update { s -> s.copy(approvals = list.associateBy { it.id }) } }
+        loadWork()
         listen()
     }
 
@@ -227,6 +238,11 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
             is ServerEvent.RequestChanged -> _state.update { it.copy(requests = it.requests + (event.request.id to event.request)) }
             is ServerEvent.DraftChanged -> _state.update { it.copy(drafts = it.drafts + (event.draft.id to event.draft)) }
             is ServerEvent.ActivityChanged -> if (_state.value.activities != null) loadActivities()
+            is ServerEvent.TaskChanged -> _state.update { it.copy(tasks = it.tasks + (event.task.id to event.task.copy(events = it.tasks[event.task.id]?.events.orEmpty()))) }
+            is ServerEvent.ChatChanged -> {
+                if (event.deleted) _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == event.chatId }, currentChatId = s.currentChatId.takeIf { it != event.chatId }) }
+                viewModelScope.launch { runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } } }
+            }
             ServerEvent.SettingsChanged -> viewModelScope.launch { runCatching { client.bootstrap() }.onSuccess { boot -> _state.update { it.copy(paused = boot.paused) } } }
             else -> Unit
         }
@@ -241,6 +257,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
                 val approvals = client.approvals()
                 _state.update { it.copy(agents = agents, approvals = approvals.associateBy { a -> a.id }) }
                 _state.value.currentAgentId?.let { sessions[it]?.resync() }
+                _state.value.currentChatId?.let { sessions[it]?.resync() }
+                loadWork()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 if (e is ApiException && e.status == 401) unauthorized()
@@ -250,8 +268,52 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     // --- Companions -----------------------------------------------------------------------
 
-    fun session(agentId: String): ChatSession =
-        sessions.getOrPut(agentId) { ChatSession(agentId, client, viewModelScope, ::unauthorized) }
+    fun session(agentId: String): ChatSession = session(ChatTarget.Companion(agentId))
+
+    fun session(target: ChatTarget): ChatSession =
+        sessions.getOrPut(target.id) { ChatSession(target, client, viewModelScope, ::unauthorized) }
+
+    // --- Background tasks ---------------------------------------------------------------------
+
+    /** Tasks and chats are read from the server: the app shows persisted state, also after a restart. */
+    private fun loadWork() {
+        viewModelScope.launch {
+            runCatching { client.tasks() }.onSuccess { list -> _state.update { s -> s.copy(tasks = list.associate { it.id to it.copy(events = s.tasks[it.id]?.events.orEmpty()) }) } }
+            runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
+        }
+    }
+
+    /** A card may reference a task this app has not seen yet; the details sheet also needs its journal. */
+    fun loadTask(id: String) {
+        viewModelScope.launch { runCatching { client.task(id) }.onSuccess { task -> _state.update { it.copy(tasks = it.tasks + (task.id to task)) } } }
+    }
+
+    fun taskAction(id: String, action: String) = act { val task = client.taskAction(id, action); _state.update { it.copy(tasks = it.tasks + (task.id to task.copy(events = it.tasks[task.id]?.events.orEmpty()))) }; loadTask(id) }
+
+    fun taskInstruction(id: String, instruction: String, onSent: () -> Unit) = act { client.taskInstruction(id, instruction); onSent(); loadTask(id) }
+
+    // --- General chats --------------------------------------------------------------------------
+
+    fun selectChat(chatId: String) = _state.update { it.copy(currentChatId = chatId) }
+
+    fun createChat(onCreated: () -> Unit) = act {
+        val chat = client.createChat()
+        _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
+        onCreated()
+    }
+
+    fun updateChat(chatId: String, patch: JsonObject, onDone: () -> Unit = {}) = act {
+        val chat = client.updateChat(chatId, patch)
+        _state.update { s -> s.copy(chats = s.chats.map { if (it.id == chat.id) chat else it }) }
+        onDone()
+    }
+
+    fun deleteChat(chatId: String, onDeleted: () -> Unit) = act {
+        client.deleteChat(chatId)
+        sessions.remove(chatId)
+        _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == chatId }, currentChatId = s.currentChatId.takeIf { it != chatId }) }
+        onDeleted()
+    }
 
     fun selectAgent(agentId: String) {
         store.lastAgentId = agentId
@@ -325,6 +387,9 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     /** Hands a companion's desktop back to it. Survives the screen that took control being closed. */
     fun releaseDesktopControl(agentId: String) { viewModelScope.launch { runCatching { client.setDesktopControl(agentId, false) } } }
+
+    /** Runs a user action; a failure is said once, in the snackbar. */
+    fun run(block: suspend () -> Unit) = act(block = block)
 
     private fun act(onFailure: () -> Unit = {}, block: suspend () -> Unit) {
         viewModelScope.launch {

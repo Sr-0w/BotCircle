@@ -3,6 +3,7 @@ package app.dot.opendots.chat
 import app.dot.opendots.data.ApiException
 import app.dot.opendots.data.Attachment
 import app.dot.opendots.data.ChatMessage
+import app.dot.opendots.data.ChatTarget
 import app.dot.opendots.data.MessageMeta
 import app.dot.opendots.data.OpenDotsClient
 import app.dot.opendots.data.Part
@@ -48,7 +49,7 @@ data class ChatUiState(
  * *follows* a stream, and re-reads history whenever the server says a turn finished.
  */
 class ChatSession(
-    val agentId: String,
+    val target: ChatTarget,
     private val client: OpenDotsClient,
     private val scope: CoroutineScope,
     private val onUnauthorized: () -> Unit = {},
@@ -66,7 +67,7 @@ class ChatSession(
         loaded = true
         scope.launch {
             try {
-                val history = client.messages(agentId)
+                val history = client.messages(target)
                 conversationId = history.conversationId
                 _state.update { it.copy(loading = false, messages = history.messages, cursor = history.cursor, loadError = null) }
                 if (history.active) follow(resume = true)
@@ -86,7 +87,7 @@ class ChatSession(
         _state.update { it.copy(loadingOlder = true) }
         scope.launch {
             try {
-                val older = client.messages(agentId, before = cursor)
+                val older = client.messages(target, before = cursor)
                 olderLoaded = true
                 _state.update { s ->
                     val known = s.messages.mapTo(HashSet()) { it.id }
@@ -109,14 +110,14 @@ class ChatSession(
         val mine = ChatMessage(id, "user", parts, MessageMeta(kind = "chat", replyTo = replyTo, answer = answer))
         streamJob?.cancel()
         _state.update { it.copy(messages = it.messages + mine, status = ChatStatus.Submitted, error = null, notSent = false) }
-        follow(resume = false) { client.chat(agentId, id, text.trim(), files, replyTo, answer) }
+        follow(resume = false) { client.chat(target, id, text.trim(), files, replyTo, answer) }
     }
 
     fun stop() {
         streamJob?.cancel()
         _state.update { it.copy(status = ChatStatus.Ready) }
         scope.launch {
-            runCatching { client.stop(agentId) }
+            runCatching { client.stop(target) }
             delay(300)
             resync()
         }
@@ -152,6 +153,9 @@ class ChatSession(
             is ServerEvent.MessageCreated -> if (event.conversationId == conversation && event.author == "agent" && !event.hidden) scope.launch { resync() }
             is ServerEvent.MessageReaction -> if (event.conversationId == conversation) setReactions(event.messageId, event.reactions)
             is ServerEvent.TurnFinished -> if (event.conversationId == conversation) scope.launch { delay(300); resync(); markRead() }
+            // A companion called into a general chat answers outside the stream: re-read when the chat changes.
+            is ServerEvent.ChatChanged -> if (target is ChatTarget.General && event.chatId == target.id && !event.deleted) scope.launch { delay(200); resync() }
+            is ServerEvent.TaskChanged -> if (event.task.conversationId == conversation && !event.task.active || event.task.conversationId == conversation && event.task.status == "waiting_for_user") scope.launch { delay(300); resync() }
             else -> Unit
         }
     }
@@ -160,7 +164,7 @@ class ChatSession(
     suspend fun resync(allowFollow: Boolean = true) {
         if (!loaded) return
         try {
-            val history = client.messages(agentId)
+            val history = client.messages(target)
             conversationId = history.conversationId
             _state.update { s ->
                 val remote = history.messages.mapTo(HashSet()) { it.id }
@@ -178,7 +182,7 @@ class ChatSession(
         }
     }
 
-    private fun follow(resume: Boolean, source: () -> kotlinx.coroutines.flow.Flow<JsonObject> = { client.resume(agentId) }) {
+    private fun follow(resume: Boolean, source: () -> kotlinx.coroutines.flow.Flow<JsonObject> = { client.resume(target) }) {
         streamJob?.cancel()
         streamJob = scope.launch {
             val assembler = TurnAssembler("live_" + UUID.randomUUID())
@@ -219,7 +223,7 @@ class ChatSession(
         repeat(6) {
             delay(wait)
             wait = (wait * 2).coerceAtMost(8_000L)
-            val history = try { client.messages(agentId) } catch (e: Exception) {
+            val history = try { client.messages(target) } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 if (e is ApiException) { fail(e); _state.update { it.copy(reconnecting = false) }; return }
                 null
@@ -244,7 +248,7 @@ class ChatSession(
         s.copy(messages = s.messages.map { if (it.id == messageId) it.copy(meta = it.meta.copy(reactions = reactions)) else it })
     }
 
-    private suspend fun markRead() { runCatching { client.markRead(agentId) } }
+    private suspend fun markRead() { if (target is ChatTarget.Companion) runCatching { client.markRead(target.id) } }
 
     private fun fail(e: Exception) { if (e is ApiException && e.status == 401) onUnauthorized() }
 }

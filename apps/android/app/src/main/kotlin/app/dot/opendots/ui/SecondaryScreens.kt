@@ -99,7 +99,23 @@ fun TasksScreen(app: AppState, ui: AppUiState) {
     val started = stringResource(R.string.task_started)
     var deleting by remember { mutableStateOf<Activity?>(null) }
     val activities = ui.activities
+    var openTask by remember { mutableStateOf<String?>(null) }
+    val background = remember(ui.tasks) { ui.tasks.values.sortedByDescending { it.createdAt } }
+    val running = background.filter { it.active }
+    val past = background.filterNot { it.active }.take(20)
     QuietPage(stringResource(R.string.tasks), onBack = null, inTabs = true) {
+        // Work handed to the background: what is running now, then what finished. Each card updates in place.
+        listOf(R.string.tasks_running to running, R.string.tasks_finished to past).forEach { (label, list) ->
+            if (list.isEmpty()) return@forEach
+            item(key = "bg-$label") { SectionLabel(stringResource(label), Modifier.padding(top = DotSpacing.l)) }
+            items(list, key = { "bg-" + it.id }) { task ->
+                TaskCard(
+                    task, onDetails = { openTask = task.id }, onAction = { app.taskAction(task.id, it) },
+                    modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xs), agent = ui.agents.firstOrNull { it.id == task.agentId },
+                )
+            }
+        }
+        if (background.isNotEmpty()) item(key = "bg-end") { SectionLabel(stringResource(R.string.tasks_scheduled), Modifier.padding(top = DotSpacing.l)) }
         when {
             activities == null -> item { Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) } }
             activities.isEmpty() -> item { EmptyState(Icons.Outlined.CalendarMonth, stringResource(R.string.tasks_empty_title), stringResource(R.string.tasks_empty_body)) }
@@ -119,6 +135,7 @@ fun TasksScreen(app: AppState, ui: AppUiState) {
             }
         }
     }
+    openTask?.let { id -> TaskSheet(app, ui, id) { openTask = null } }
     deleting?.let { activity ->
         DotDialog(
             title = stringResource(R.string.task_delete_title),

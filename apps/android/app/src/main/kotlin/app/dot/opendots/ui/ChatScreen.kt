@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,8 +111,18 @@ import app.dot.opendots.AppUiState
 import app.dot.opendots.R
 import app.dot.opendots.chat.ChatUiState
 import app.dot.opendots.data.Agent
+import app.dot.opendots.data.ARTIFACT_MAX_BYTES
 import app.dot.opendots.data.Attachment
-import app.dot.opendots.data.IMAGE_MAX_COUNT
+import app.dot.opendots.data.ChatTarget
+import app.dot.opendots.data.FILES_MAX_COUNT
+import app.dot.opendots.data.GeneralChat
+import app.dot.opendots.data.PickedFile
+import app.dot.opendots.data.describeFile
+import app.dot.opendots.data.fileBody
+import app.dot.opendots.data.formatBytes
+import app.dot.design.components.DotFilterChip
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import androidx.compose.material.icons.outlined.Forum
 import app.dot.opendots.data.ReplyRef
 import app.dot.opendots.data.readImageForUpload
 import coil3.compose.AsyncImage
@@ -121,14 +130,15 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-private class PendingImage(val uri: Uri) {
+private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
     var attachment by mutableStateOf<Attachment?>(null)
     var failed by mutableStateOf(false)
 }
 
 @Composable
-fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit) {
-    val session = remember(agent.id) { app.session(agent.id) }
+fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null) {
+    // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
+    val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
     LaunchedEffect(session) { session.open() }
     val chat by session.state.collectAsStateWithLifecycle()
 
@@ -141,16 +151,28 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     var reply by remember(agent.id) { mutableStateOf<ReplyRef?>(null) }
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
     var workSheet by remember(agent.id) { mutableStateOf(false) }
+    var taskSheet by remember(agent.id) { mutableStateOf<String?>(null) }
+    var accessSheet by remember(agent.id) { mutableStateOf<String?>(null) }
+    val fileActions = rememberFileActions(app)
+    val tooLarge = stringResource(R.string.file_too_large)
     val copied = stringResource(R.string.copied)
     val uploadFailed = stringResource(R.string.upload_failed)
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(IMAGE_MAX_COUNT)) { uris ->
-        uris.take(IMAGE_MAX_COUNT - images.size).forEach { uri ->
-            val pending = PendingImage(uri).also(images::add)
+    // Any document: images are prepared for the model, every other file is handed over unchanged as an artifact.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.take(FILES_MAX_COUNT - images.size).forEach { uri ->
+            val picked = describeFile(context, uri)
+            if (!picked.isImage && picked.size > ARTIFACT_MAX_BYTES) { app.notify(tooLarge); return@forEach }
+            val pending = PendingImage(uri, picked.takeUnless { it.isImage }).also(images::add)
             scope.launch {
                 try {
-                    val encoded = readImageForUpload(context, uri)
-                    pending.attachment = app.client.uploadImage(encoded.bytes, encoded.filename, encoded.mediaType)
+                    if (picked.isImage) {
+                        val encoded = readImageForUpload(context, uri)
+                        pending.attachment = app.client.uploadImage(encoded.bytes, encoded.filename, encoded.mediaType)
+                    } else {
+                        val artifact = app.client.uploadArtifact(fileBody(context, picked), picked.name, agentId = agent.id.takeIf { general == null }, conversationId = general?.id)
+                        pending.attachment = Attachment(artifact.id, artifact.url, artifact.name, artifact.mediaType)
+                    }
                 } catch (e: Exception) {
                     if (e is kotlin.coroutines.cancellation.CancellationException) throw e
                     pending.failed = true
@@ -160,7 +182,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
     }
 
-    val env = remember(ui.agents, ui.approvals, ui.requests, ui.drafts, chat.busy, session) {
+    val env = remember(ui.agents, ui.approvals, ui.requests, ui.drafts, ui.tasks, chat.busy, session) {
         MessageEnv(
             agents = ui.agents, approvals = ui.approvals, requests = ui.requests, drafts = ui.drafts, busy = chat.busy,
             resolveUrl = app.client::resolve,
@@ -176,6 +198,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             onOpenWeb = { ui.serverUrl.takeIf { it.isNotBlank() }?.let { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } } },
             onOpenImage = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
             onShowWork = { workSheet = true },
+            tasks = ui.tasks, onNeedTask = app::loadTask, onOpenTask = { taskSheet = it }, onTaskAction = app::taskAction,
+            fileActions = fileActions, onFileAccess = { accessSheet = it }, attribution = general != null,
         )
     }
 
@@ -216,7 +240,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                     modifier = Modifier.fillMaxSize().backdropSource(backdrop),
                 ) {
                     chat.error?.let { message ->
-                        item(key = "error") { TurnError(if (chat.notSent) stringResource(R.string.not_sent) else stringResource(R.string.turn_failed, agentDisplayName(agent)), message, session::dismissError, Modifier.padding(top = DotSpacing.xl)) }
+                        item(key = "error") { TurnError(if (chat.notSent) stringResource(R.string.not_sent) else if (general != null) stringResource(R.string.assistant_failed) else stringResource(R.string.turn_failed, agentDisplayName(agent)), message, session::dismissError, Modifier.padding(top = DotSpacing.xl)) }
                     }
                     // The thread only shows *that* the companion works and on what; the detail lives in the work panel.
                     if (chat.busy) item(key = "live") {
@@ -250,7 +274,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                         DotButton(stringResource(R.string.retry), session::open, style = ButtonStyle.Secondary)
                     }
                 }
-                chat.messages.isEmpty() && !chat.busy -> EmptyConversation(agent, Modifier.align(Alignment.Center))
+                chat.messages.isEmpty() && !chat.busy -> if (general != null) EmptyState(Icons.Outlined.Forum, stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_body), Modifier.align(Alignment.Center)) else EmptyConversation(agent, Modifier.align(Alignment.Center))
             }
 
             val reduced = rememberReducedMotion()
@@ -268,6 +292,13 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
 
         if (workSheet) WorkSheet(agent, chat, env) { workSheet = false }
+        taskSheet?.let { id -> TaskSheet(app, ui, id) { taskSheet = null } }
+        accessSheet?.let { id -> ArtifactSheet(app, ui, id) { accessSheet = null } }
+
+        // @mention: the word being typed at the end of the draft, completed from the companions' names.
+        val mentionable = remember(ui.agents, general != null) { if (general == null) emptyList() else ui.agents.filter { it.named } }
+        val mentionQuery = remember(draft) { MENTION_TAIL.find(draft)?.groupValues?.get(2) }
+        val suggestions = remember(mentionQuery, mentionable) { mentionQuery?.let { q -> mentionable.filter { it.name.startsWith(q, ignoreCase = true) }.take(5) }.orEmpty() }
 
         // The composer sits on the page itself: a stable surface, no blur and no gradient band underneath.
         val ready = images.all { it.attachment != null || it.failed }
@@ -281,7 +312,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.widthIn(max = 720.dp),
-                placeholder = if (agent.named) stringResource(R.string.write_to, agent.name) else stringResource(R.string.write_to_companion),
+                placeholder = if (general != null) stringResource(R.string.write_chat) else if (agent.named) stringResource(R.string.write_to, agent.name) else stringResource(R.string.write_to_companion),
                 busy = chat.busy,
                 canSend = ready && (draft.isNotBlank() || images.any { it.attachment != null }),
                 onStop = session::stop,
@@ -289,8 +320,11 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                     session.send(draft, images.mapNotNull { it.attachment }, reply)
                     draft = ""; reply = null; images.clear()
                 },
-                header = if (reply == null && images.isEmpty()) null else {
+                header = if (reply == null && images.isEmpty() && suggestions.isEmpty()) null else {
                     {
+                        if (suggestions.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = DotSpacing.xs), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                            suggestions.forEach { target -> DotFilterChip("@" + target.name, selected = false, onClick = { draft = draft.dropLast(mentionQuery.orEmpty().length + 1) + "@" + target.name + " " }) }
+                        }
                         reply?.let { target ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 DotQuote(if (target.role == "user") stringResource(R.string.you) else agentDisplayName(agent), target.preview, Modifier.weight(1f))
@@ -298,15 +332,15 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                             }
                         }
                         if (images.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = DotSpacing.xs), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                            images.forEach { image -> ImageThumb(image) { images.remove(image) } }
+                            images.forEach { image -> if (image.file == null) ImageThumb(image) { images.remove(image) } else FileThumb(image) { images.remove(image) } }
                         }
                     }
                 },
                 leading = {
                     DotIconButton(
-                        Icons.Outlined.Add, stringResource(R.string.attach_image),
-                        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        tint = Dot.colors.textSecondary, enabled = images.size < IMAGE_MAX_COUNT,
+                        Icons.Outlined.Add, stringResource(R.string.attach_files),
+                        onClick = { picker.launch(arrayOf("*/*")) },
+                        tint = Dot.colors.textSecondary, enabled = images.size < FILES_MAX_COUNT,
                     )
                 },
             )
@@ -422,6 +456,26 @@ private fun TurnError(title: String, message: String, onDismiss: () -> Unit, mod
             }
             DotIconButton(Icons.Outlined.Close, stringResource(R.string.close), onClick = onDismiss, tint = Dot.colors.textSecondary)
         }
+    }
+}
+
+private val MENTION_TAIL = Regex("(^|\\s)@([\\p{L}\\p{N}_-]*)$")
+
+/** A picked document waiting to be sent: its real name and size, and whether it reached the server. */
+@Composable
+private fun FileThumb(pending: PendingImage, onRemove: () -> Unit) {
+    val c = Dot.colors
+    val file = pending.file ?: return
+    Row(
+        Modifier.heightIn(min = 64.dp).widthIn(max = 220.dp).clip(DotShapes.medium).border(DotSpacing.hairline * 2, if (pending.failed) c.danger else c.border, DotShapes.medium).padding(start = DotSpacing.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (pending.attachment == null && !pending.failed) DotSpinner(size = 16.dp) else Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(18.dp), tint = if (pending.failed) c.danger else c.textSecondary)
+        Column(Modifier.padding(horizontal = DotSpacing.s).weight(1f, fill = false)) {
+            Text(file.name, style = Dot.type.label, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            Text(formatBytes(file.size), style = Dot.type.caption, color = c.textSecondary, maxLines = 1)
+        }
+        DotIconButton(Icons.Outlined.Close, stringResource(R.string.remove_file, file.name), onClick = onRemove, tint = c.textSecondary)
     }
 }
 

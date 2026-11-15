@@ -213,6 +213,10 @@ data class MessageMeta(
     val replyTo: ReplyRef? = null,
     val reactions: List<Reaction> = emptyList(),
     val workedMs: Long? = null,
+    /** Model that answered (general chats sign the assistant with it). */
+    val model: String? = null,
+    /** Message produced by a background task (result, blocker). */
+    val taskId: String? = null,
 )
 
 /** One part of a message, mirroring the AI SDK's UI message parts that OpenDots stores. */
@@ -255,5 +259,132 @@ sealed interface ServerEvent {
     data class DraftChanged(val draft: MailDraft) : ServerEvent
     data class ActivityChanged(val agentId: String) : ServerEvent
     data object SettingsChanged : ServerEvent
+    data class TaskChanged(val task: BgTask) : ServerEvent
+    data class ChatChanged(val chatId: String, val deleted: Boolean) : ServerEvent
+    data class ArtifactChanged(val artifactId: String) : ServerEvent
     data class Other(val type: String) : ServerEvent
+}
+
+// --- Files (artifacts), background tasks, general chats: see packages/shared -------------------------------------
+
+/** Per-file limit shared with the server (`ARTIFACT_MAX_BYTES`). */
+const val ARTIFACT_MAX_BYTES = 50L * 1024 * 1024
+const val FILES_MAX_COUNT = 10
+
+private val ARTIFACT_URL = Regex("^/api/artifacts/(art_[a-z0-9]+)/content$")
+/** The artifact behind a message's file part, when it is one (`artifactIdFromUrl` in packages/shared). */
+fun artifactIdFromUrl(url: String?): String? = url?.let { ARTIFACT_URL.find(it.substringBefore('?').let { u -> if (u.startsWith("http")) "/" + u.substringAfter("://").substringAfter('/') else u })?.groupValues?.get(1) }
+
+@Immutable
+@Serializable
+data class Artifact(
+    val id: String,
+    val name: String = "",
+    val mediaType: String = "application/octet-stream",
+    val size: Long = 0,
+    val authorKind: String = "user",
+    val authorId: String? = null,
+    val source: String = "upload",
+    val conversationId: String? = null,
+    val taskId: String? = null,
+    val createdAt: String = "",
+    val url: String = "",
+)
+
+@Immutable
+@Serializable
+data class ArtifactGrant(val agentId: String, val grantedBy: String = "user", val via: String = "", val createdAt: String = "", val revokedAt: String? = null)
+
+@Immutable
+@Serializable
+data class ArtifactAccess(val actor: String = "user", val action: String = "", val detail: String? = null, val createdAt: String = "")
+
+@Immutable
+@Serializable
+data class ArtifactDetails(
+    val id: String,
+    val name: String = "",
+    val mediaType: String = "application/octet-stream",
+    val size: Long = 0,
+    val authorKind: String = "user",
+    val authorId: String? = null,
+    val createdAt: String = "",
+    val url: String = "",
+    val grants: List<ArtifactGrant> = emptyList(),
+    val access: List<ArtifactAccess> = emptyList(),
+)
+
+@Serializable
+data class ArtifactHistory(val grants: List<ArtifactGrant> = emptyList(), val access: List<ArtifactAccess> = emptyList())
+
+@Immutable
+@Serializable
+data class BgTaskEvent(val seq: Long = 0, val kind: String = "status", val summary: String = "", val createdAt: String = "")
+
+/** A background task (`TaskDTO`). Progress is what the server observed, never an estimate. */
+@Immutable
+@Serializable
+data class BgTask(
+    val id: String,
+    val agentId: String = "",
+    val conversationId: String = "",
+    val title: String = "",
+    val instruction: String = "",
+    val status: String = "queued",
+    val phase: String? = null,
+    val currentActionSummary: String? = null,
+    val completedSteps: Int = 0,
+    val blocker: String? = null,
+    val requiresUserInput: Boolean = false,
+    val result: String? = null,
+    val error: String? = null,
+    val artifacts: List<Artifact> = emptyList(),
+    val createdAt: String = "",
+    val finishedAt: String? = null,
+    val events: List<BgTaskEvent> = emptyList(),
+) {
+    val active: Boolean get() = status in ACTIVE
+    /** The one line worth showing under the title right now. */
+    val line: String? get() = when (status) { "completed" -> null; "failed" -> error; else -> blocker ?: currentActionSummary ?: phase }
+    companion object { val ACTIVE = setOf("queued", "running", "waiting_for_user", "paused") }
+}
+
+/** A general chat (`ChatDTO`): a thread that belongs to no companion. */
+@Immutable
+@Serializable
+data class GeneralChat(
+    val id: String,
+    val title: String = "",
+    val model: ModelConfig? = null,
+    val effectiveModel: ModelConfig = ModelConfig(),
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val lastMessagePreview: String? = null,
+)
+
+/** Where a conversation lives on the server: a companion's main thread or a general chat. */
+sealed interface ChatTarget {
+    val id: String
+    val path: String
+    data class Companion(override val id: String) : ChatTarget { override val path get() = "/agents/$id" }
+    data class General(override val id: String) : ChatTarget { override val path get() = "/chats/$id" }
+}
+
+/** `@Name` mentions of [text] resolved on existing companions (`findMentions` in packages/shared). */
+fun findMentions(text: String, agents: List<Agent>): List<String> {
+    val lower = text.lowercase()
+    return agents.filter { it.named && it.name.isNotBlank() }.sortedByDescending { it.name.length }.filter { agent ->
+        val name = "@" + agent.name.trim().lowercase()
+        var from = 0
+        var found = false
+        while (!found) {
+            val at = lower.indexOf(name, from)
+            if (at < 0) break
+            val before = if (at == 0) ' ' else lower[at - 1]
+            val after = lower.getOrNull(at + name.length)
+            if (!before.isLetterOrDigit() && (after == null || !(after.isLetterOrDigit() || after == '_'))) found = true
+            from = at + 1
+        }
+        found
+    }.map { it.id }
 }

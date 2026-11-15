@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.outlined.SmartToy
@@ -129,7 +130,7 @@ private fun CompanionRow(agent: Agent, onClick: () -> Unit) {
  * normally changes by talking to it; this is the direct route.
  */
 @Composable
-fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () -> Unit, onChangeModel: () -> Unit, onUpdate: (JsonObject) -> Unit) {
+fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () -> Unit, onChangeModel: () -> Unit, onOpenFiles: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
     val c = Dot.colors
     var name by rememberSaveable(agent.id, agent.name) { mutableStateOf(if (agent.named) agent.name else "") }
     QuietPage(stringResource(R.string.companion_details), onBack) {
@@ -169,6 +170,11 @@ fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () ->
                 trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) },
             )
             Hairline()
+            ListRow(
+                stringResource(R.string.files), subtitle = stringResource(R.string.files_row_note), icon = Icons.AutoMirrored.Outlined.InsertDriveFile, onClick = onOpenFiles,
+                trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) },
+            )
+            Hairline()
         }
         item {
             SectionLabel(stringResource(R.string.permissions), Modifier.padding(top = DotSpacing.l))
@@ -199,8 +205,13 @@ fun providerLabel(provider: String): String = when (provider) {
 
 /** Choosing the model one companion runs on: a provider, then one of that provider's models. */
 @Composable
-fun ModelPickerPage(app: AppState, agent: Agent, onBack: () -> Unit) {
-    var provider by rememberSaveable { mutableStateOf(agent.effectiveModel.provider.takeIf { it == "codex" } ?: "openrouter") }
+fun ModelPickerPage(app: AppState, agent: Agent, onBack: () -> Unit) =
+    ModelPickerPage(app, agentDisplayName(agent), agent.effectiveModel, onBack) { provider, model -> app.updateAgent(agent.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model) } }) }
+
+/** The same picker for anything that runs on a model: a companion or a general chat. */
+@Composable
+fun ModelPickerPage(app: AppState, subtitle: String, current: app.dot.opendots.data.ModelConfig, onBack: () -> Unit, onPick: (provider: String, model: String) -> Unit) {
+    var provider by rememberSaveable { mutableStateOf(current.provider.takeIf { it == "codex" } ?: "openrouter") }
     var models by remember { mutableStateOf<List<ModelInfo>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -215,7 +226,7 @@ fun ModelPickerPage(app: AppState, agent: Agent, onBack: () -> Unit) {
         val q = query.trim().lowercase()
         models.orEmpty().filter { q.isEmpty() || q in it.id.lowercase() || q in it.name.lowercase() }.take(120)
     }
-    QuietPage(stringResource(R.string.model), onBack, subtitle = agentDisplayName(agent)) {
+    QuietPage(stringResource(R.string.model), onBack, subtitle = subtitle) {
         item {
             Row(Modifier.padding(horizontal = DotSpacing.gutter), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(DotSpacing.s)) {
                 listOf("openrouter", "codex").forEach { id -> DotFilterChip(providerLabel(id), selected = provider == id, onClick = { provider = id; query = "" }, radio = true) }
@@ -227,11 +238,11 @@ fun ModelPickerPage(app: AppState, agent: Agent, onBack: () -> Unit) {
             models == null -> item { Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) } }
             shown.isEmpty() -> item { EmptyState(Icons.Outlined.SmartToy, stringResource(R.string.models_unavailable), if (provider == "codex") stringResource(R.string.models_codex_hint) else "") }
             else -> items(shown, key = { it.id }) { model ->
-                val current = agent.effectiveModel.provider == provider && agent.effectiveModel.model == model.id
+                val selected = current.provider == provider && current.model == model.id
                 Row(
                     Modifier.fillMaxWidth()
-                        .selectable(current, role = Role.RadioButton) {
-                            app.updateAgent(agent.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model.id) } })
+                        .selectable(selected, role = Role.RadioButton) {
+                            onPick(provider, model.id)
                             onBack()
                         }
                         .heightIn(min = 60.dp).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s),
@@ -241,7 +252,7 @@ fun ModelPickerPage(app: AppState, agent: Agent, onBack: () -> Unit) {
                         Text(model.name.ifBlank { model.id }, style = Dot.type.bodyStrong, color = Dot.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(model.id, style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = Dot.colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    DotCheckbox(current, Modifier.padding(start = DotSpacing.m))
+                    DotCheckbox(selected, Modifier.padding(start = DotSpacing.m))
                 }
             }
         }

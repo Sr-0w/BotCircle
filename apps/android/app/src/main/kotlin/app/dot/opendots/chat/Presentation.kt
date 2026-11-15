@@ -3,6 +3,8 @@ package app.dot.opendots.chat
 import androidx.compose.runtime.Immutable
 import app.dot.opendots.data.ChatMessage
 import app.dot.opendots.data.Part
+import app.dot.opendots.data.artifactIdFromUrl
+import app.dot.opendots.data.num
 import app.dot.opendots.data.str
 
 /*
@@ -32,6 +34,7 @@ fun Part.Tool.isAction(): Boolean {
     if (failed) return false
     if (name == "team_send_message" && out.str("status") == "sent") return true
     if (name in ACTION_TOOLS) return true
+    if ((name == "task_start" || name == "invoke_agent") && out.str("taskId") != null) return true
     return out.str("status") == "pending_approval"
 }
 
@@ -40,6 +43,8 @@ sealed interface Bubble {
     val key: String
     data class Text(override val key: String, val text: String) : Bubble
     data class Image(override val key: String, val file: Part.File) : Bubble
+    /** A file handed over in the thread: an attachment, not a trace of work. */
+    data class File(override val key: String, val file: Part.File, val size: Long? = null, val caption: String? = null) : Bubble
 }
 
 @Immutable
@@ -68,10 +73,16 @@ fun presentAssistantTurn(message: ChatMessage): AssistantTurn {
                     .takeIf { it.isNotEmpty() && !isSilence(it) }?.let { bubbles += Bubble.Text("text-$index", it) }
                 part.name == "share_screenshot" && part.state == "output-available" && !part.failed && part.outputObject?.str("status") == "attached" && part.outputObject?.str("url") != null ->
                     bubbles += Bubble.Image("image-$index", Part.File(part.outputObject!!.str("url")!!, part.outputObject!!.str("mediaType") ?: "image/jpeg", part.outputObject!!.str("filename")))
+                // A file only counts as delivered once the publishing tool confirmed it.
+                part.name == "artifact_publish_to_chat" && part.state == "output-available" && !part.failed && part.outputObject?.str("status") == "published" && part.outputObject?.get("artifact") is kotlinx.serialization.json.JsonObject -> {
+                    val a = part.outputObject!!["artifact"] as kotlinx.serialization.json.JsonObject
+                    val file = Part.File(a.str("url").orEmpty(), a.str("mediaType") ?: "application/octet-stream", a.str("name"))
+                    bubbles += if (file.mediaType.startsWith("image/")) Bubble.Image("image-$index", file) else Bubble.File("file-$index", file, a.num("size")?.toLong(), part.outputObject!!.str("caption"))
+                }
                 part.isAction() -> actions += part
                 else -> tools += part
             }
-            is Part.File -> if (part.mediaType.startsWith("image/")) bubbles += Bubble.Image("image-$index", part)
+            is Part.File -> if (part.mediaType.startsWith("image/")) bubbles += Bubble.Image("image-$index", part) else if (artifactIdFromUrl(part.url) != null) bubbles += Bubble.File("file-$index", part)
             is Part.Reasoning -> if (part.text.isNotBlank()) { if (reasoning.isNotEmpty()) reasoning.append("\n\n"); reasoning.append(part.text.trim()) }
         }
     }

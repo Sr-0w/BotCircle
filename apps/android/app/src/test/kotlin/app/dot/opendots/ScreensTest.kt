@@ -71,6 +71,18 @@ class ScreensTest {
       {"id":"act1","agentId":"a1","title":"Weekly recap","kind":"schedule","schedule":{"type":"cron","expr":"0 17 * * 5"},"enabled":true,"nextRunAt":"2026-11-13T17:00:00Z"},
       {"id":"act2","agentId":"a2","title":"Watch: monitor price","kind":"watch","watch":{"url":"https://shop.example.com/monitor","mode":"contains"},"enabled":false}]"""
 
+    private val chats = """[{"id":"ch1","title":"Friday meeting","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"createdAt":"2026-11-13T09:00:00Z","updatedAt":"2026-11-13T09:05:00Z","lastMessagePreview":"Here is the summary."}]"""
+    private val task = """{"id":"tk1","agentId":"a3","conversationId":"ch1","title":"Summarise the Friday meeting","instruction":"@Dev summarise the Friday meeting","status":"completed","completedSteps":4,"result":"Here is the summary.","artifacts":[{"id":"art_r1","name":"summary.pdf","mediaType":"application/pdf","size":48213,"url":"/api/artifacts/art_r1/content"}],"createdAt":"2026-11-13T09:01:00Z","finishedAt":"2026-11-13T09:05:00Z","events":[{"seq":1,"kind":"status","summary":"Started","createdAt":"2026-11-13T09:01:00Z"},{"seq":2,"kind":"step","summary":"Reads the meeting notes","createdAt":"2026-11-13T09:02:00Z"}]}"""
+    private val chatHistory = """{"conversationId":"ch1","cursor":null,"active":false,"tasks":[],"messages":[
+      {"id":"g1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"@Dev summarise the Friday meeting"},{"type":"file","url":"/api/artifacts/art_n1/content","filename":"meeting notes.md","mediaType":"text/markdown"}]},
+      {"id":"g2","role":"assistant","metadata":{"kind":"chat"},"parts":[{"type":"tool-invoke_agent","toolCallId":"i1","state":"output-available","input":{"agent":"Dev","instruction":"summarise"},"output":{"ok":true,"status":"queued","taskId":"tk1","agentId":"a3","agentName":"Dev"}}]},
+      {"id":"g3","role":"assistant","metadata":{"kind":"chat","agentId":"a3","taskId":"tk1"},"parts":[{"type":"text","text":"Here is the summary."},{"type":"file","url":"/api/artifacts/art_r1/content","filename":"summary.pdf","mediaType":"application/pdf"}]},
+      {"id":"g4","role":"assistant","metadata":{"kind":"chat","model":"openai/gpt-5"},"parts":[{"type":"text","text":"Anything else about that meeting?"}]}
+    ]}"""
+    private val artifact = """{"id":"art_r1","name":"summary.pdf","mediaType":"application/pdf","size":48213,"authorKind":"worker","authorId":"a3","createdAt":"2026-11-13T09:05:00Z","url":"/api/artifacts/art_r1/content",
+      "grants":[{"agentId":"a3","grantedBy":"a3","via":"create","createdAt":"2026-11-13T09:05:00Z","revokedAt":null}],
+      "access":[{"actor":"a3","action":"create","detail":"summary.pdf","createdAt":"2026-11-13T09:05:00Z"},{"actor":"a3","action":"publish","detail":"ch1","createdAt":"2026-11-13T09:05:00Z"}]}"""
+
     @Before fun start() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
@@ -95,6 +107,16 @@ class ScreensTest {
                             """{"type":"finish"}""", "[DONE]",
                         ).joinToString("") { "data: $it\n\n" },
                     ).build()
+                    path == "/chats" -> json(chats)
+                    path == "/chats/ch1/messages" -> json(chatHistory)
+                    path == "/chats/ch1/stream" -> MockResponse.Builder().code(204).build()
+                    path == "/chats/ch1/chat" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"start\",\"messageId\":\"g9\"}\n\ndata: {\"type\":\"finish\"}\n\ndata: [DONE]\n\n").build()
+                    path == "/tasks" -> json("[$task]")
+                    path == "/tasks/tk1" -> json(task)
+                    path == "/tasks/tk1/instruction" -> json(task)
+                    path == "/artifacts/art_r1" -> json(artifact)
+                    path == "/artifacts/art_n1" -> json("""{"id":"art_n1","name":"meeting notes.md","mediaType":"text/markdown","size":41}""")
+                    path == "/artifacts/art_r1/grants/a3" -> json("""{"grants":[],"access":[{"actor":"user","action":"revoke","detail":"✕ a3","createdAt":"2026-11-13T09:06:00Z"}]}""")
                     path == "/events" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"hello\"}\n\n").build()
                     path == "/approvals/ap1" -> json("""{"ok":true,"status":"executed","error":null}""")
                     path.endsWith("/read") -> json("""{"ok":true}""")
@@ -189,6 +211,51 @@ class ScreensTest {
         waitFor("Read public web pages")
         waitFor("anthropic/claude-sonnet-5.5")
         shoot("profile-dark")
+    }
+
+    @Test fun chatsAreTheirOwnDestinationWithSignedContributions() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Chats")
+        waitFor("Friday meeting")
+        shoot("chats-dark")
+        compose.onNodeWithText("Friday meeting").performClick()
+        // One card for the contribution, updated from the task; the answer is signed by the companion that gave it.
+        waitFor("contribution")
+        waitFor("Summarise the Friday meeting")
+        waitFor("4 actions")
+        waitFor("Here is the summary.")
+        waitFor("Assistant")
+        assertEquals(2, compose.onAllNodes(androidx.compose.ui.test.hasTestTag("author")).fetchSemanticsNodes().size)
+        // Any file is a card with its real name, type and size.
+        waitFor("summary.pdf")
+        waitFor("PDF · 47 KB")
+        waitFor("meeting notes.md")
+        shoot("chat-general-dark")
+        // @ completes a companion's name; the message goes to the chat, not to a companion's thread.
+        compose.onNodeWithContentDescription("Message, @ for a companion…").performTextInput("@D")
+        compose.onNodeWithText("@Dev").performClick()
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/chat" } }
+        assertTrue("\"text\":\"@Dev\"" in posts.first { it.first == "/chats/ch1/chat" }.second)
+        assertTrue(posts.none { it.first == "/agents/a3/chat" })
+    }
+
+    @Test fun aTaskShowsItsRealStateAndJournal() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Tasks")
+        waitFor("Summarise the Friday meeting")
+        waitFor("Finished")
+        waitFor("Weekly recap")
+        shoot("tasks-background-dark")
+        compose.onAllNodes(hasText("Details")).fetchSemanticsNodes()
+        compose.onNodeWithText("Details").performClick()
+        waitFor("Reads the meeting notes")
+        waitFor("summary.pdf")
+        waitFor("PDF · 47 KB")
     }
 
     @Test fun signInThenEnter() {

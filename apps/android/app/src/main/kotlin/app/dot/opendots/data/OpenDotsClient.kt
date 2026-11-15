@@ -154,13 +154,16 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun agents(): List<Agent> = get("/agents")
     suspend fun markRead(agentId: String) { json("POST", "/agents/$agentId/read") }
     suspend fun stop(agentId: String) { json("POST", "/agents/$agentId/stop") }
+    suspend fun stop(target: ChatTarget) { json("POST", "${target.path}/stop") }
 
     suspend fun updateAgent(agentId: String, patch: JsonObject): Agent = OdJson.decodeFromJsonElement(json("PATCH", "/agents/$agentId", patch))
 
     data class History(val conversationId: String, val messages: List<ChatMessage>, val cursor: Long?, val active: Boolean)
 
-    suspend fun messages(agentId: String, before: Long? = null): History {
-        val root = json("GET", "/agents/$agentId/messages" + (before?.let { "?before=$it" } ?: "")).asObject() ?: JsonObject(emptyMap())
+    suspend fun messages(agentId: String, before: Long? = null): History = messages(ChatTarget.Companion(agentId), before)
+
+    suspend fun messages(target: ChatTarget, before: Long? = null): History {
+        val root = json("GET", "${target.path}/messages" + (before?.let { "?before=$it" } ?: "")).asObject() ?: JsonObject(emptyMap())
         return History(
             conversationId = root.str("conversationId").orEmpty(),
             messages = root.arr("messages").orEmpty().mapNotNull { (it as? JsonObject)?.let(::parseMessage) },
@@ -217,10 +220,60 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         return OdJson.decodeFromJsonElement(raw("POST", "/attachments", body))
     }
 
+    // --- Files (artifacts) -------------------------------------------------------------------
+
+    /**
+     * Any non-image file: stored unchanged as an artifact of the account. [agentId] gives that companion the right to
+     * read it; [conversationId] attaches it to a general chat.
+     */
+    suspend fun uploadArtifact(body: RequestBody, filename: String, agentId: String? = null, conversationId: String? = null): Artifact {
+        val form = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file", filename, body)
+        agentId?.let { form.addFormDataPart("agentId", it) }
+        conversationId?.let { form.addFormDataPart("conversationId", it) }
+        return OdJson.decodeFromJsonElement(raw("POST", "/artifacts", form.build()))
+    }
+
+    suspend fun artifacts(agentId: String? = null, conversationId: String? = null): List<Artifact> =
+        get("/artifacts" + (agentId?.let { "?agentId=$it" } ?: conversationId?.let { "?conversationId=$it" } ?: ""))
+    suspend fun artifact(id: String): ArtifactDetails = get("/artifacts/$id")
+    suspend fun grantArtifact(id: String, agentId: String): ArtifactHistory = OdJson.decodeFromJsonElement(json("POST", "/artifacts/$id/grants", buildJsonObject { put("agentId", agentId) }))
+    suspend fun revokeArtifact(id: String, agentId: String): ArtifactHistory = OdJson.decodeFromJsonElement(json("DELETE", "/artifacts/$id/grants/$agentId"))
+    suspend fun deleteArtifact(id: String) { json("DELETE", "/artifacts/$id") }
+
+    /** Downloads a private file (session required) into [target], unchanged. */
+    suspend fun download(path: String, target: java.io.File) = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(resolve(path)).build()
+        streaming.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw ApiException("HTTP ${response.code}", response.code)
+            target.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+        }
+    }
+
+    // --- Background tasks ------------------------------------------------------------------------
+
+    suspend fun tasks(): List<BgTask> = get("/tasks")
+    /** One task with its journal (`events`). */
+    suspend fun task(id: String): BgTask = get("/tasks/$id")
+    /** [action] is cancel, pause or resume. */
+    suspend fun taskAction(id: String, action: String): BgTask = OdJson.decodeFromJsonElement(json("POST", "/tasks/$id/$action"))
+    suspend fun taskInstruction(id: String, instruction: String): BgTask =
+        OdJson.decodeFromJsonElement(json("POST", "/tasks/$id/instruction", buildJsonObject { put("instruction", instruction) }))
+
+    // --- General chats -------------------------------------------------------------------------
+
+    suspend fun chats(query: String? = null): List<GeneralChat> =
+        get("/chats" + (query?.takeIf { it.isNotBlank() }?.let { "?q=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""))
+    suspend fun createChat(): GeneralChat = OdJson.decodeFromJsonElement(json("POST", "/chats", buildJsonObject { }))
+    suspend fun updateChat(id: String, patch: JsonObject): GeneralChat = OdJson.decodeFromJsonElement(json("PATCH", "/chats/$id", patch))
+    suspend fun deleteChat(id: String) { json("DELETE", "/chats/$id") }
+
     // --- Streams ------------------------------------------------------------------------------
 
     /** Sends one user message and follows the companion's turn. */
-    fun chat(agentId: String, messageId: String, text: String, files: List<Attachment>, replyTo: ReplyRef?, answer: JsonObject?): Flow<JsonObject> {
+    fun chat(agentId: String, messageId: String, text: String, files: List<Attachment>, replyTo: ReplyRef?, answer: JsonObject?): Flow<JsonObject> =
+        chat(ChatTarget.Companion(agentId), messageId, text, files, replyTo, answer)
+
+    fun chat(target: ChatTarget, messageId: String, text: String, files: List<Attachment>, replyTo: ReplyRef?, answer: JsonObject?): Flow<JsonObject> {
         val message = buildJsonObject {
             put("id", messageId)
             put("role", "user")
@@ -235,11 +288,12 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
             }
         }
         val body = buildJsonObject { put("message", message) }.toString().toRequestBody(JSON)
-        return sse(Request.Builder().url(url("/agents/$agentId/chat")).post(body).build())
+        return sse(Request.Builder().url(url("${target.path}/chat")).post(body).build())
     }
 
     /** Joins the turn currently running for [agentId], replayed from its first chunk. Empty when nothing is running. */
-    fun resume(agentId: String): Flow<JsonObject> = sse(Request.Builder().url(url("/agents/$agentId/stream")).build())
+    fun resume(agentId: String): Flow<JsonObject> = resume(ChatTarget.Companion(agentId))
+    fun resume(target: ChatTarget): Flow<JsonObject> = sse(Request.Builder().url(url("${target.path}/stream")).build())
 
     /** The account's realtime events. Completes when the connection drops; the caller reconnects. */
     fun events(): Flow<ServerEvent> = callbackFlow {
