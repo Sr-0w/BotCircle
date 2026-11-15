@@ -130,7 +130,7 @@ private fun CompanionRow(agent: Agent, onClick: () -> Unit) {
  * normally changes by talking to it; this is the direct route.
  */
 @Composable
-fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () -> Unit, onChangeModel: () -> Unit, onOpenFiles: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
+fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () -> Unit, onChangeModel: () -> Unit, onOpenFiles: () -> Unit = {}, onOpenMemory: () -> Unit = {}, onOpenJournal: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
     val c = Dot.colors
     var name by rememberSaveable(agent.id, agent.name) { mutableStateOf(if (agent.named) agent.name else "") }
     QuietPage(stringResource(R.string.companion_details), onBack) {
@@ -174,6 +174,10 @@ fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () ->
                 stringResource(R.string.files), subtitle = stringResource(R.string.files_row_note), icon = Icons.AutoMirrored.Outlined.InsertDriveFile, onClick = onOpenFiles,
                 trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) },
             )
+            Hairline()
+            ListRow(stringResource(R.string.memory), subtitle = stringResource(R.string.memory_note), onClick = onOpenMemory, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+            Hairline()
+            ListRow(stringResource(R.string.journal), subtitle = stringResource(R.string.journal_note), onClick = onOpenJournal, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
             Hairline()
         }
         item {

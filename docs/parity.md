@@ -39,9 +39,9 @@ States: ✅ available · ◐ partial · ✗ missing · — not relevant on that 
 | Create / archive a companion | ✅ | ✗ | | Create by asking a companion; archive is Web only |
 | Activities (schedules, watches, webhooks): list, pause, run, delete | ✅ | ✅ | `ScreensTest.pagesReplaceTheDrawer` | |
 | Activities: create / edit by form | ✅ | ✗ | | Created by asking a companion |
-| Memory: view, forget | ✅ | ✗ | | |
-| Journal | ✅ | ✗ | | |
-| Team exchanges between companions | ✅ | ◐ | | Android shows teammate cards in the thread, no dedicated page |
+| Memory: view, forget | ✅ | ✅ | `ScreensTest.aCompanionsMemory…` | |
+| Journal | ✅ | ✅ | | |
+| Team exchanges between companions | ✅ | ✅ read-only | `ScreensTest.teamExchanges…` | OpenCode exchanges are in the code workspace on Android |
 
 ## Background tasks, chats, files
 

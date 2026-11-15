@@ -27,7 +27,8 @@ It speaks the same HTTP API as the web app, so it works with any OpenDots server
 - A companion's computer, live, with optional take-over (mouse and keyboard).
 - System, light, dark and true-black OLED themes; English and French.
 
-Connectors, skills and memory are still managed from the web app.
+A companion's memory and journal, and the exchanges between companions, are readable from the app. Connectors, skills
+and tool settings are still managed from the web app (see `docs/parity.md` for the full matrix).
 
 ## Navigation
 

@@ -200,7 +200,7 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}) {
+fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}, onOpenTeam: () -> Unit = {}) {
     var confirmSignOut by remember { mutableStateOf(false) }
     QuietPage(stringResource(R.string.settings), onBack = null, inTabs = true) {
         item {
@@ -221,6 +221,11 @@ fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onO
             ListRow(stringResource(R.string.default_model), subtitle = stringResource(R.string.default_model_note), onClick = onOpenModel)
             ListRow(stringResource(R.string.agent_behaviour), subtitle = stringResource(R.string.agent_behaviour_note), onClick = onOpenBehaviour)
             ListRow("OpenCode", subtitle = stringResource(R.string.opencode_row_note), onClick = onOpenCode)
+            Hairline(Modifier.padding(top = DotSpacing.s))
+        }
+        item {
+            SectionLabel(stringResource(R.string.team), Modifier.padding(top = DotSpacing.l))
+            ListRow(stringResource(R.string.team_exchanges), subtitle = stringResource(R.string.team_exchanges_note), onClick = onOpenTeam)
             Hairline(Modifier.padding(top = DotSpacing.s))
         }
         item {

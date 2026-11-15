@@ -167,6 +167,11 @@
     <string name="have_account">J’ai déjà un compte</string>
     <string name="intervention">intervention</string>
     <string name="interventions">Interventions</string>
+    <string name="journal">Journal</string>
+    <string name="journal_empty_body">Les opérations importantes apparaîtront ici.</string>
+    <string name="journal_empty_title">Rien pour l’instant</string>
+    <string name="journal_note">Les opérations importantes qu’il a menées</string>
+    <string name="journal_title">Journal de %1$s</string>
     <string name="load_failed">Impossible de charger la conversation</string>
     <string name="login_cancelled">Connexion annulée</string>
     <string name="login_done">Connexion effectuée</string>
@@ -186,6 +191,13 @@
     <string name="mail_sent">E-mail envoyé</string>
     <string name="mail_to">À : %1$s</string>
     <string name="meet_companion">Rencontrer ton compagnon</string>
+    <string name="memory">Mémoire</string>
+    <string name="memory_empty_body">Dis « souviens-toi que… » et il le retiendra.</string>
+    <string name="memory_empty_title">Mémoire vide</string>
+    <string name="memory_forget">Oublier</string>
+    <string name="memory_note">Ce qu’il retient ; oublier un élément</string>
+    <string name="memory_shared">partagé par tous les compagnons</string>
+    <string name="memory_title">Mémoire de %1$s</string>
     <string name="message_actions">Actions du message</string>
     <string name="message_sent_to">Message envoyé à %1$s</string>
     <string name="model">Modèle</string>
@@ -331,6 +343,11 @@
     <string name="tasks_running">En cours</string>
     <string name="tasks_scheduled">Planifiées</string>
     <string name="tasks_short">Tâches</string>
+    <string name="team">Équipe</string>
+    <string name="team_empty_body">Demande à un compagnon d’en consulter un autre.</string>
+    <string name="team_empty_title">Aucun échange</string>
+    <string name="team_exchanges">Échanges de l’équipe</string>
+    <string name="team_exchanges_note">Ce que les compagnons se disent entre eux</string>
     <string name="terminal">Terminal</string>
     <string name="theme_dark">Sombre</string>
     <string name="theme_light">Clair</string>

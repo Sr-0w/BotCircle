@@ -167,6 +167,11 @@
     <string name="have_account">I already have an account</string>
     <string name="intervention">contribution</string>
     <string name="interventions">Contributions</string>
+    <string name="journal">Journal</string>
+    <string name="journal_empty_body">Important operations will show up here.</string>
+    <string name="journal_empty_title">Nothing yet</string>
+    <string name="journal_note">The important operations it carried out</string>
+    <string name="journal_title">%1$s’s journal</string>
     <string name="load_failed">Couldn’t load the conversation</string>
     <string name="login_cancelled">Sign-in cancelled</string>
     <string name="login_done">Signed in</string>
@@ -186,6 +191,13 @@
     <string name="mail_sent">Email sent</string>
     <string name="mail_to">To: %1$s</string>
     <string name="meet_companion">Meet your companion</string>
+    <string name="memory">Memory</string>
+    <string name="memory_empty_body">Say “remember that…” and it will keep it.</string>
+    <string name="memory_empty_title">Nothing remembered yet</string>
+    <string name="memory_forget">Forget</string>
+    <string name="memory_note">What it remembers; forget an item</string>
+    <string name="memory_shared">shared by all companions</string>
+    <string name="memory_title">%1$s’s memory</string>
     <string name="message_actions">Message actions</string>
     <string name="message_sent_to">Message sent to %1$s</string>
     <string name="model">Model</string>
@@ -331,6 +343,11 @@
     <string name="tasks_running">Running</string>
     <string name="tasks_scheduled">Scheduled</string>
     <string name="tasks_short">Tasks</string>
+    <string name="team">Team</string>
+    <string name="team_empty_body">Ask a companion to consult another one.</string>
+    <string name="team_empty_title">No exchange yet</string>
+    <string name="team_exchanges">Team exchanges</string>
+    <string name="team_exchanges_note">What companions say to each other</string>
     <string name="terminal">Terminal</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>

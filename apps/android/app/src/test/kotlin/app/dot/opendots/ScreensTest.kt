@@ -132,6 +132,12 @@ class ScreensTest {
                     path == "/agents/a2/stream" -> MockResponse.Builder().code(204).build()
                     path == "/secure-logins/sl1" -> json("""{"id":"sl1","agentId":"a2","conversationId":"c2","origin":"https://service.example","url":"https://service.example/login?next=%2Finvoices","reason":"Read the latest invoice","status":"pending"}""")
                     path == "/secure-logins/sl1/resolve" -> json("""{"id":"sl1","agentId":"a2","conversationId":"c2","origin":"https://service.example","url":"https://service.example/login?next=%2Finvoices","reason":"Read the latest invoice","status":"cancelled"}""")
+                    path == "/agents/a1/memories" -> json("""[{"id":"mem1","agentId":"a1","content":"Robin prefers short answers."}]""")
+                    path == "/memories/shared" -> json("""[{"id":"mem2","agentId":null,"content":"The office is closed on Fridays."}]""")
+                    path == "/memories/mem1" -> json("""{"ok":true}""")
+                    path == "/journal" -> json("""[{"id":"j1","summary":"Sent the weekly recap","createdAt":"2026-11-13T17:00:00Z"}]""")
+                    path == "/team/threads" -> json("""[{"conversationId":"pair1","agentIds":["a1","a3"],"lastMessageAt":"2026-11-13T09:00:00Z","lastMessagePreview":"The build is green.","messageCount":2}]""")
+                    path == "/conversations/pair1/messages" -> json("""{"messages":[{"id":"t1","role":"user","metadata":{"kind":"team","agentId":"a1"},"parts":[{"type":"text","text":"Is the build green?"}]},{"id":"t2","role":"assistant","metadata":{"kind":"team","agentId":"a3"},"parts":[{"type":"text","text":"The build is green."}]}]}""")
                     path == "/settings" -> json("""{"openrouterKey":"sk-or-…-9f2c","defaultModel":{"provider":"openrouter","model":"openai/gpt-5"},"timezone":"Europe/Brussels","paused":false,"ollamaUrl":null,"turnStepLimit":null}""")
                     path == "/codex/account" -> json("""{"account":null,"error":null}""")
                     path == "/codex/login" -> json("""{"verificationUrl":"https://auth.openai.com/codex/device","userCode":"TEST-1234"}""")
@@ -347,6 +353,31 @@ class ScreensTest {
         // Android back returns to the page that opened the workspace.
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Weekly recap")
+    }
+
+    @Test fun aCompanionsMemoryCanBeReadAndForgotten() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companion details").performClick()
+        waitFor("Read public web pages")
+        compose.onNodeWithText("Memory").performClick()
+        waitFor("Robin prefers short answers.")
+        waitFor("shared by all companions")
+        compose.onAllNodes(hasText("Forget"))[0].performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/memories/mem1" } }
+    }
+
+    @Test fun teamExchangesOpenTheThreadBetweenTwoCompanions() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        waitFor("Venty")
+        tab("Settings")
+        compose.onNodeWithText("Team exchanges").performClick()
+        waitFor("Ari ↔ Dev")
+        compose.onNodeWithText("Ari ↔ Dev").performClick()
+        waitFor("Is the build green?")
+        shoot("team-thread-dark")
     }
 
     @Test fun signInThenEnter() {

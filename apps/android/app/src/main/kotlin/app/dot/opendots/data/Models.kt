@@ -515,3 +515,17 @@ data class CodeWorkspace(
 
 @Serializable
 data class PromptResult(val queued: Boolean = false)
+
+// --- Memory, journal, team exchanges ----------------------------------------------------------------------------
+
+@Immutable
+@Serializable
+data class Memory(val id: String, val agentId: String? = null, val content: String = "", val createdAt: String = "")
+
+@Immutable
+@Serializable
+data class JournalEntry(val id: String, val summary: String = "", val createdAt: String = "")
+
+@Immutable
+@Serializable
+data class TeamThread(val conversationId: String, val agentIds: List<String> = emptyList(), val lastMessageAt: String? = null, val lastMessagePreview: String? = null, val messageCount: Int = 0)

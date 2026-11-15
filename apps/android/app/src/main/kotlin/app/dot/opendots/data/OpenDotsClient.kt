@@ -284,6 +284,17 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun codeFiles(taskId: String, path: String): List<CodeFileNode> = get("/opencode/tasks/$taskId/files?path=" + java.net.URLEncoder.encode(path, "UTF-8"))
     suspend fun codeFile(taskId: String, path: String): CodeFile = get("/opencode/tasks/$taskId/file?path=" + java.net.URLEncoder.encode(path, "UTF-8"))
 
+    // --- Memory, journal, team exchanges ----------------------------------------------------------
+
+    /** What a companion remembers, followed by what every companion shares. */
+    suspend fun memories(agentId: String): List<Memory> = get<List<Memory>>("/agents/$agentId/memories") + get<List<Memory>>("/memories/shared")
+    suspend fun deleteMemory(id: String) { json("DELETE", "/memories/$id") }
+    suspend fun journal(agentId: String): List<JournalEntry> = get("/journal?agentId=$agentId")
+    suspend fun teamThreads(): List<TeamThread> = get("/team/threads")
+    /** A thread between two companions, read-only. */
+    suspend fun conversationMessages(conversationId: String): List<ChatMessage> =
+        (json("GET", "/conversations/$conversationId/messages").asObject() ?: JsonObject(emptyMap())).arr("messages").orEmpty().mapNotNull { (it as? JsonObject)?.let(::parseMessage) }
+
     // --- Background tasks ------------------------------------------------------------------------
 
     suspend fun tasks(): List<BgTask> = get("/tasks")
