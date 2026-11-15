@@ -44,6 +44,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -83,6 +84,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -325,8 +328,11 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
         if (tab == CodeTab.Session && blocks.isNotEmpty()) listState.scrollToItem(Int.MAX_VALUE / 2)
     }
 
-    Column(Modifier.fillMaxSize().background(c.background).testTag("code-workspace")) {
-        Box(Modifier.weight(1f)) {
+    // The session scrolls under the floating glass composer, which leaves it room at the end.
+    var composerHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    Box(Modifier.fillMaxSize().background(c.background).testTag("code-workspace")) {
+        Box(Modifier.fillMaxSize()) {
             FrostedHeaderLayout(
                 backdrop = backdrop,
                 header = {
@@ -360,7 +366,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                     space == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
                     tab == CodeTab.Session -> LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l),
+                        contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + composerHeight),
                         verticalArrangement = Arrangement.spacedBy(DotSpacing.l),
                         modifier = Modifier.fillMaxSize().backdropSource(backdrop),
                     ) {
@@ -402,12 +408,12 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                         }
                         items(space.questions, key = { "q-" + it.id }) { request -> CodeQuestionCard(request) { answers -> app.run { app.client.codeQuestion(taskId, request.id, answers); revision++ } } }
                     }
-                    tab == CodeTab.Changes -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l), verticalArrangement = Arrangement.spacedBy(DotSpacing.s), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
+                    tab == CodeTab.Changes -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(DotSpacing.s), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
                         if (space.diffs.isEmpty()) item { Text(stringResource(if (space.reachable) R.string.code_no_change else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
                         items(space.diffs, key = { it.path }) { diff -> CodeDiffView(diff) }
                     }
                     tab == CodeTab.Files -> Box(Modifier.fillMaxSize().backdropSource(backdrop)) { CodeFiles(app, taskId, top) }
-                    else -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l), verticalArrangement = Arrangement.spacedBy(DotSpacing.l), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
+                    else -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(DotSpacing.l), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
                         items(space.exchanges, key = { it.seq }) { entry ->
                             val author = when (entry.author) { "user" -> stringResource(R.string.you); "opencode" -> "OpenCode"; else -> ui.agents.firstOrNull { it.id == entry.agentId }?.name ?: stringResource(R.string.a_companion) }
                             Column(Modifier.fillMaxWidth().testTag("exchange-${entry.author}")) {
@@ -423,12 +429,14 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                 }
             }
         }
-        if (tab == CodeTab.Session) {
+        if (tab == CodeTab.Session) Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { size -> with(density) { size.height.toDp() }.let { if (it != composerHeight) composerHeight = it } },
+        ) {
             // What changed, as one pill above the field: it opens the diff.
             val diffs = space?.diffs.orEmpty()
             if (diffs.isNotEmpty()) Box(Modifier.fillMaxWidth().padding(bottom = DotSpacing.xs), contentAlignment = Alignment.Center) {
                 Row(
-                    Modifier.clip(DotShapes.pill).background(c.surfaceRaised).border(DotSpacing.hairline * 2, c.border, DotShapes.pill)
+                    Modifier.clip(DotShapes.pill).background(c.surfaceRaised.copy(alpha = 0.94f)).border(DotSpacing.hairline * 2, c.border, DotShapes.pill)
                         .clickable(role = Role.Button) { tab = CodeTab.Changes }.heightIn(min = 36.dp).padding(horizontal = DotSpacing.m).testTag("code-changes-pill"),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -440,6 +448,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
             Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)).padding(horizontal = DotSpacing.m).padding(bottom = DotSpacing.s)) {
                 DotComposer(
                     value = draft, onValueChange = { draft = it },
+                    backdrop = backdrop,
                     placeholder = stringResource(if (space?.reachable == false) R.string.code_offline else R.string.code_write),
                     enabled = space?.reachable != false,
                     busy = busy && task?.active == true,
@@ -493,7 +502,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                 )
             }
             if (picking) CodeModelSheet(app, taskId, space?.model, onDismiss = { picking = false }) { picking = false; revision++ }
-        } else Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+        }
     }
 }
 

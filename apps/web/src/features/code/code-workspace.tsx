@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, WifiOffIcon, WrenchIcon, XIcon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
+import { FloatingComposer } from '@/components/floating-composer';
 import { ACTIVE_TASK_STATUSES, OPENCODE_FILES_MAX_COUNT, type OpencodeCurrentModelDTO, type OpencodeModelDTO, type OpencodeDiffDTO, type OpencodeFileNodeDTO, type OpencodeMessageDTO, type OpencodePartDTO, type OpencodeWorkspaceDTO } from '@opendots/shared';
 import { toast } from 'sonner';
 import { MessageResponse } from '@/components/ai-elements/message';
@@ -54,7 +55,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
   const iconButton = 'size-8 rounded-full text-muted-foreground hover:text-foreground';
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-code-workspace={taskId} data-code-status={task?.status}>
+    <div className="relative flex h-full min-h-0 flex-col bg-background" data-code-workspace={taskId} data-code-status={task?.status}>
       <header className="flex shrink-0 items-center gap-1 px-2 py-2">
         {view !== 'session'
           ? <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Retour à la session')} onClick={() => setView('session')}><ArrowLeftIcon /></Button>
@@ -73,7 +74,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
       {error && !data && <p className="p-4 text-destructive text-sm">{error}</p>}
       {!data && !error && <LoaderIcon className="m-6 animate-spin" />}
       {data && view === 'session' && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-4" onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-[calc(var(--composer-h,7rem)+1rem)]" onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           <div className="mx-auto max-w-3xl space-y-4">
             {!data.reachable && <p role="status" className="flex items-start gap-2 text-muted-foreground text-xs"><WifiOffIcon className="mt-0.5 size-3.5 shrink-0" />{t('Instance injoignable : l’état affiché est le dernier connu, pas un résultat.')} {data.error}</p>}
             {data.messages.length === 0 && <p className="text-muted-foreground text-sm">{data.reachable ? t('La session n’a pas encore de message.') : t('Les messages ne peuvent pas être lus pour l’instant.')}</p>}
@@ -120,17 +121,17 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
         </div>
       )}
       {data && view === 'session' && (
-        <div className="shrink-0 px-3 pb-3">
+        <FloatingComposer><div className="px-3 pb-3">
           {data.diffs.length > 0 && (
             <div className="mb-2 flex justify-center">
-              <button type="button" onClick={() => setView('changes')} className="flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs hover:bg-accent" aria-label={t('Changements')} data-code-changes>
+              <button type="button" onClick={() => setView('changes')} className="quiet-glass flex items-center gap-2 rounded-full border px-3 py-1 text-xs hover:bg-accent" aria-label={t('Changements')} data-code-changes>
                 <span>{data.diffs.length === 1 ? t('1 fichier') : t('{count} fichiers', { count: data.diffs.length })}</span>
                 <span className="font-mono text-success">+{add}</span><span className="font-mono text-destructive">−{del}</span>
               </button>
             </div>
           )}
           {picking && <ModelMenu taskId={taskId} current={data.model} onClose={() => setPicking(false)} onPicked={() => { setPicking(false); reload(); }} />}
-          <form className="mx-auto max-w-3xl rounded-3xl border bg-card px-3 pt-2 pb-1.5 focus-within:border-ring" onSubmit={(event) => { event.preventDefault(); void send(); }}
+          <form className="quiet-glass mx-auto max-w-3xl rounded-3xl border px-3 pt-2 pb-1.5 shadow-sm focus-within:border-ring" onSubmit={(event) => { event.preventDefault(); void send(); }}
             onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles((current) => [...current, ...Array.from(event.dataTransfer.files)].slice(0, OPENCODE_FILES_MAX_COUNT)); }}>
             {files.length > 0 && (
               <div className="mb-1.5 flex flex-wrap gap-1.5" data-code-attachments>
@@ -165,7 +166,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
                 : <Button type="submit" size="icon" className="size-8 shrink-0 rounded-full" disabled={sending || (!text.trim() && !files.length) || !data.reachable} aria-label={t('Envoyer')}>{sending ? <LoaderIcon className="animate-spin" /> : <ArrowUpIcon />}</Button>}
             </div>
           </form>
-        </div>
+        </div></FloatingComposer>
       )}
     </div>
   );

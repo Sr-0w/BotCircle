@@ -270,7 +270,11 @@ class ScreensTest {
         shoot("work-dark")
     }
 
-    private fun tab(label: String) = compose.onNode(hasText(label) and isSelectable()).performClick()
+    /** Dock destinations are spoken labels (only the active one shows its text); Settings is the header button. */
+    private fun tab(label: String) {
+        if (label == "Settings") compose.onNodeWithContentDescription("Settings").performClick()
+        else compose.onNode(androidx.compose.ui.test.hasContentDescription(label) and isSelectable()).performClick()
+    }
 
     @Test fun pagesReplaceTheDrawer() {
         launch(ThemeMode.DARK)
@@ -289,9 +293,16 @@ class ScreensTest {
         tab("Settings")
         waitFor("OLED black")
         shoot("settings-dark")
-        // Android back from a tab returns to Companions, and a companion opens its conversation.
+        // #44: Settings is a page opened from the header; Back returns to the tab, then to Companions.
+        assertTrue(compose.onAllNodes(hasTestTag("dock")).fetchSemanticsNodes().isEmpty())
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Pousser (git push)")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Venty")
+        // The dock: four destinations, only the active one shows its label.
+        assertEquals(4, compose.onAllNodes(isSelectable()).fetchSemanticsNodes().size)
+        waitFor("Companions")
+        assertTrue(!compose.onAllNodesWithTextCompat("Approvals"))
         compose.onNodeWithText("Ari").performClick()
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companion details").performClick()

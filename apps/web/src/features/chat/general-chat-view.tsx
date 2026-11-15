@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FloatingComposer } from '@/components/floating-composer';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { AlertCircleIcon, MessagesSquareIcon, SparklesIcon } from 'lucide-react';
@@ -64,7 +65,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-general-chat>
         <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
       <Conversation className="min-h-0 flex-1">
-          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-10 sm:px-6">
+          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
                 <div className="flex size-16 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-7 text-muted-foreground" /></div>
@@ -89,9 +90,9 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
               </div>
             )}
           </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation></div>
-        <div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-6 sm:pb-5">
+          <ConversationScrollButton className="bottom-[calc(var(--composer-h,6rem)+0.75rem)] z-20" />
+        </Conversation>
+        <FloatingComposer><div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-6 sm:pb-5">
           <Composer
             busy={busy}
             autoFocus
@@ -113,7 +114,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             }}
             onStop={() => { void api.stopChat(info.id); chat.stop(); }}
           />
-        </div>
+        </div></FloatingComposer></div>
       </div>
     </ChatActionsContext.Provider>
   );

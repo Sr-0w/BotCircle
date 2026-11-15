@@ -53,7 +53,12 @@ import app.dot.design.DotMotion
 import app.dot.design.DotTheme
 import app.dot.design.ThemeMode
 import app.dot.design.catalog.QuietCatalogScreen
-import app.dot.design.components.DotBottomBar
+import app.dot.design.components.DotFloatingDock
+import app.dot.design.components.DockMargin
+import app.dot.design.components.rememberQuietBackdrop
+import app.dot.opendots.ui.LocalRootBackdrop
+import app.dot.opendots.ui.LocalOpenSettings
+import androidx.compose.ui.platform.testTag
 import app.dot.design.components.DotBottomBarItem
 import app.dot.design.components.DotSnackbar
 import androidx.compose.foundation.layout.Column
@@ -156,12 +161,12 @@ fun OpenDotsRoot(app: AppState, ui: AppUiState) {
 
 
 /** Top-level destinations, shown with the bottom navigation bar. */
-private enum class Tab { Companions, Chats, Tasks, Approvals, Settings }
+private enum class Tab { Chats, Companions, Tasks, Approvals }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team)
+private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team)
 
-private enum class Page { None, Chat, Profile, Model, Desktop, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team }
+private enum class Page { None, Chat, Profile, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -186,6 +191,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             Page.DefaultModel -> Page.Providers
             Page.CodeWorkspace -> codeFrom
             Page.ChatSettings -> Page.GeneralChat
+            // Pages opened from Settings return to it; Settings returns to the tab it was opened from.
+            Page.Catalog, Page.Providers, Page.AgentBehaviour, Page.CodeInstances, Page.Team -> Page.Settings
             else -> Page.None
         }
     }
@@ -211,28 +218,33 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         var companionJournal by remember { mutableStateOf(false) }
         val chatPage = current == Page.GeneralChat || current == Page.ChatSettings || current == Page.ChatModel
         when {
-            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && !chatPage && current !in SETTINGS_PAGES) -> Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) {
-                    when (tab) {
-                        Tab.Companions -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
-                        Tab.Chats -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
-                        Tab.Tasks -> TasksScreen(app, ui, onOpenCode = openCode)
-                        Tab.Approvals -> ApprovalsScreen(app, ui)
-                        Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenTeam = { page = Page.Team })
+            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && !chatPage && current !in SETTINGS_PAGES) -> {
+                // The top-level page scrolls under a floating glass dock; both share one blur source.
+                val backdrop = rememberQuietBackdrop()
+                Box(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRootBackdrop provides backdrop, LocalOpenSettings provides { page = Page.Settings }) {
+                        when (tab) {
+                            Tab.Companions -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
+                            Tab.Chats -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
+                            Tab.Tasks -> TasksScreen(app, ui, onOpenCode = openCode)
+                            Tab.Approvals -> ApprovalsScreen(app, ui)
+                        }
                     }
+                    DotFloatingDock(
+                        items = listOf(
+                            DotBottomBarItem(Icons.Outlined.Forum, stringResource(R.string.chats)),
+                            DotBottomBarItem(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.companions), badge = ui.agents.any { it.unread > 0 }),
+                            DotBottomBarItem(Icons.Outlined.CalendarMonth, stringResource(R.string.tasks_short), badge = ui.activeTasks.any { it.status == "waiting_for_user" }),
+                            DotBottomBarItem(Icons.Outlined.Shield, stringResource(R.string.approvals), badge = ui.pendingApprovals.isNotEmpty()),
+                        ),
+                        selected = tab.ordinal,
+                        onSelect = { tab = Tab.entries[it] },
+                        backdrop = backdrop,
+                        modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = DockMargin).testTag("dock"),
+                    )
                 }
-                DotBottomBar(
-                    items = listOf(
-                        DotBottomBarItem(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.companions), badge = ui.agents.any { it.unread > 0 }),
-                        DotBottomBarItem(Icons.Outlined.Forum, stringResource(R.string.chats)),
-                        DotBottomBarItem(Icons.Outlined.CalendarMonth, stringResource(R.string.tasks_short), badge = ui.activeTasks.any { it.status == "waiting_for_user" }),
-                        DotBottomBarItem(Icons.Outlined.Shield, stringResource(R.string.approvals), badge = ui.pendingApprovals.isNotEmpty()),
-                        DotBottomBarItem(Icons.Outlined.Settings, stringResource(R.string.settings)),
-                    ),
-                    selected = tab.ordinal,
-                    onSelect = { tab = Tab.entries[it] },
-                )
             }
+            current == Page.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenTeam = { page = Page.Team }, onBack = ::back)
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })
             current == Page.DefaultModel -> DefaultModelPage(app, onBack = ::back)

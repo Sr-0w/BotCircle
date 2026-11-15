@@ -59,31 +59,50 @@ import app.dot.design.components.SectionLabel
 import app.dot.design.components.backdropSource
 import app.dot.design.components.rememberQuietBackdrop
 import app.dot.design.rememberDotHaptics
+import androidx.compose.runtime.staticCompositionLocalOf
+import app.dot.design.components.QuietBackdrop
+import app.dot.design.components.DockHeight
+import app.dot.design.components.DockMargin
+import androidx.compose.material.icons.outlined.Settings
 import app.dot.opendots.AppState
 import app.dot.opendots.AppUiState
 import app.dot.opendots.BuildInfo
 import app.dot.opendots.R
 import app.dot.opendots.data.Activity
 
+/** The backdrop shared by a top-level page and the floating dock over it: the dock blurs what scrolls under it. */
+val LocalRootBackdrop = staticCompositionLocalOf<QuietBackdrop?> { null }
+
+/** Opens Settings from the header of the top-level pages (Settings is not a destination of the dock). */
+val LocalOpenSettings = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 /**
  * A full page: content scrolling under the same frosted header as the conversation. With [onBack] it is a pushed page
- * with a Back capsule; without, it is one of the top-level tabs and leaves the bottom to the navigation bar.
+ * with a Back capsule; without ([inTabs]), it is a top-level page: its list scrolls under the floating dock, which it
+ * leaves room for at the end, and its header carries the Settings button.
  */
 @Composable
 fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, subtitle: String? = null, content: LazyListScope.() -> Unit) {
-    val backdrop = rememberQuietBackdrop()
+    val shared = if (inTabs) LocalRootBackdrop.current else null
+    val own = rememberQuietBackdrop()
+    val backdrop = shared ?: own
+    val openSettings = if (inTabs && onBack == null) LocalOpenSettings.current else null
     Box(Modifier.fillMaxSize().background(Dot.colors.background)) {
         FrostedHeaderLayout(
             backdrop,
             header = {
-                DotTopBar(title = title, subtitle = subtitle, navigation = if (onBack == null) null else { { Box(Modifier.padding(start = DotSpacing.s)) { BackButton(onBack) } } })
+                DotTopBar(
+                    title = title, subtitle = subtitle,
+                    navigation = if (onBack == null) null else { { Box(Modifier.padding(start = DotSpacing.s)) { BackButton(onBack) } } },
+                    actions = { if (openSettings != null) Box(Modifier.padding(end = DotSpacing.s)) { DotIconButton(Icons.Outlined.Settings, stringResource(R.string.settings), onClick = openSettings) } },
+                )
             },
         ) { padding ->
             LazyColumn(
                 Modifier.fillMaxSize().backdropSource(backdrop),
                 contentPadding = PaddingValues(
                     top = padding.calculateTopPadding(),
-                    bottom = (if (inTabs) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()) + DotSpacing.xxl,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + DotSpacing.xxl + (if (inTabs && onBack == null) DockHeight + DockMargin else 0.dp),
                 ),
                 content = content,
             )
@@ -200,9 +219,9 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}, onOpenTeam: () -> Unit = {}) {
+fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}, onOpenTeam: () -> Unit = {}, onBack: (() -> Unit)? = null) {
     var confirmSignOut by remember { mutableStateOf(false) }
-    QuietPage(stringResource(R.string.settings), onBack = null, inTabs = true) {
+    QuietPage(stringResource(R.string.settings), onBack = onBack, inTabs = onBack == null) {
         item {
             SectionLabel(stringResource(R.string.appearance))
             FlowRow(Modifier.padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {

@@ -46,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
@@ -302,6 +303,11 @@ fun DotComposer(
     focusRequester: FocusRequester? = null,
     header: (@Composable ColumnScope.() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
+    /**
+     * The content scrolling underneath, when the composer floats over it: it then takes the same glass as the
+     * conversation's top buttons (real blur of what passes under it). Null: a stable surface.
+     */
+    backdrop: QuietBackdrop? = null,
     /** Two-line layout (a coding agent's): the text on top, then [footer]'s controls (attach, model…) and Send. */
     footer: (@Composable RowScope.() -> Unit)? = null,
 ) {
@@ -313,9 +319,10 @@ fun DotComposer(
     Column(
         modifier
             .fillMaxWidth()
+            .then(if (backdrop != null) Modifier.shadow(3.dp, ComposerShape, ambientColor = Color(0x26000000), spotColor = Color(0x33000000)) else Modifier)
             .clip(ComposerShape)
-            .background(c.surface)
-            .border(DotSpacing.hairline * 2, outline, ComposerShape),
+            .then(if (backdrop != null) Modifier.glassSurface(backdrop, pressed = false) else Modifier.background(c.surface))
+            .border(DotSpacing.hairline * 2, if (backdrop != null && !focused) frostedBorderBrush() else SolidColor(outline), ComposerShape),
     ) {
         if (header != null) Column(Modifier.padding(start = DotSpacing.l, end = DotSpacing.s, top = DotSpacing.m), content = header)
         if (footer != null) {

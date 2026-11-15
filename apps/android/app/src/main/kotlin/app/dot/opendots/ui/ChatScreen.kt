@@ -72,6 +72,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
@@ -221,8 +223,11 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Dot.colors.background)) {
-        Box(Modifier.weight(1f)) {
+    // The messages fill the screen and scroll under the floating glass composer, which leaves them room at the end.
+    var composerHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    Box(Modifier.fillMaxSize().background(Dot.colors.background)) {
+        Box(Modifier.fillMaxSize()) {
             FrostedHeaderLayout(
                 backdrop = backdrop,
                 header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenWork = { workSheet = true }) },
@@ -237,7 +242,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                     contentPadding = PaddingValues(
                         start = DotSpacing.gutter + sideInsets.calculateStartPadding(direction),
                         end = DotSpacing.gutter + sideInsets.calculateEndPadding(direction),
-                        top = padding.calculateTopPadding(), bottom = DotSpacing.l,
+                        top = padding.calculateTopPadding(), bottom = DotSpacing.l + composerHeight,
                     ),
                     modifier = Modifier.fillMaxSize().backdropSource(backdrop),
                 ) {
@@ -282,7 +287,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             val reduced = rememberReducedMotion()
             androidx.compose.animation.AnimatedVisibility(
                 visible = !atLatest,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = DotSpacing.m),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = composerHeight + DotSpacing.s),
                 enter = if (reduced) fadeIn() else fadeIn() + scaleIn(initialScale = 0.9f),
                 exit = if (reduced) fadeOut() else fadeOut() + scaleOut(targetScale = 0.9f),
             ) {
@@ -302,10 +307,11 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         val mentionQuery = remember(draft) { MENTION_TAIL.find(draft)?.groupValues?.get(2) }
         val suggestions = remember(mentionQuery, mentionable) { mentionQuery?.let { q -> mentionable.filter { it.name.startsWith(q, ignoreCase = true) }.take(5) }.orEmpty() }
 
-        // The composer sits on the page itself: a stable surface, no blur and no gradient band underneath.
+        // The composer floats in the same glass as the header's buttons: the messages pass under it, blurred.
         val ready = images.all { it.attachment != null || it.failed }
         Box(
-            Modifier.fillMaxWidth()
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .onSizeChanged { size -> with(density) { size.height.toDp() }.let { if (it != composerHeight) composerHeight = it } }
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
                 .padding(horizontal = DotSpacing.m).padding(bottom = DotSpacing.s),
             contentAlignment = Alignment.Center,
@@ -314,6 +320,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.widthIn(max = 720.dp),
+                backdrop = backdrop,
                 placeholder = if (general != null) stringResource(R.string.write_chat) else if (agent.named) stringResource(R.string.write_to, agent.name) else stringResource(R.string.write_to_companion),
                 busy = chat.busy,
                 canSend = ready && (draft.isNotBlank() || images.any { it.attachment != null }),
