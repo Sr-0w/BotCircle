@@ -60,7 +60,7 @@ describe('historique envoyé au modèle', () => {
     expect((out[0].parts[0] as { text: string }).text).toContain('[reactions: 👍 user]');
     expect((out[0].parts[0] as { text: string }).text).toContain('Merci');
     expect((original.parts[0] as { text: string }).text).toBe('Merci');
-    expect((out[1].parts[0] as { text: string }).text.startsWith('[message a1]')).toBe(true);
+    expect((out[1].parts[0] as { text: string }).text).toBe('Noté.');
   });
 });
 

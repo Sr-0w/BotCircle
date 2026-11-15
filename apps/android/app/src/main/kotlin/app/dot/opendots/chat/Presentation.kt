@@ -32,7 +32,6 @@ fun Part.Tool.isAction(): Boolean {
     if (state != "output-available") return false
     val out = outputObject ?: return false
     if (failed) return false
-    if (name == "team_send_message" && out.str("status") == "sent") return true
     if (name in ACTION_TOOLS) return true
     if (name == "request_secure_login" && out.str("loginId") != null) return true
     if ((name == "task_start" || name == "invoke_agent" || name == "opencode_start") && out.str("taskId") != null) return true
@@ -70,6 +69,7 @@ fun presentAssistantTurn(message: ChatMessage): AssistantTurn {
         when (part) {
             is Part.Text -> cleanModelText(part.text).takeIf { it.isNotEmpty() && !isSilence(it) }?.let { bubbles += Bubble.Text("text-$index", it) }
             is Part.Tool -> when {
+                part.name == "text_user" && part.outputObject?.str("status") == "suppressed_duplicate" -> Unit
                 part.name == "text_user" -> cleanModelText(part.input?.let { (it as? kotlinx.serialization.json.JsonObject)?.str("text") }.orEmpty())
                     .takeIf { it.isNotEmpty() && !isSilence(it) }?.let { bubbles += Bubble.Text("text-$index", it) }
                 part.name == "share_screenshot" && part.state == "output-available" && !part.failed && part.outputObject?.str("status") == "attached" && part.outputObject?.str("url") != null ->

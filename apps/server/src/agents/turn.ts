@@ -194,7 +194,7 @@ function compactAssistantParts(parts: any[], preserveScreenshots: Set<string>): 
       }
       // Never replay {preview,truncated} as tool arguments: the model may copy
       // that invalid shape into its next call (or run a truncated command).
-      if ((p.type === 'tool-shell_exec' && typeof p.input?.command !== 'string') || ('input' in p && JSON.stringify(p.input ?? null).length > max)) return { type: 'text', text: `[Historical ${p.type.slice(5)} call (${p.state}): invalid or oversized arguments omitted. This is a summary, not an executable tool call. Result: ${JSON.stringify(compactToolOutput(p.output ?? p.errorText, max))}]` };
+      if ((p.type === 'tool-shell_exec' && typeof p.input?.command !== 'string') || ('input' in p && JSON.stringify(p.input ?? null).length > max)) return { type: 'dynamic-tool', toolName: 'historical_tool_result', toolCallId: p.toolCallId, state: 'output-available', input: {}, output: { tool: p.type.slice(5), note: 'Historical result; not an executable tool call', result: compactToolOutput(p.output ?? p.errorText, max) } };
       return { ...p, ...('output' in p ? { output: compactToolOutput(p.output, max) } : {}) };
     });
   let out = pass(3000);
@@ -238,7 +238,8 @@ export function historyForModel(
         parts: compactAssistantParts(msg.parts as any[], preserveScreenshots) as OpenDotsUIMessage['parts'],
       };
     }
-    msg = withModelNote(msg, modelNote(msg, names));
+    // Reference metadata is context, never an example of assistant prose.
+    if (msg.role !== 'assistant') msg = withModelNote(msg, modelNote(msg, names));
     budget -= JSON.stringify(msg.parts).length;
     if (budget < 0 && out.length >= 2) break;
     out.push(msg);
@@ -565,6 +566,7 @@ async function executeTurn(
   const stepLimit = await getTurnStepLimit();
   let limitReached = false;
   let limitNotice: string | null = null;
+  const pendingText = new Map<string, string>();
 
   if (runSlot(live.key).foreground === live) beginStream(stream);
   publish({ type: 'turn.started', agentId, conversationId, autonomous });
@@ -675,6 +677,22 @@ async function executeTurn(
     });
 
     for await (const chunk of abortableChunks(uiStream, stream.abort.signal)) {
+      // Validate complete text blocks before broadcasting: a marker may span chunks.
+      if (chunk.type === 'text-start') pendingText.set(chunk.id, '');
+      if (chunk.type === 'text-delta') {
+        const buffered = (pendingText.get(chunk.id) ?? '') + chunk.delta;
+        if (/(^|\n)\s*\[/.test(buffered)) pendingText.set(chunk.id, buffered);
+        else {
+          stream.push({ ...chunk, delta: buffered });
+          pendingText.set(chunk.id, '');
+        }
+        continue;
+      }
+      if (chunk.type === 'text-end') {
+        const delta = cleanModelText(pendingText.get(chunk.id) ?? '');
+        if (delta) stream.push({ type: 'text-delta', id: chunk.id, delta });
+        pendingText.delete(chunk.id);
+      }
       if (chunk.type === 'finish' && limitReached && !turnError && !stream.abort.signal.aborted) {
         limitNotice = `\n\nLimite de ${stepLimit} étapes de travail atteinte : ce tour est suspendu et la tâche peut être incomplète. Tu peux me demander de continuer pour reprendre.`;
         const id = newId('limit');
@@ -696,6 +714,13 @@ async function executeTurn(
     if (!stream.abort.signal.aborted) stream.push({ type: 'error', errorText: `Le modèle a rencontré une erreur : ${turnError}` });
   }
 
+  for (const [id, buffered] of pendingText) {
+    const delta = cleanModelText(buffered);
+    if (delta) stream.push({ type: 'text-delta', id, delta });
+    stream.push({ type: 'text-end', id });
+  }
+  pendingText.clear();
+
   if (stream.abort.signal.aborted) {
     turnError = null;
     finalMessage = interruptedMessage(finalMessage, stream.chunks, responseId);
@@ -710,13 +735,12 @@ async function executeTurn(
 
   // 2. Persistance de la réponse
   const response = finalMessage as OpenDotsUIMessage | null;
+  if (response) response.parts = response.parts.map(p => p.type === 'text' ? { ...p, text: cleanModelText(p.text) } : p);
   // Dans un fil entre compagnons, la réponse transmise est le texte final, pas les phrases d'étape.
   const text = response ? (pair || taskId ? finalText(response) : messageText(response)) : '';
   // Un réveil n'est masqué que s'il n'a rien produit de visible pour l'utilisateur.
   const acted = (response?.parts ?? []).some((p: any) => typeof p.type === 'string' && VISIBLE_EFFECT_TOOLS.test(p.type.slice(5)) && p.output?.ok !== false);
-  // Une réponse d'un coéquipier est toujours montrée à l'utilisateur (jamais masquée).
-  const mustSurface = trigger.kind === 'event' && trigger.event.type === 'agent_reply';
-  const silent = autonomous && !pair && !taskId && !acted && !mustSurface && (SILENCE.test(text) || (!text && !turnError));
+  const silent = autonomous && !pair && !taskId && !acted && (SILENCE.test(text) || (!text && !turnError));
   if (response && response.parts.length) {
     const parts = (SILENCE.test(text) ? response.parts.filter((p) => p.type !== 'text') : response.parts).filter((p) => {
       if (p.type !== 'tool-text_user') return true;

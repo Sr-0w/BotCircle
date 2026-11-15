@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
-import { isSingleEmoji, type MessageMetadata, type MessageReaction, type MessageReplyRef, type TeamThreadDTO } from '@opendots/shared';
+import { cleanModelText, isSingleEmoji, type MessageMetadata, type MessageReaction, type MessageReplyRef, type TeamThreadDTO } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
 import { publish } from '../bus.ts';
 import { enqueue } from '../jobs/queue.ts';
@@ -118,7 +118,7 @@ function rowToUI(r: typeof schema.messages.$inferSelect, reactions?: MessageReac
   return {
     id: r.id,
     role: r.role,
-    parts: r.parts as OpenDotsUIMessage['parts'],
+    parts: (r.parts as OpenDotsUIMessage['parts']).map(p => r.role === 'assistant' && p.type === 'text' ? { ...p, text: cleanModelText(p.text) } : p),
     metadata,
   };
 }

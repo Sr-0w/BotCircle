@@ -6,6 +6,8 @@ vi.mock('../src/computer/desktop.ts', async (original) => ({ ...await original<a
 vi.mock('../src/agents/repo.ts', () => ({ getAgent: async () => ({ id: 'ag_test', archived: false, permissions: { computer: true } }) }));
 vi.mock('../src/computer/permissions.ts', () => ({ desktopActionNeedsApproval: async () => state.ask }));
 vi.mock('../src/approvals/service.ts', () => ({ registerApprovalAction: () => {}, createApproval: state.approval }));
+vi.mock('../src/attachments/service.ts', () => ({ storeImage: vi.fn(async () => ({ url: '/api/attachments/shared', filename: 'capture.png', mediaType: 'image/png' })) }));
+import { storeImage } from '../src/attachments/service.ts';
 import { desktopTools } from '../src/computer/tools.ts';
 import { desktopVisionMessages } from '../src/computer/vision.ts';
 const ctx = { agent: { id: 'ag_test', permissions: { computer: true } }, conversationId: 'cv_test' } as any;
@@ -91,4 +93,14 @@ it('signale explicitement une image historique absente au lieu de prétendre la 
  expect(result.type).toBe('text');
  expect(JSON.parse(result.value)).toMatchObject({ screenshot: 'unavailable' });
  expect(result.value).toContain('aucune image jointe');
+});
+
+it('partage une capture persistante et ne confirme pas un échec de livraison', async () => {
+ const tools = await desktopTools(ctx);
+ const args = { screenshot_id: 'a'.repeat(32) };
+ expect(await tools.share_screenshot.execute!(args, options)).toMatchObject({ ok: true, status: 'attached', url: '/api/attachments/shared' });
+ state.read.mockResolvedValueOnce(null);
+ expect(await tools.share_screenshot.execute!(args, options)).toMatchObject({ ok: false, status: 'not_found' });
+ vi.mocked(storeImage).mockRejectedValueOnce(new Error('storage unavailable'));
+ expect(await tools.share_screenshot.execute!(args, options)).toMatchObject({ ok: false, status: 'failed' });
 });

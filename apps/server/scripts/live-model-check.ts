@@ -157,7 +157,7 @@ try {
     session.busy = false;
     await syncOpencodeTasks();
     assert.equal((await getTask(task.id))!.status, 'completed');
-    await until('compte rendu du compagnon', async () => (await loadMessages(ari.conv, { limit: 30 })).messages.some((m) => m.metadata?.kind === 'event' && m.metadata.event?.type === 'task') && (await db().select().from(schema.jobs).where(eq(schema.jobs.agentId, ari.id))).every((j) => j.status !== 'pending' && j.status !== 'running'), 120);
+    await until('compte rendu du compagnon', async () => (await loadMessages(ari.conv, { limit: 30 })).messages.some((m) => m.metadata?.kind === 'event' && m.metadata.event?.type === 'task') && (await db().select().from(schema.jobs).where(eq(schema.jobs.agentId, ari.id))).every((j) => j.status !== 'queued' && j.status !== 'running'), 120);
     const report = messageText((await loadMessages(ari.conv, { limit: 30 })).messages.filter((m) => m.role === 'assistant' && m.metadata?.kind !== 'event').at(-1)!);
     assert.ok(report.length > 20, 'aucun compte rendu');
     const honest = !/tests? (passent|réussi|ok|sont verts)/i.test(report) || /pas (pu|été)|n['’]ont pas|non lancé|absent/i.test(report);

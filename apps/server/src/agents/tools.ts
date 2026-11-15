@@ -5,7 +5,7 @@ import { artifactTools, shareArtifactsWith } from '../artifacts/tools.ts';
 import { ArtifactError } from '../artifacts/service.ts';
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
-import type { ActivitySchedule, AgentPermissions, ModelConfig } from '@opendots/shared';
+import { cleanModelText, type ActivitySchedule, type AgentPermissions, type ModelConfig } from '@opendots/shared';
 import { config } from '../config.ts';
 import {
   createAgent,
@@ -83,6 +83,7 @@ function profileOf(a: AgentRow) {
     id: a.id,
     name: a.name,
     named: a.named,
+    color: a.color,
     description: a.description,
     personality: a.personality,
     instructions: a.instructions,
@@ -226,9 +227,10 @@ export function buildTools(ctx: ToolContext): ToolSet {
   const tools: ToolSet = {};
   const self = () => getAgent(ctx.agent.id).then((a) => a!);
 
+  const publishedStatus = new Set<string>();
   tools.text_user = tool({
     description:
-      "Envoie à l'utilisateur une courte phrase, dans sa langue, affichée comme sa propre bulle de discussion, pour dire où en est le travail ou ce qui vient d'être fait. Le travail continue ensuite. À utiliser avant une étape utile, puis de temps en temps au cours d'un long travail. Pas pour chaque appel trivial, un réessai, ni un réveil qui doit rester silencieux. reply_to : id du message auquel cette phrase répond, quand tu réponds à un message précis.",
+      "Envoie à l'utilisateur une courte phrase, dans sa langue, affichée comme sa propre bulle de discussion, pour dire où en est le travail ou ce qui vient d'être fait. Le travail continue ensuite. À utiliser pour un résultat concret ou un blocage nouveau ; exécute l’action annoncée avant de publier une autre annonce. Pas pour chaque appel trivial, un réessai, ni un réveil qui doit rester silencieux. reply_to : id du message auquel cette phrase répond, quand tu réponds à un message précis.",
     inputSchema: z.object({
       text: z.string().min(1).max(400),
       reply_to: z.string().optional().describe("Id du message d'origine (ligne [message …] du transcript) si tu réponds à celui-là"),
@@ -238,7 +240,9 @@ export function buildTools(ctx: ToolContext): ToolSet {
         try { await ctx.setReplyTo?.(reply_to); }
         catch (err) { return fail(errorMessage(err)); }
       }
-      const clean = text.trim().slice(0, 400);
+      const clean = cleanModelText(text).slice(0, 400);
+      if (!clean || publishedStatus.has(clean)) return ok({ status: "suppressed_duplicate" });
+      publishedStatus.add(clean);
       await ctx.onStatus?.(clean);
       return ok({ text: clean });
     },
@@ -300,8 +304,9 @@ export function buildTools(ctx: ToolContext): ToolSet {
   if (ctx.userTurn && ctx.isMain) {
     tools.agent_update_profile = tool({
       description:
-        "Modifie durablement ton identité : nom, personnalité/ton, description de tes responsabilités, couleur. À utiliser dès que l'utilisateur te donne un nom ou change ton style.",
+        "Modifie un profil sur demande directe de l’utilisateur : le tien par défaut, ou le compagnon nommé par target. Pour changer les couleurs de l’équipe, utilise directement cet outil pour chaque cible plutôt que déléguer. Le résultat contient le profil réellement enregistré.",
       inputSchema: z.object({
+        target: z.string().min(1).optional().describe("Nom ou identifiant du compagnon demandé par l’utilisateur ; omis pour toi-même"),
         name: z.string().min(1).max(40).optional(),
         personality: z.string().max(2000).optional().describe('Ton et style de réponse, ex. "naturel, chaleureux, concis"'),
         description: z.string().max(2000).optional().describe('Tes responsabilités, en une ou deux phrases'),
@@ -309,17 +314,19 @@ export function buildTools(ctx: ToolContext): ToolSet {
       }),
       execute: async (args) =>
         guard(async () => {
+          const target = args.target ? await resolveAgentRef(args.target) : await self();
+          if (!target) return fail("Compagnon cible introuvable.");
           if (args.name) {
             const other = await findAgentByName(args.name);
-            if (other && other.id !== ctx.agent.id) return fail(`Le nom « ${args.name} » est déjà pris par un autre compagnon.`);
+            if (other && other.id !== target.id) return fail(`Le nom « ${args.name} » est déjà pris par un autre compagnon.`);
           }
           const patch: Partial<AgentRow> = {};
           if (args.name) Object.assign(patch, { name: args.name.trim(), named: true });
           if (args.personality !== undefined) patch.personality = args.personality;
           if (args.description !== undefined) patch.description = args.description;
           if (args.color) patch.color = args.color;
-          const updated = await updateAgent(ctx.agent.id, patch);
-          await log(ctx.agent.id, 'agent.profile', 'Profil mis à jour', patch);
+          const updated = await updateAgent(target.id, patch);
+          await log(target.id, 'agent.profile', 'Profil mis à jour', patch);
           return ok({ profile: profileOf(updated) });
         }),
     });

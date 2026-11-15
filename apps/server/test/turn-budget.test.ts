@@ -103,3 +103,23 @@ it('poursuit plus de 48 étapes sans plafond configuré, sans forcer une synthè
     expect(result.text).toBe('55 opérations terminées.');
   } finally { await setSetting('engine.turnStepLimit', 3); }
 });
+
+it('ne diffuse ni ne persiste un marqueur interne coupé entre deux chunks', async () => {
+  model = new MockLanguageModelV4({ doStream: async () => ({ warnings: [], stream: new ReadableStream({ start(c) {
+    for (const p of [
+      { type: 'stream-start', warnings: [] }, { type: 'text-start', id: 't' },
+      { type: 'text-delta', id: 't', delta: '[message msg_' },
+      { type: 'text-delta', id: 't', delta: '123]\nRésultat vérifié.' },
+      { type: 'text-end', id: 't' },
+      { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage },
+    ]) c.enqueue(p);
+    c.close();
+  } }) } as any) });
+  const agent = await createAgent({ name: 'Internal marker' });
+  const conv = await mainConversationId(agent.id);
+  const turn = runTurn(agent.id, conv, { kind: 'user', message: { id: 'msg_request', role: 'user', parts: [{ type: 'text', text: 'Test' }] } });
+  expect((await turn.done).text).toBe('Résultat vérifié.');
+  const deltas = turn.stream.chunks.filter((c: any) => c.type === 'text-delta').map((c: any) => c.delta).join('');
+  expect(deltas).toBe('Résultat vérifié.');
+  expect(messageText((await loadMessages(conv)).messages.at(-1)!)).toBe('Résultat vérifié.');
+});

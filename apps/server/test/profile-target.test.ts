@@ -1,0 +1,28 @@
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { openDatabase, closeDatabase } from '../src/db/client.ts';
+import { createAgent, getAgent, mainConversationId } from '../src/agents/repo.ts';
+import { buildTools } from '../src/agents/tools.ts';
+let ctx: any;
+const options = { toolCallId: 'profile', messages: [] } as any;
+beforeAll(async () => { await openDatabase({ memory: true }); const agent = await createAgent({ name: 'Ari' }); ctx = { agent, conversationId: await mainConversationId(agent.id), isMain: true, userTurn: true, depth: 0, tz: 'UTC' }; });
+afterAll(closeDatabase);
+it('modifie les cibles demandées et retourne leur état persisté', async () => {
+  const tools = buildTools(ctx);
+  for (const [name, color] of [['Venty', '#F59E0B'], ['Homey', '#8B5CF6']]) {
+    const target = await createAgent({ name });
+    expect(await tools.agent_update_profile.execute!({ target: name, color }, options)).toMatchObject({ ok: true, profile: { color } });
+    expect((await getAgent(target.id))?.color).toBe(color);
+  }
+  expect(await tools.agent_update_profile.execute!({ target: 'absent', color: '#FFFFFF' }, options)).toMatchObject({ ok: false });
+});
+it('ne donne aucun outil de mutation de profil aux tours non autorisés', () => {
+  for (const flags of [{ userTurn: false, isMain: true }, { userTurn: true, isMain: false }]) expect(buildTools({ ...ctx, ...flags }).agent_update_profile).toBeUndefined();
+});
+
+it('déduplique les mises à jour identiques dans un tour', async () => {
+  const seen: string[] = [];
+  const tools = buildTools({ ...ctx, onStatus: async (text: string) => { seen.push(text); } });
+  await tools.text_user.execute!({ text: 'Un fichier modifié.' }, options);
+  await tools.text_user.execute!({ text: 'Un fichier modifié.' }, options);
+  expect(seen).toEqual(['Un fichier modifié.']);
+});

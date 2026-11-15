@@ -616,6 +616,8 @@ export interface MailDraftDTO {
  */
 export function cleanModelText(text: string): string {
   return text
+    .replace(/\[Historical [\s\S]*?This is a summary, not an executable tool call\. Result:[\s\S]*?\](?=\s*(?:\[Historical|$))/g, "")
+    .replace(/^\s*\[message msg_[\w-]+\]\s*$/gm, "")
     .replace(/(?:\{[^{}]*\}\s*)?(?:<\|[a-z_]+\|>\s*)*to=functions\.[\w.-]+(?:\s*<\|[a-z_]+\|>[\w ]*)*\s*(?:\{[^{}]*\})?/gi, ' ')
     .replace(/<\|(?:start|end|message|channel|constrain|call|return)\|>/g, '')
     .replace(/[ \t]{2,}/g, ' ')
@@ -671,7 +673,6 @@ export function isActionToolPart(part: Presentable): boolean {
   if (part.state !== 'output-available') return false;
   const out = toolOutput(part);
   if (!out || out.ok === false) return false;
-  if (part.type === 'tool-team_send_message' && out.status === 'sent') return true;
   // Une tâche déléguée laisse sa carte dans le fil (mise à jour en place).
   if (part.type === 'tool-request_secure_login' && typeof (out as { loginId?: unknown }).loginId === 'string') return true;
   if ((part.type === 'tool-task_start' || part.type === 'tool-invoke_agent' || part.type === 'tool-opencode_start') && typeof (out as { taskId?: unknown }).taskId === 'string') return true;
@@ -695,6 +696,7 @@ export function presentAssistantTurn<T extends Presentable>(parts: T[]): { bubbl
   const work: T[] = [];
   const actions: T[] = [];
   parts.forEach((part, index) => {
+    if (part.type === 'tool-text_user' && (part.output as { status?: string } | undefined)?.status === 'suppressed_duplicate') return;
     if (part.type === 'text' || part.type === 'tool-text_user') {
       const raw = part.type === 'text' ? (part.text ?? '') : textFromInput(part);
       const text = cleanModelText(raw);
