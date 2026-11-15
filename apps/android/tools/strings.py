@@ -224,6 +224,7 @@ S = {
  "chat_files_note": ("Files exchanged in this chat", "Fichiers échangés dans ce chat"),
  "chat_delete": ("Delete this chat", "Supprimer ce chat"),
  "back": ("Back", "Retour"),
+ "ask_companion": ("Ask a companion", "Demander à un compagnon"),
 }
 P = {
  "actions": (("%d action", "%d actions"), ("%d action", "%d actions")),

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpIcon, SquareIcon, PlusIcon, XIcon, LoaderIcon, FileIcon } from 'lucide-react';
+import { ArrowUpIcon, SquareIcon, PlusIcon, XIcon, LoaderIcon, FileIcon, AtSignIcon } from 'lucide-react';
+import { DotAvatar } from '../dot-avatar';
 import { ARTIFACT_MAX_BYTES, IMAGE_MAX_BYTES } from '@opendots/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -11,7 +12,7 @@ export const isChatImage = (file: File) => IMAGE_TYPES.includes(file.type) || (f
 export function formatBytes(size: number) { return size < 1024 ? `${size} o` : size < 1024 * 1024 ? `${Math.round(size / 1024)} Ko` : `${(size / 1024 / 1024).toFixed(1)} Mo`; }
 
 type DraftFile = { id: string; file: File; preview: string | null };
-export type MentionTarget = { id: string; name: string };
+export type MentionTarget = { id: string; name: string; color?: string; description?: string };
 
 /**
  * File picker, drag-and-drop and paste share one draft. Images keep their preview; any other file is listed
@@ -89,7 +90,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
     onDrop={(event) => { if (event.dataTransfer.files.length) { event.preventDefault(); add(Array.from(event.dataTransfer.files)); } setDragging(false); }}
     className={cn('relative flex w-full flex-col gap-2 rounded-3xl border bg-card p-2 shadow-sm transition-shadow', 'focus-within:border-ring/60 focus-within:shadow-md', dragging && 'border-ring ring-2 ring-ring/30')}>
     <input ref={picker} type="file" multiple className="hidden" aria-label={t('Choisir des fichiers')} onChange={(event) => { add(Array.from(event.target.files ?? [])); event.target.value = ''; }} />
-    {mention && <div role="listbox" aria-label={t('Compagnons')} className="absolute bottom-full left-3 mb-2 w-56 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">@{option.name}</button>)}</div>}
+    {mention && <div role="listbox" aria-label={t('Compagnons')} className="absolute bottom-full left-3 mb-2 w-64 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{option.color && <DotAvatar color={option.color} size={18} />}<span className="min-w-0"><span className="block font-medium">@{option.name}</span>{option.description && <span className="block truncate text-muted-foreground text-xs">{option.description}</span>}</span></button>)}</div>}
     {reply && <div className="flex items-start gap-2 px-3 pt-2 text-xs"><div className="min-w-0 flex-1 border-l-2 border-foreground/30 pl-2"><p className="font-medium">{t('En réponse à')}</p><p className="truncate text-muted-foreground">{reply.preview || t('Message')}</p></div><Button type="button" size="icon-xs" variant="ghost" aria-label={t('Annuler la réponse')} onClick={onClearReply}><XIcon /></Button></div>}
     {files.length > 0 && <div className="flex flex-wrap gap-2 px-2 pt-2" aria-label={t('Fichiers joints')}>{files.map((item) => <div key={item.id} className="relative">
       {item.preview
@@ -100,6 +101,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
     {error && <p role="alert" className="px-3 text-xs text-destructive">{error}</p>}
     <div className="flex items-end gap-2">
       <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading || files.length >= MAX_FILES} onClick={() => picker.current?.click()} aria-label={t('Joindre des fichiers')}><PlusIcon /></Button>
+      {!!mentions?.length && <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading} aria-label={t('Demander à un compagnon')} title={t('Demander à un compagnon')} onClick={() => { const next = value && !/\s$/.test(value) ? `${value} @` : `${value}@`; setValue(next); pendingCaret.current = next.length; }}><AtSignIcon /></Button>}
       <textarea ref={ref} rows={1} value={value} disabled={uploading} maxLength={50_000}
         onChange={(event) => { setValue(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); }}
         onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}

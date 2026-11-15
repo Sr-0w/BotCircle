@@ -776,4 +776,5 @@ export const EN: Record<string, string> = {
   "Remis dans la conversation": "Delivered in the conversation",
   "Supprimé": "Deleted",
   "Accès refusé": "Access denied",
+  "Demander à un compagnon": "Ask a companion",
 };

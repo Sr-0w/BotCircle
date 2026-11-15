@@ -28,6 +28,7 @@
     <string name="approvals_recent">Récentes</string>
     <string name="approvals_waiting">En attente</string>
     <string name="approve">Approuver</string>
+    <string name="ask_companion">Demander à un compagnon</string>
     <string name="assistant">Assistant</string>
     <string name="assistant_failed">L’assistant n’a pas pu répondre.</string>
     <string name="attach_files">Joindre des fichiers</string>

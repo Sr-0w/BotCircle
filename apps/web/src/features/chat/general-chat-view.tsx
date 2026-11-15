@@ -32,7 +32,7 @@ export function GeneralChatView({ chat }: { chat: ChatDTO }) {
 function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] }) {
   const uploaded = useRef(new WeakMap<File, { type: 'file'; url: string; filename: string; mediaType: string }>());
   const agents = useStore((s) => s.agents);
-  const mentions = useMemo(() => agents.filter((agent) => agent.named).map((agent) => ({ id: agent.id, name: agent.name })), [agents]);
+  const mentions = useMemo(() => agents.filter((agent) => agent.named).map((agent) => ({ id: agent.id, name: agent.name, color: agent.color, description: agent.description })), [agents]);
   const transport = useMemo(() => new DefaultChatTransport<ODMessage>({
     api: `/api/chats/${info.id}/chat`,
     headers: { 'x-opendots-client': '1' },

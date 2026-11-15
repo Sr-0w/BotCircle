@@ -123,6 +123,7 @@ import app.dot.opendots.data.formatBytes
 import app.dot.design.components.DotFilterChip
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.AlternateEmail
 import app.dot.opendots.data.ReplyRef
 import app.dot.opendots.data.readImageForUpload
 import coil3.compose.AsyncImage
@@ -341,6 +342,12 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                         Icons.Outlined.Add, stringResource(R.string.attach_files),
                         onClick = { picker.launch(arrayOf("*/*")) },
                         tint = Dot.colors.textSecondary, enabled = images.size < FILES_MAX_COUNT,
+                    )
+                    // "Ask a companion", usable by touch: it opens the same completion as typing @.
+                    if (general != null && mentionable.isNotEmpty()) DotIconButton(
+                        Icons.Outlined.AlternateEmail, stringResource(R.string.ask_companion),
+                        onClick = { if (mentionQuery == null) draft = if (draft.isEmpty() || draft.last().isWhitespace()) "$draft@" else "$draft @" },
+                        tint = Dot.colors.textSecondary,
                     )
                 },
             )
