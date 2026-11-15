@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { CircleAlertIcon, CircleCheckIcon, CirclePauseIcon, CircleSlashIcon, DownloadIcon, ExternalLinkIcon, FileIcon, HourglassIcon, LoaderIcon, ShieldIcon, TerminalSquareIcon } from 'lucide-react';
+import { ArrowUpRightIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon, CirclePauseIcon, CircleSlashIcon, DownloadIcon, ExternalLinkIcon, FileIcon, HourglassIcon, LoaderIcon, ShieldIcon } from 'lucide-react';
+import { OpencodeLogo } from '@/components/brand/opencode-logo';
 import { ACTIVE_TASK_STATUSES, type PresentedFile, type TaskDTO, type TaskStatus } from '@opendots/shared';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -86,13 +87,13 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
   const task = useTask(taskId);
   const agent = useStore((s) => s.agents.find((a) => a.id === task?.agentId));
   if (!task) return <div className="w-[min(100%,26rem)] rounded-2xl border bg-card px-3.5 py-3 text-muted-foreground text-sm">{t('Tâche…')}</div>;
+  if (task.provider === 'opencode') return <CodeResultCard task={task} compact={compact} />;
   const active = ACTIVE_TASK_STATUSES.includes(task.status);
   const line = task.status === 'completed' ? null
     : task.status === 'failed' ? task.error
     : task.blocker ?? task.currentActionSummary ?? task.phase;
   return (
     <div data-task-card={task.status} className={cn('flex flex-col gap-2 rounded-2xl border bg-card px-3.5 py-3 text-left', compact ? 'w-full' : 'w-[min(100%,26rem)]')}>
-      {task.provider === 'opencode' && <div className="flex items-center gap-1.5 text-muted-foreground text-xs" data-task-provider="opencode"><TerminalSquareIcon className="size-3.5" /> <span className="font-medium text-foreground">OpenCode</span>{task.external && <span className="min-w-0 truncate">· {task.external.instanceName}{task.external.directory && ` · ${task.external.directory.split('/').filter(Boolean).pop()}`}</span>}{task.external?.unreachable && <span className="shrink-0 rounded border px-1 text-[10px]">{t('état inconnu')}</span>}</div>}
       {showAgent && agent && <div className="flex items-center gap-1.5 text-muted-foreground text-xs"><DotAvatar color={agent.color} size={14} /> <span className="font-medium text-foreground">{agent.name}</span> · {t('intervention')}</div>}
       <div className="flex items-start gap-2.5">
         <TaskStatusIcon status={task.status} className="mt-0.5" />
@@ -106,12 +107,55 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
       </div>
       {line && <p className={cn('line-clamp-2 text-xs', task.status === 'failed' || task.requiresUserInput ? 'text-destructive' : 'text-muted-foreground')}>{line}</p>}
       <div className="flex flex-wrap gap-1.5">
-        {task.provider === 'opencode' && <Button size="sm" className="h-7 rounded-full text-xs" onClick={() => openCodeWorkspace(task.id)}>{t('Ouvrir l’espace de code')}</Button>}
         <Button size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => openDialog({ kind: 'task', taskId: task.id })}>{t('Détails')}</Button>
-        {task.provider !== 'opencode' && (task.status === 'running' || task.status === 'queued') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'pause')}>{t('Pause')}</Button>}
-        {task.provider !== 'opencode' && (task.status === 'paused' || task.status === 'waiting_for_user') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'resume')}>{t('Reprendre')}</Button>}
-        {active && <Button size="sm" variant="ghost" className="h-7 rounded-full text-destructive text-xs" onClick={() => void taskAction(task, 'cancel')}>{t(task.provider === 'opencode' ? 'Arrêter' : 'Annuler')}</Button>}
+        {(task.status === 'running' || task.status === 'queued') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'pause')}>{t('Pause')}</Button>}
+        {(task.status === 'paused' || task.status === 'waiting_for_user') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'resume')}>{t('Reprendre')}</Button>}
+        {active && <Button size="sm" variant="ghost" className="h-7 rounded-full text-destructive text-xs" onClick={() => void taskAction(task, 'cancel')}>{t('Annuler')}</Button>}
       </div>
     </div>
+  );
+}
+
+const CODE_STATUS: Record<TaskStatus, string> = {
+  queued: 'En attente', running: 'En cours', waiting_for_user: 'Autorisation nécessaire', paused: 'En pause', completed: 'Terminé', failed: 'Échec', cancelled: 'Arrêté',
+};
+
+/**
+ * Une tâche OpenCode dans le fil : une seule carte, mise à jour sur place, qui ouvre la session exacte. Titre, état réel,
+ * et ce que la session a vraiment changé (lu dans son diff) ; rien d'autre. Les détails vivent dans la session.
+ */
+export function CodeResultCard({ task, compact }: { task: TaskDTO; compact?: boolean }) {
+  const changes = task.external?.changes;
+  const disconnected = Boolean(task.external?.unreachable) && ACTIVE_TASK_STATUSES.includes(task.status);
+  const status = disconnected ? t('Déconnecté') : t(CODE_STATUS[task.status]);
+  const activity = task.status === 'running' && !disconnected ? task.currentActionSummary : task.status === 'failed' ? task.error : null;
+  const noChange = changes && changes.files === 0 && task.status === 'completed';
+  const label = [t('Ouvrir la session OpenCode'), task.title, status,
+    changes && changes.files > 0 ? t('{count} fichiers, {a} lignes ajoutées, {d} supprimées', { count: changes.files, a: changes.additions, d: changes.deletions }) : noChange ? t('Aucun fichier modifié') : null].filter(Boolean).join(', ');
+  return (
+    <button type="button" onClick={() => openCodeWorkspace(task.id)} aria-label={label} title={task.title}
+      data-task-card={task.status} data-task-provider="opencode"
+      className={cn('flex flex-col gap-2 rounded-2xl border bg-card px-3.5 py-3 text-left transition-colors hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring', compact ? 'w-full' : 'w-[min(100%,26rem)]')}>
+      <span className="flex w-full items-start gap-3">
+        <OpencodeLogo size={20} className="mt-0.5" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-sm leading-snug">{task.title}</span>
+          <span className={cn('flex items-center gap-1 text-xs', task.status === 'failed' || task.status === 'waiting_for_user' ? 'text-destructive' : 'text-muted-foreground')}>
+            {task.status === 'completed' ? <CheckIcon className="size-3" /> : task.status === 'running' && !disconnected ? <LoaderIcon className="size-3 animate-spin" /> : null}
+            {status} · OpenCode
+          </span>
+          {activity && <span className="mt-0.5 block truncate text-muted-foreground text-xs">{activity}</span>}
+          {noChange && <span className="mt-0.5 block text-muted-foreground text-xs">{t('Aucun fichier modifié')}</span>}
+        </span>
+        <ArrowUpRightIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      </span>
+      {changes && changes.files > 0 && (
+        <span className="flex items-center gap-4 border-t pt-2 pl-8 text-xs tabular-nums" data-code-changes-stats>
+          <span className="text-muted-foreground">{changes.files === 1 ? t('1 fichier') : t('{count} fichiers', { count: changes.files })}</span>
+          <span className="text-success">+{changes.additions}</span>
+          <span className="text-destructive">−{changes.deletions}</span>
+        </span>
+      )}
+    </button>
   );
 }

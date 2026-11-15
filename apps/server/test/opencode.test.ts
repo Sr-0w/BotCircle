@@ -133,6 +133,10 @@ describe('OpenCode', () => {
     expect(text).toContain('apps/web/src/settings.tsx (+12/-4)');
     expect(text).toContain('opencode_send');
     expect((jobs[0].payload as any).conversationId).toBe(done.conversationId);
+    // #43 : la carte montre les vrais changements de la session ; le réveil désigne la tâche, le compagnon ne recopie pas le rapport.
+    expect(done.external?.changes).toEqual({ files: 1, additions: 12, deletions: 4 });
+    expect((jobs[0].payload as any).event).toMatchObject({ type: 'task', taskId: task.id });
+    expect(text).toContain('do NOT paste or restate');
     // Un second passage (événement tardif, redémarrage) ne conclut ni ne réveille une seconde fois.
     await syncTask(done);
     expect(await wakes(agent.id)).toHaveLength(1);
@@ -148,6 +152,8 @@ describe('OpenCode', () => {
     await syncTask((await getTask(task.id))!);
     expect(await getTask(task.id)).toMatchObject({ status: 'failed', error: 'Quota du fournisseur dépassé', result: null });
     expect(((await wakes(agent.id))[0].payload as { text: string }).text).toContain('stopped with an error');
+    // Le diff de la session a été lu et il est vide : « aucun fichier modifié » est un fait vérifié, pas un zéro inventé.
+    expect((await getTask(task.id))!.external?.changes).toEqual({ files: 0, additions: 0, deletions: 0 });
   });
 
   it('ne confond jamais une instance injoignable avec un échec ou une réussite', async () => {

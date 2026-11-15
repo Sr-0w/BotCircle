@@ -82,12 +82,14 @@
     <string name="code_name_hint">Dev PC</string>
     <string name="code_never_checked">Never checked</string>
     <string name="code_no_change">OpenCode reports no changed file in this session.</string>
+    <string name="code_no_file_changed">No file changed</string>
     <string name="code_no_instance">No instance connected</string>
     <string name="code_no_message">The session has no message yet.</string>
     <string name="code_no_patch">Diff not provided by OpenCode.</string>
     <string name="code_offline">Unreachable</string>
     <string name="code_online">Online</string>
     <string name="code_open">Open code workspace</string>
+    <string name="code_open_session">Open the OpenCode session</string>
     <string name="code_original">Original request</string>
     <string name="code_pair">Pair with a link</string>
     <string name="code_pair_button">Pair</string>
@@ -103,6 +105,14 @@
     <string name="code_save">Save and check</string>
     <string name="code_scan">Scan the QR code</string>
     <string name="code_scan_unavailable">The QR scanner is not available on this phone (Google Play services). Paste the link instead.</string>
+    <string name="code_state_disconnected">Disconnected</string>
+    <string name="code_state_done">Done</string>
+    <string name="code_state_failed">Failed</string>
+    <string name="code_state_paused">Paused</string>
+    <string name="code_state_permission">Permission needed</string>
+    <string name="code_state_queued">Waiting</string>
+    <string name="code_state_running">Running</string>
+    <string name="code_state_stopped">Stopped</string>
     <string name="code_steer">Fold it in now</string>
     <string name="code_steered">Folded into the work in progress</string>
     <string name="code_stop">Stop</string>
@@ -450,6 +460,10 @@
     <plurals name="code_active">
         <item quantity="one">%d task running</item>
         <item quantity="other">%d tasks running</item>
+    </plurals>
+    <plurals name="code_changes_spoken">
+        <item quantity="one">%1$d file, %2$d lines added, %3$d removed</item>
+        <item quantity="other">%1$d files, %2$d lines added, %3$d removed</item>
     </plurals>
     <plurals name="code_files">
         <item quantity="one">%d file</item>

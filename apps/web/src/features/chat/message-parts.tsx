@@ -177,6 +177,9 @@ const EVENT_ICONS: Record<string, ReactNode> = {
 /** Événement ayant réveillé le compagnon : affiché discrètement, détails au clic. */
 function EventChip({ message, agentId }: { message: ODMessage; agentId?: string }) {
   const event = message.metadata?.event;
+  // A finished delegated task is shown by its own card, updated in place; the text that woke the companion is not
+  // part of the conversation.
+  if (event?.type === 'task') return null;
   if ((event?.type === "agent_reply" || event?.type === "agent_message") && event.fromAgentId && (agentId ?? message.metadata?.agentId))
     return <TeamEventCard message={message} agentId={(agentId ?? message.metadata?.agentId)!} />;
   return <PlainEventChip message={message} />;

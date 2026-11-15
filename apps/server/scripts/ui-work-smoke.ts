@@ -210,12 +210,13 @@ try {
     await syncTask(task);
   });
   await page.goto(`${origin}/#/agent/${ariId}`);
-  const codeCard = page.locator(`[data-task-card]:has([data-task-provider="opencode"])`).first();
+  // #43 : une seule carte compacte, logo officiel, état réel ; toute la carte ouvre la session exacte.
+  const codeCard = page.locator(`[data-task-card][data-task-provider="opencode"]`).first();
   await codeCard.getByText('Refactor des réglages', { exact: true }).waitFor();
-  await codeCard.getByText(/PC de dev · opendots/).waitFor();
   await codeCard.getByText('Lance les tests', { exact: true }).waitFor(); // activité réelle lue sur la session
-  assert.equal(await codeCard.getByRole('button', { name: 'Pause' }).count(), 0);
-  await codeCard.getByRole('button', { name: 'Ouvrir l’espace de code' }).click();
+  assert.equal(await codeCard.locator('[data-opencode-logo]').count(), 1);
+  assert.equal(await codeCard.locator('button').count(), 0);
+  await codeCard.click();
   const space = page.locator(`[data-code-workspace="${codeTaskId}"]`);
   await space.getByText('Je regroupe les réglages des fournisseurs.').waitFor();
   await space.locator('[data-code-tool="running"]').getByText('Lance les tests').waitFor();
@@ -256,6 +257,10 @@ try {
   await space.getByRole('button', { name: 'Arrêter' }).click();
   await page.locator(`[data-code-workspace="${codeTaskId}"][data-code-status="cancelled"]`).waitFor();
   await space.getByRole('button', { name: 'Fermer l’espace de code' }).click();
+  // La carte montre les vrais changements lus dans le diff de la session, et son état final, sur place.
+  await codeCard.locator('[data-code-changes-stats]').getByText('+12').waitFor();
+  await codeCard.getByText(/Arrêté · OpenCode/).waitFor();
+  await shot('13-code-result-card');
 
   // --- Chats (#29) : destination distincte, @mention, intervention signée, renommage, suppression.
   await page.getByRole('button', { name: 'Nouveau chat' }).click();

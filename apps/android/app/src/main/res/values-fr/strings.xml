@@ -82,12 +82,14 @@
     <string name="code_name_hint">PC de dev</string>
     <string name="code_never_checked">Jamais contrôlée</string>
     <string name="code_no_change">OpenCode ne signale aucun fichier modifié dans cette session.</string>
+    <string name="code_no_file_changed">Aucun fichier modifié</string>
     <string name="code_no_instance">Aucune instance connectée</string>
     <string name="code_no_message">La session n’a pas encore de message.</string>
     <string name="code_no_patch">Diff non fourni par OpenCode.</string>
     <string name="code_offline">Injoignable</string>
     <string name="code_online">En ligne</string>
     <string name="code_open">Ouvrir l’espace de code</string>
+    <string name="code_open_session">Ouvrir la session OpenCode</string>
     <string name="code_original">Demande d’origine</string>
     <string name="code_pair">Jumeler avec un lien</string>
     <string name="code_pair_button">Jumeler</string>
@@ -103,6 +105,14 @@
     <string name="code_save">Enregistrer et contrôler</string>
     <string name="code_scan">Scanner le QR code</string>
     <string name="code_scan_unavailable">Le scanner de QR code n’est pas disponible sur ce téléphone (services Google Play). Colle plutôt le lien.</string>
+    <string name="code_state_disconnected">Déconnecté</string>
+    <string name="code_state_done">Terminé</string>
+    <string name="code_state_failed">Échec</string>
+    <string name="code_state_paused">En pause</string>
+    <string name="code_state_permission">Autorisation nécessaire</string>
+    <string name="code_state_queued">En attente</string>
+    <string name="code_state_running">En cours</string>
+    <string name="code_state_stopped">Arrêté</string>
     <string name="code_steer">L’intégrer maintenant</string>
     <string name="code_steered">Intégrée au travail en cours</string>
     <string name="code_stop">Arrêter</string>
@@ -450,6 +460,10 @@
     <plurals name="code_active">
         <item quantity="one">%d tâche en cours</item>
         <item quantity="other">%d tâches en cours</item>
+    </plurals>
+    <plurals name="code_changes_spoken">
+        <item quantity="one">%1$d fichier, %2$d lignes ajoutées, %3$d supprimées</item>
+        <item quantity="other">%1$d fichiers, %2$d lignes ajoutées, %3$d supprimées</item>
     </plurals>
     <plurals name="code_files">
         <item quantity="one">%d fichier</item>

@@ -211,7 +211,7 @@ data class ReplyRef(val messageId: String, val preview: String = "", val role: S
 
 @Immutable
 @Serializable
-data class EventMeta(val type: String = "system", val title: String = "", val fromAgentId: String? = null, val approvalId: String? = null)
+data class EventMeta(val type: String = "system", val title: String = "", val fromAgentId: String? = null, val approvalId: String? = null, val taskId: String? = null)
 
 /** Metadata attached to every message (see `MessageMetadata` in packages/shared). */
 @Immutable
@@ -430,9 +430,14 @@ data class SecureLogin(
 
 // --- OpenCode: see packages/shared -----------------------------------------------------------------------------
 
+/** What a coding session really changed, read from OpenCode's diff. `files == 0`: verified, nothing changed. */
 @Immutable
 @Serializable
-data class TaskExternal(val instanceId: String = "", val instanceName: String = "OpenCode", val sessionId: String = "", val directory: String? = null, val unreachable: Boolean = false) {
+data class CodeChanges(val files: Int = 0, val additions: Int = 0, val deletions: Int = 0)
+
+@Immutable
+@Serializable
+data class TaskExternal(val instanceId: String = "", val instanceName: String = "OpenCode", val sessionId: String = "", val directory: String? = null, val unreachable: Boolean = false, val changes: CodeChanges? = null) {
     /** Last path segment: enough to recognise the project on a card. */
     val project: String? get() = directory?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }
 }

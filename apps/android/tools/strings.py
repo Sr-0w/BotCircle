@@ -350,6 +350,16 @@ S = {
  "code_model_none": ('No model found.', 'Aucun modèle trouvé.'),
  "code_reads_images": ('Reads images', 'Lit les images'),
  "code_file_too_large": ('A file can’t exceed 10 MB.', 'Un fichier ne peut pas dépasser 10 Mo.'),
+ "code_state_disconnected": ('Disconnected', 'Déconnecté'),
+ "code_state_queued": ('Waiting', 'En attente'),
+ "code_state_running": ('Running', 'En cours'),
+ "code_state_permission": ('Permission needed', 'Autorisation nécessaire'),
+ "code_state_paused": ('Paused', 'En pause'),
+ "code_state_done": ('Done', 'Terminé'),
+ "code_state_failed": ('Failed', 'Échec'),
+ "code_state_stopped": ('Stopped', 'Arrêté'),
+ "code_open_session": ('Open the OpenCode session', 'Ouvrir la session OpenCode'),
+ "code_no_file_changed": ('No file changed', 'Aucun fichier modifié'),
 }
 P = {
  "code_active": (("%d task running", "%d tasks running"), ("%d tâche en cours", "%d tâches en cours")),
@@ -363,6 +373,7 @@ P = {
  "code_g_edits": (('Edited %d file', 'Edited %d files'), ('%d fichier modifié', '%d fichiers modifiés')),
  "code_g_searches": (('%d search', '%d searches'), ('%d recherche', '%d recherches')),
  "code_g_other": (('%d other step', '%d other steps'), ('%d autre étape', '%d autres étapes')),
+ "code_changes_spoken": (("%1$d file, %2$d lines added, %3$d removed", "%1$d files, %2$d lines added, %3$d removed"), ("%1$d fichier, %2$d lignes ajoutées, %3$d supprimées", "%1$d fichiers, %2$d lignes ajoutées, %3$d supprimées")),
 }
 def esc(s): return escape(s).replace("'", "\\'").replace('"', '\\"')
 base = sys.argv[1]

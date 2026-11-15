@@ -317,15 +317,23 @@ export async function workspace(task: TaskRow): Promise<OpencodeWorkspaceDTO> {
   try {
     const [session, statuses, messages, permissions, questions, diffs] = await Promise.all([
       client.session(ext.sessionId, ext.directory), client.statuses(ext.directory), client.messages(ext.sessionId, ext.directory, 80),
-      client.permissions(ext.sessionId, ext.directory).catch(() => []), client.questions(ext.sessionId, ext.directory).catch(() => []), client.diff(ext.sessionId, ext.directory).catch(() => []),
+      client.permissions(ext.sessionId, ext.directory).catch(() => []), client.questions(ext.sessionId, ext.directory).catch(() => []), client.diff(ext.sessionId, ext.directory).then((d) => d.map(toDiff)).catch(() => null),
     ]);
+    // What the session changed, kept on the task so the card in the conversation shows it without asking the machine.
+    if (diffs) {
+      const changes = changesOf(diffs);
+      const known = ext.changes;
+      if (!known || known.files !== changes.files || known.additions !== changes.additions || known.deletions !== changes.deletions) {
+        await patchExternal(task, { changes });
+      }
+    }
     const status = statuses[ext.sessionId]?.type ?? 'idle';
     return {
       ...base, reachable: true, error: null, session: toSession(session, status !== 'idle'), sessionStatus: status,
       messages: messages.map(toMessage),
       permissions: permissions.filter((p) => p.sessionID === ext.sessionId).map((p) => ({ id: p.id, permission: p.permission, patterns: p.patterns ?? [] })),
       questions: questions.filter((q) => q.sessionID === ext.sessionId).map((q) => ({ id: q.id, questions: q.questions.map((x) => ({ question: x.question, header: x.header, options: x.options.map((o) => o.label), multiple: Boolean(x.multiple) })) })),
-      diffs: diffs.map(toDiff),
+      diffs: diffs ?? [],
       model: await currentModel(task, client, instance, session, messages).catch(() => null),
     };
   } catch (error) {
@@ -369,12 +377,16 @@ function report(task: TaskRow, instanceName: string, outcome: 'completed' | 'fai
   return `OpenCode ${outcome === 'completed' ? 'finished' : 'stopped with an error on'} the coding task "${task.title}" (task ${task.id}, instance ${instanceName}).\n\n` +
     `${outcome === 'completed' ? "OpenCode's own report" : 'Error'}:\n${truncate(text || '(no text)', 6000)}\n\n${changes}\n\n` +
     `"Finished" means the session stopped working, not that the result is correct. Tests passed only if the report above shows their real output. ` +
-    `Review it; if something is missing or wrong, send a follow-up to the SAME session with opencode_send (task ${task.id}). Then tell the user briefly what was changed, what was actually verified and what is left.`;
+    `Review it; if something is missing or wrong, send a follow-up to the SAME session with opencode_send (task ${task.id}). ` +
+    `The user already sees this task's card in the conversation (state and changed files) and can open the full OpenCode session from it: do NOT paste or restate OpenCode's report, tables, task ids or paths. ` +
+    `Then tell the user in two to four sentences only what matters: the outcome, what was actually verified, and what is left or needs their decision.`;
 }
+
+const changesOf = (diffs: OpencodeDiffDTO[]) => ({ files: diffs.length, additions: diffs.reduce((n, d) => n + d.additions, 0), deletions: diffs.reduce((n, d) => n + d.deletions, 0) });
 
 async function conclude(task: TaskRow, instanceName: string, outcome: 'completed' | 'failed', text: string, seenMessageId: string, diffs: OpencodeDiffDTO[] | null, steps: number) {
   // Une seule conclusion par réponse : un événement tardif ou répété ne réveille personne une seconde fois.
-  const [claimed] = await db().update(schema.tasks).set({ status: outcome, finishedAt: new Date(), completedSteps: Math.max(task.completedSteps, steps), currentAction: null, requiresUserInput: false, blocker: null, result: outcome === 'completed' ? truncate(text, 4000) : null, error: outcome === 'failed' ? truncate(text, 1000) : null, external: { ...task.external!, seenMessageId, unreachable: false } })
+  const [claimed] = await db().update(schema.tasks).set({ status: outcome, finishedAt: new Date(), completedSteps: Math.max(task.completedSteps, steps), currentAction: null, requiresUserInput: false, blocker: null, result: outcome === 'completed' ? truncate(text, 4000) : null, error: outcome === 'failed' ? truncate(text, 1000) : null, external: { ...task.external!, seenMessageId, unreachable: false, ...(diffs ? { changes: changesOf(diffs) } : {}) } })
     .where(and(eq(schema.tasks.id, task.id), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES))).returning();
   if (!claimed) return;
   await addTaskEvent(task.id, outcome === 'completed' ? 'status' : 'error', outcome === 'completed' ? 'OpenCode a terminé' : `OpenCode s'est arrêté sur une erreur : ${truncate(text, 300)}`);
@@ -382,7 +394,7 @@ async function conclude(task: TaskRow, instanceName: string, outcome: 'completed
   await log(task.agentId, `opencode.${outcome}`, `OpenCode ${outcome === 'completed' ? 'a terminé' : 'a échoué'} : ${task.title}`, { taskId: task.id });
   publish({ type: 'task.changed', task: await toTaskDTO(claimed) });
   // Le résultat est REMIS au compagnon, même si sa conversation est fermée : c'est lui qui relit, corrige ou informe.
-  await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}` }, text: report(task, instanceName, outcome, text, diffs), depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode:${task.id}:${seenMessageId}` });
+  await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: report(task, instanceName, outcome, text, diffs), depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode:${task.id}:${seenMessageId}` });
 }
 
 /** Réconcilie une tâche avec sa session. N'affirme que ce qui est observé. */

@@ -133,6 +133,8 @@ class MessageEnv(
 @Composable
 fun MessageItem(message: ChatMessage, env: MessageEnv, streaming: Boolean, showActions: Boolean, modifier: Modifier = Modifier) {
     when {
+        // A delegated task is shown by its own card, updated in place: the text that woke the companion is not shown.
+        message.meta.kind == "event" && message.meta.event?.type == "task" -> Unit
         message.meta.kind == "event" -> EventLine(message, env, modifier)
         message.isUser -> UserMessage(message, env, modifier)
         else -> AssistantMessage(message, env, streaming, showActions, modifier)

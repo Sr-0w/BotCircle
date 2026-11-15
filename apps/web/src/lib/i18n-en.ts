@@ -1,5 +1,11 @@
 /** Dictionnaire anglais : clé = texte français. */
 export const EN: Record<string, string> = {
+  "Ouvrir la session OpenCode": "Open the OpenCode session",
+  "{count} fichiers, {a} lignes ajoutées, {d} supprimées": "{count} files, {a} lines added, {d} removed",
+  "Aucun fichier modifié": "No file changed",
+  "Autorisation nécessaire": "Permission needed",
+  "Déconnecté": "Disconnected",
+  "Arrêté": "Stopped",
   "Retirer {v0}": "Remove {v0}",
   "Chercher un modèle…": "Search models…",
   "Effort pour {v0} :": "Effort for {v0}:",

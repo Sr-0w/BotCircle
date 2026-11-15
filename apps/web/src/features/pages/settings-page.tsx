@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { ArrowLeftIcon, BotIcon, CalendarClockIcon, ChevronRightIcon, CpuIcon, KeyRoundIcon, LoaderIcon, MonitorIcon, PaletteIcon, PlugIcon, SearchIcon, ShieldCheckIcon, SparklesIcon, TerminalSquareIcon, UsersIcon } from 'lucide-react';
+import { ArrowLeftIcon, BotIcon, CalendarClockIcon, ChevronRightIcon, CpuIcon, KeyRoundIcon, LoaderIcon, MonitorIcon, PaletteIcon, PlugIcon, SearchIcon, ShieldCheckIcon, SparklesIcon, UsersIcon } from 'lucide-react';
+import { OpencodeLogo } from '@/components/brand/opencode-logo';
+const OpencodeNavIcon = ({ className }: { className?: string }) => <OpencodeLogo size={16} className={className} />;
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/lib/store';
@@ -25,7 +27,7 @@ const sections = [
   { id: 'providers', label: 'Fournisseurs de modèles', icon: KeyRoundIcon, group: 'IA et agents', description: 'OpenRouter, ChatGPT / Codex et Ollama : leur connexion et leur état, au même endroit.' },
   { id: 'models', label: 'Modèles', icon: CpuIcon, group: 'IA et agents', description: 'Le modèle par défaut, son raisonnement et son routage.' },
   { id: 'agents', label: 'Comportement des agents', icon: BotIcon, group: 'IA et agents', description: 'Limites de travail, autonomie et fuseau horaire.' },
-  { id: 'opencode', label: 'OpenCode', icon: TerminalSquareIcon, group: 'IA et agents', description: 'Les machines de développement où tes compagnons délèguent du code.' },
+  { id: 'opencode', label: 'OpenCode', icon: OpencodeNavIcon, group: 'IA et agents', description: 'Les machines de développement où tes compagnons délèguent du code.' },
   { id: 'connectors', label: 'Connecteurs et services', icon: PlugIcon, group: 'Espace de travail', description: 'Mail, MCP et services externes que les compagnons peuvent utiliser.' },
   { id: 'computer', label: 'Ordinateur', icon: MonitorIcon, group: 'Espace de travail', description: 'Le bureau et le navigateur privés des compagnons.' },
   { id: 'tools', label: 'Recherche et outils', icon: SearchIcon, group: 'Espace de travail', description: 'La recherche web et l’environnement d’exécution.' },

@@ -57,6 +57,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.dot.design.Dot
+import app.dot.design.DotShapes
+import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.automirrored.outlined.CallMade
+import androidx.compose.foundation.clickable
 import app.dot.design.DotSpacing
 import app.dot.design.components.ButtonStyle
 import app.dot.design.components.DotBottomSheet
@@ -301,6 +308,7 @@ private fun taskIcon(status: String): ImageVector = when (status) {
  */
 @Composable
 fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, modifier: Modifier = Modifier, agent: Agent? = null, onOpenCode: ((String) -> Unit)? = null) {
+    if (task != null && task.isCode && onOpenCode != null) { CodeResultCard(task, { onOpenCode(task.id) }, modifier); return }
     val c = Dot.colors
     var cancelling by remember { mutableStateOf(false) }
     DotCard(modifier.fillMaxWidth().testTag("task-card"), emphasized = task?.status == "waiting_for_user") {
@@ -350,6 +358,58 @@ fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, m
         confirmLabel = stringResource(R.string.task_cancel_confirm), dismissLabel = stringResource(R.string.back),
         onConfirm = { cancelling = false; onAction("cancel") }, onDismiss = { cancelling = false }, destructive = true,
     )
+}
+
+/**
+ * A coding task in a conversation: one card, updated in place, that opens that exact OpenCode session. The title, the
+ * real state, and what the session really changed (read from its diff), nothing else; details live in the session.
+ */
+@Composable
+fun CodeResultCard(task: BgTask, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val c = Dot.colors
+    val changes = task.external?.changes
+    val disconnected = task.external?.unreachable == true && task.active
+    val status = if (disconnected) stringResource(R.string.code_state_disconnected) else stringResource(when (task.status) {
+        "queued" -> R.string.code_state_queued; "running" -> R.string.code_state_running; "waiting_for_user" -> R.string.code_state_permission
+        "paused" -> R.string.code_state_paused; "completed" -> R.string.code_state_done; "failed" -> R.string.code_state_failed; else -> R.string.code_state_stopped
+    })
+    val activity = if (task.status == "running" && !disconnected) task.currentActionSummary else if (task.status == "failed") task.error else null
+    val noChange = changes != null && changes.files == 0 && task.status == "completed"
+    val alert = task.status == "failed" || task.status == "waiting_for_user"
+    val label = listOfNotNull(
+        stringResource(R.string.code_open_session), task.title, status,
+        if (changes != null && changes.files > 0) pluralStringResource(R.plurals.code_changes_spoken, changes.files, changes.files, changes.additions, changes.deletions) else if (noChange) stringResource(R.string.code_no_file_changed) else null,
+    ).joinToString(", ")
+    Column(
+        modifier.fillMaxWidth().clip(DotShapes.large).background(c.surface).border(DotSpacing.hairline * 2, c.border, DotShapes.large)
+            .clickable(role = Role.Button, onClick = onOpen).semantics(mergeDescendants = true) { contentDescription = label }
+            .padding(horizontal = DotSpacing.m, vertical = DotSpacing.m).testTag("task-card"),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            OpencodeLogo(Modifier.padding(top = 2.dp).testTag("opencode-logo"), width = 20.dp)
+            Spacer(Modifier.width(DotSpacing.m))
+            Column(Modifier.weight(1f)) {
+                Text(task.title, style = Dot.type.bodyStrong, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (task.status == "completed") { Icon(Icons.Outlined.Check, null, Modifier.size(13.dp), tint = c.textSecondary); Spacer(Modifier.width(3.dp)) }
+                    else if (task.status == "running" && !disconnected) { DotSpinner(size = 11.dp); Spacer(Modifier.width(DotSpacing.xs)) }
+                    Text("$status · OpenCode", style = Dot.type.caption, color = if (alert) c.danger else c.textSecondary, maxLines = 1)
+                }
+                activity?.takeIf { it.isNotBlank() }?.let { Text(it, style = Dot.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                if (noChange) Text(stringResource(R.string.code_no_file_changed), style = Dot.type.caption, color = c.textTertiary)
+            }
+            Spacer(Modifier.width(DotSpacing.s))
+            Icon(Icons.AutoMirrored.Outlined.CallMade, null, Modifier.size(18.dp), tint = c.textTertiary)
+        }
+        if (changes != null && changes.files > 0) {
+            Box(Modifier.padding(top = DotSpacing.s).fillMaxWidth().height(DotSpacing.hairline).background(c.border))
+            Row(Modifier.padding(top = DotSpacing.s, start = 20.dp + DotSpacing.m).testTag("code-changes-stats"), horizontalArrangement = Arrangement.spacedBy(DotSpacing.l)) {
+                Text(pluralStringResource(R.plurals.code_files, changes.files, changes.files), style = Dot.type.caption, color = c.textSecondary)
+                Text("+${changes.additions}", style = Dot.type.caption, color = c.success)
+                Text("−${changes.deletions}", style = Dot.type.caption, color = c.danger)
+            }
+        }
+    }
 }
 
 /** "Details" of a task: its instruction, observed state, the journal of its steps, the files it produced. */

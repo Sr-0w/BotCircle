@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, TerminalSquareIcon, WifiOffIcon, WrenchIcon, XIcon } from 'lucide-react';
+import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, WifiOffIcon, WrenchIcon, XIcon } from 'lucide-react';
+import { OpencodeLogo } from '@/components/brand/opencode-logo';
 import { ACTIVE_TASK_STATUSES, OPENCODE_FILES_MAX_COUNT, type OpencodeCurrentModelDTO, type OpencodeModelDTO, type OpencodeDiffDTO, type OpencodeFileNodeDTO, type OpencodeMessageDTO, type OpencodePartDTO, type OpencodeWorkspaceDTO } from '@opendots/shared';
 import { toast } from 'sonner';
 import { MessageResponse } from '@/components/ai-elements/message';
@@ -57,7 +58,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
       <header className="flex shrink-0 items-center gap-1 px-2 py-2">
         {view !== 'session'
           ? <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Retour à la session')} onClick={() => setView('session')}><ArrowLeftIcon /></Button>
-          : <TerminalSquareIcon className="mx-2 size-4 shrink-0 text-muted-foreground" />}
+          : <OpencodeLogo size={16} className="mx-2" />}
         <div className="min-w-0 flex-1 leading-tight">
           <p className="truncate font-medium text-sm">{titles[view]}</p>
           <p className="truncate text-muted-foreground text-xs">{[task?.external?.instanceName, project].filter(Boolean).join(' · ') || 'OpenCode'}</p>

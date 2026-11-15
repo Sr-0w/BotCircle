@@ -200,6 +200,8 @@ export interface MessageMetadata {
     activityId?: string;
     approvalId?: string;
     fromAgentId?: string;
+    /** Tâche que l'événement concerne : le fil montre sa carte, pas le texte du réveil. */
+    taskId?: string;
   };
   model?: string;
   /** Actual response routing per completed step; null means not reported. */
@@ -358,6 +360,11 @@ export interface TaskExternalRef {
   promptedAt?: number;
   /** `true` tant que l'instance ne répond pas : l'état affiché est le dernier connu, pas un échec. */
   unreachable?: boolean;
+  /**
+   * Ce que la session a réellement changé, lu dans le diff d'OpenCode (de la première à la dernière consigne de la
+   * session). Absent : pas encore lu ou illisible, et rien n'est affiché. `files: 0` : vérifié, aucun fichier modifié.
+   */
+  changes?: { files: number; additions: number; deletions: number } | null;
   /** Modèle choisi dans BotCircle pour cette session (OpenCode 1.x le reçoit avec chaque consigne). */
   model?: OpencodeModelRef | null;
 }

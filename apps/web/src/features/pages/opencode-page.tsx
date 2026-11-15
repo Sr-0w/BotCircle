@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LinkIcon, LoaderIcon, PlusIcon, ScanQrCodeIcon, RefreshCwIcon, TerminalSquareIcon, Trash2Icon } from 'lucide-react';
+import { LinkIcon, LoaderIcon, PlusIcon, ScanQrCodeIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
+import { OpencodeLogo } from '@/components/brand/opencode-logo';
 import type { OpencodeInstanceDTO } from '@opendots/shared';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,7 @@ export function OpencodePage() {
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-5 p-5 sm:p-8">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><TerminalSquareIcon className="size-5" />OpenCode</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><OpencodeLogo size={20} />OpenCode</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('Connecte une machine de développement : tes compagnons autorisés pourront y déléguer du code à OpenCode, et tu suivras la session en direct.')}</p>
         </div>
         {!instances ? <LoaderIcon className="animate-spin" /> : instances.length === 0 && !draft ? <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">{t('Aucune instance connectée.')}</div> : null}
