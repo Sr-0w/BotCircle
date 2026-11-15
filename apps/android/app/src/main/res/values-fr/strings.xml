@@ -165,6 +165,8 @@
     <string name="form_waiting">Ta réponse est attendue</string>
     <string name="generic_error">Une erreur est survenue. Réessaie.</string>
     <string name="have_account">J’ai déjà un compte</string>
+    <string name="image_open_anyway">Ouvrir</string>
+    <string name="image_unavailable">Image indisponible</string>
     <string name="intervention">intervention</string>
     <string name="interventions">Interventions</string>
     <string name="journal">Journal</string>

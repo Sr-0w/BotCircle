@@ -14,7 +14,8 @@ import { join } from 'node:path';
 
 const key = process.env.OPENROUTER_API_KEY;
 if (!key) { console.log('OPENROUTER_API_KEY absent : essais avec modèle réel ignorés.'); process.exit(0); }
-const MODEL = { provider: 'openrouter' as const, model: process.env.OPENDOTS_LIVE_MODEL ?? 'openai/gpt-oss-120b', reasoning: 'low' as const, providerOrder: [process.env.OPENDOTS_LIVE_PROVIDER ?? 'Cerebras'] };
+// GLM 5.3 Flash: tools and vision, one model for every check. OPENDOTS_LIVE_MODEL / _PROVIDER override it.
+const MODEL = { provider: 'openrouter' as const, model: process.env.OPENDOTS_LIVE_MODEL ?? 'z-ai/glm-5.3-flash', reasoning: 'low' as const, providerOrder: process.env.OPENDOTS_LIVE_PROVIDER ? [process.env.OPENDOTS_LIVE_PROVIDER] : null };
 const dir = await mkdtemp(join(tmpdir(), 'opendots-live-'));
 process.env.OPENDOTS_DATA_DIR = dir;
 
@@ -170,5 +171,5 @@ try {
   await rm(dir, { recursive: true, force: true });
 }
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} essais réussis avec ${MODEL.model} (${MODEL.providerOrder[0]}).`);
+console.log(`\n${results.length - failed.length}/${results.length} essais réussis avec ${MODEL.model}${MODEL.providerOrder ? ` (${MODEL.providerOrder[0]})` : ''}.`);
 process.exit(failed.length ? 1 : 0);

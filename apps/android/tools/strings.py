@@ -322,6 +322,8 @@ S = {
  "team_exchanges_note": ('What companions say to each other', 'Ce que les compagnons se disent entre eux'),
  "team_empty_title": ('No exchange yet', 'Aucun échange'),
  "team_empty_body": ('Ask a companion to consult another one.', 'Demande à un compagnon d’en consulter un autre.'),
+ "image_unavailable": ("Image unavailable", "Image indisponible"),
+ "image_open_anyway": ("Open", "Ouvrir"),
 }
 P = {
  "code_active": (("%d task running", "%d tasks running"), ("%d tâche en cours", "%d tâches en cours")),

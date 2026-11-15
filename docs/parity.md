@@ -20,7 +20,7 @@ States: ✅ available · ◐ partial · ✗ missing · — not relevant on that 
 | Stop a turn | ✅ | ✅ | | |
 | Image attachments | ✅ | ✅ | | Android re-encodes large or HEIC images |
 | Any-file attachments, file cards (open, save, access) | ✅ | ✅ | `ui-work-smoke`, `ScreensTest.chats…` | Android open/save not run on a device |
-| Shared screenshots shown and openable (#22) | ✅ | ✅ | `ProtocolTest` | Still to confirm on a device |
+| Shared screenshots shown and openable (#22) | ✅ | ✅ | `ProtocolTest`, `ScreensTest.aSharedScreenshot…` (fetched with the session, pixels checked) | An image that cannot be fetched shows an 'Image unavailable · Open' frame |
 | Approvals in the thread | ✅ | ✅ | `ScreensTest.sendingStreams…` | |
 | Question forms (`ask_user`) | ✅ | ✅ | | |
 | Mail drafts: view, approve | ✅ | ✅ | | Editing a draft is Web only |

@@ -171,11 +171,12 @@ fun ArtifactSheet(app: AppState, ui: AppUiState, artifactId: String, onDismiss: 
         actor.isNullOrBlank() || actor == "user" -> you
         else -> ui.agents.firstOrNull { it.id == actor }?.let { if (it.named) it.name else null } ?: if (actor.startsWith("task")) worker else someone
     }
+    val artifact = data
+    val loadError = error
     DotBottomSheet(onDismiss) {
-        val artifact = data
         Text(artifact?.name ?: stringResource(R.string.file), style = Dot.type.title, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = DotSpacing.gutter).padding(top = DotSpacing.s).semantics { heading() })
         when {
-            error != null -> Text(error.orEmpty(), style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(DotSpacing.gutter))
+            loadError != null -> Text(loadError, style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(DotSpacing.gutter))
             artifact == null -> Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
             else -> {
                 Text(
@@ -256,9 +257,9 @@ fun FilesSheet(app: AppState, ui: AppUiState, title: String, agentId: String?, c
     var access by remember { mutableStateOf<String?>(null) }
     val actions = rememberFileActions(app)
     LaunchedEffect(agentId, conversationId, access) { if (access == null) runCatching { app.client.artifacts(agentId, conversationId) }.onSuccess { files = it }.onFailure { files = emptyList() } }
+    val list = files
     DotBottomSheet(onDismiss) {
         Text(title, style = Dot.type.title, color = Dot.colors.textPrimary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).semantics { heading() })
-        val list = files
         when {
             list == null -> Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
             list.isEmpty() -> EmptyState(Icons.AutoMirrored.Outlined.InsertDriveFile, stringResource(R.string.files_empty_title), stringResource(R.string.files_empty_body))

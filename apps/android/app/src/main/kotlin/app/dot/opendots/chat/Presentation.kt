@@ -18,9 +18,14 @@ private val CONTROL_TOKEN = Regex("<\\|(?:start|end|message|channel|constrain|ca
 private val SILENCE = Regex("^\\s*<(silence|no[_-]?reply)\\s*/?>\\s*$", RegexOption.IGNORE_CASE)
 
 /** Some models leak raw tool-call syntax into their text; strip it before display. Markdown layout is left intact. */
+/** Transcript annotations the server adds for the model ("[message …]" and the like); never meant for the user. */
+private val TRANSCRIPT_NOTE = Regex("^[ \\t]*\\[(?:message [\\w-]+|replying to [\\w-]+:[^\\]\\n]*|reactions: [^\\]\\n]*|Événement : [^\\]\\n]*)\\][ \\t]*(?:\\n|$)", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
+private val LEADING_NOTE = Regex("^\\[message [\\w-]+\\]\\s*", RegexOption.IGNORE_CASE)
+
 fun cleanModelText(text: String): String {
-    if ("to=functions." !in text && "<|" !in text) return text.trim()
-    return text.replace(LEAKED_TOOL_CALL, " ").replace(CONTROL_TOKEN, "").trim()
+    val stripped = if ('[' in text) text.replace(TRANSCRIPT_NOTE, "").replace(LEADING_NOTE, "") else text
+    if ("to=functions." !in stripped && "<|" !in stripped) return stripped.trim()
+    return stripped.replace(LEAKED_TOOL_CALL, " ").replace(CONTROL_TOKEN, "").trim()
 }
 
 fun isSilence(text: String): Boolean = SILENCE.matches(text)

@@ -85,6 +85,10 @@ import app.dot.opendots.data.num
 import app.dot.opendots.data.orEmpty
 import app.dot.opendots.data.str
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.outlined.BrokenImage
+import coil3.compose.AsyncImagePainter
 import kotlinx.serialization.json.JsonObject
 
 val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "😮", "🙏", "👀")
@@ -376,16 +380,31 @@ private fun ReplyQuote(reply: ReplyRef, env: MessageEnv) {
 private fun AttachedImage(file: Part.File, env: MessageEnv) {
     val url = remember(file.url) { env.resolveUrl(file.url) }
     val label = file.filename ?: stringResource(R.string.attached_image)
-    AsyncImage(
-        model = url,
-        contentDescription = label,
-        contentScale = ContentScale.Fit,
-        modifier = Modifier
+    // Until the image is decoded it has no size: without a frame a failed or slow load would leave nothing on screen.
+    var state by remember(url) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    val loaded = state is AsyncImagePainter.State.Success
+    val failed = state is AsyncImagePainter.State.Error
+    Box(
+        Modifier
+            .then(if (loaded) Modifier else Modifier.size(width = 220.dp, height = 140.dp))
             .widthIn(max = 260.dp).heightIn(min = 48.dp, max = 260.dp)
             .clip(DotShapes.medium)
+            .background(if (loaded) Color.Transparent else Dot.colors.surface)
             .border(DotSpacing.hairline * 2, Dot.colors.border, DotShapes.medium)
-            .clickable(role = Role.Image) { env.onOpenImage(url) },
-    )
+            .clickable(role = Role.Image, onClickLabel = stringResource(R.string.open)) { env.onOpenImage(url) }
+            .testTag(if (failed) "image-failed" else if (loaded) "image-loaded" else "image-loading"),
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(model = url, contentDescription = label, contentScale = ContentScale.Fit, onState = { state = it }, modifier = if (loaded) Modifier else Modifier.matchParentSize())
+        when {
+            failed -> Column(Modifier.padding(DotSpacing.m), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Outlined.BrokenImage, null, Modifier.size(20.dp), tint = Dot.colors.textSecondary)
+                Text(stringResource(R.string.image_unavailable), style = Dot.type.caption, color = Dot.colors.textSecondary)
+                Text(stringResource(R.string.image_open_anyway), style = Dot.type.label, color = Dot.colors.accent)
+            }
+            !loaded -> DotSpinner(size = 18.dp)
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

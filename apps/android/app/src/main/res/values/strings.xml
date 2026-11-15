@@ -165,6 +165,8 @@
     <string name="form_waiting">Waiting for your answer</string>
     <string name="generic_error">Something went wrong. Try again.</string>
     <string name="have_account">I already have an account</string>
+    <string name="image_open_anyway">Open</string>
+    <string name="image_unavailable">Image unavailable</string>
     <string name="intervention">contribution</string>
     <string name="interventions">Contributions</string>
     <string name="journal">Journal</string>

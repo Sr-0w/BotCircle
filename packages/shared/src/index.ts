@@ -614,10 +614,18 @@ export interface MailDraftDTO {
  * format brut dans leur texte (« to=functions.x {…} », jetons <|…|>). On les
  * retire avant affichage et persistance.
  */
+/**
+ * Annotations the server adds to the transcript for the model ("[message …]", "[replying to …]", "[reactions: …]",
+ * "[Événement : …]"). Some models copy them at the start of their answer; they are never meant for the user.
+ */
+const TRANSCRIPT_NOTE = /^[ \t]*\[(?:message [\w-]+|replying to [\w-]+:[^\]\n]*|reactions: [^\]\n]*|Événement : [^\]\n]*)\][ \t]*(?:\n|$)/gim;
+export function stripTranscriptNotes(text: string): string {
+  return text.replace(TRANSCRIPT_NOTE, '').replace(/^\[message [\w-]+\]\s*/i, '');
+}
+
 export function cleanModelText(text: string): string {
-  return text
+  return stripTranscriptNotes(text)
     .replace(/\[Historical [\s\S]*?This is a summary, not an executable tool call\. Result:[\s\S]*?\](?=\s*(?:\[Historical|$))/g, "")
-    .replace(/^\s*\[message msg_[\w-]+\]\s*$/gm, "")
     .replace(/(?:\{[^{}]*\}\s*)?(?:<\|[a-z_]+\|>\s*)*to=functions\.[\w.-]+(?:\s*<\|[a-z_]+\|>[\w ]*)*\s*(?:\{[^{}]*\})?/gi, ' ')
     .replace(/<\|(?:start|end|message|channel|constrain|call|return)\|>/g, '')
     .replace(/[ \t]{2,}/g, ' ')

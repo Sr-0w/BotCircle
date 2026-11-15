@@ -188,4 +188,10 @@ class ProtocolTest {
         assertEquals("Needs the password", task.line)
         assertEquals(ServerEvent.ChatChanged("ch1", true), parseServerEvent(obj("""{"type":"chat.changed","chatId":"ch1","deleted":true}""")))
     }
+
+    @Test fun transcriptAnnotationsCopiedByAModelAreNotShown() {
+        assertEquals("La correction est prête.", cleanModelText("[message msg_a4141ex3i3b1u] La correction est prête."))
+        assertEquals("Bonjour.", cleanModelText("[message msg_1]\n[reactions: 👍 user]\nBonjour."))
+        assertEquals("Voir [la doc](https://x.test) [ici].", cleanModelText("Voir [la doc](https://x.test) [ici]."))
+    }
 }

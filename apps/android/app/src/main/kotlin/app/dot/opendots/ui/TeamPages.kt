@@ -58,9 +58,10 @@ fun MemorySheet(app: AppState, agent: Agent, onDismiss: () -> Unit) {
     var items by remember { mutableStateOf<List<Memory>?>(null) }
     var revision by remember { mutableIntStateOf(0) }
     LaunchedEffect(agent.id, revision) { runCatching { app.client.memories(agent.id) }.onSuccess { items = it }.onFailure { items = emptyList() } }
+    // Read here, not only inside the sheet: the sheet is its own window, and this page must recompose when data arrives.
+    val list = items
     DotBottomSheet(onDismiss) {
         Text(stringResource(R.string.memory_title, agentDisplayName(agent)), style = Dot.type.title, color = Dot.colors.textPrimary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).semantics { heading() })
-        val list = items
         when {
             list == null -> Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
             list.isEmpty() -> EmptyState(Icons.Outlined.Psychology, stringResource(R.string.memory_empty_title), stringResource(R.string.memory_empty_body))
@@ -86,9 +87,9 @@ fun MemorySheet(app: AppState, agent: Agent, onDismiss: () -> Unit) {
 fun JournalSheet(app: AppState, agent: Agent, onDismiss: () -> Unit) {
     var items by remember { mutableStateOf<List<JournalEntry>?>(null) }
     LaunchedEffect(agent.id) { runCatching { app.client.journal(agent.id) }.onSuccess { items = it }.onFailure { items = emptyList() } }
+    val list = items
     DotBottomSheet(onDismiss) {
         Text(stringResource(R.string.journal_title, agentDisplayName(agent)), style = Dot.type.title, color = Dot.colors.textPrimary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).semantics { heading() })
-        val list = items
         when {
             list == null -> Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
             list.isEmpty() -> EmptyState(Icons.Outlined.Subject, stringResource(R.string.journal_empty_title), stringResource(R.string.journal_empty_body))
@@ -135,8 +136,9 @@ fun TeamExchangesPage(app: AppState, ui: AppUiState, onBack: () -> Unit) {
 private fun TeamThreadSheet(app: AppState, ui: AppUiState, thread: TeamThread, onDismiss: () -> Unit) {
     var messages by remember(thread.conversationId) { mutableStateOf<List<ChatMessage>?>(null) }
     LaunchedEffect(thread.conversationId) { runCatching { app.client.conversationMessages(thread.conversationId) }.onSuccess { messages = it }.onFailure { messages = emptyList() } }
+    val loaded = messages
     DotBottomSheet(onDismiss) {
-        val rows = messages?.mapNotNull { message ->
+        val rows = loaded?.mapNotNull { message ->
             val text = message.parts.filterIsInstance<Part.Text>().joinToString("\n") { cleanModelText(it.text) }.trim()
             if (text.isEmpty() || isSilence(text)) null else message to text
         }

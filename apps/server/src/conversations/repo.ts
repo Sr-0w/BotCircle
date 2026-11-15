@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
-import { cleanModelText, isSingleEmoji, type MessageMetadata, type MessageReaction, type MessageReplyRef, type TeamThreadDTO } from '@opendots/shared';
+import { cleanModelText, isSingleEmoji, stripTranscriptNotes, type MessageMetadata, type MessageReaction, type MessageReplyRef, type TeamThreadDTO } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
 import { publish } from '../bus.ts';
 import { enqueue } from '../jobs/queue.ts';
@@ -11,7 +11,7 @@ export type OpenDotsUIMessage = UIMessage<MessageMetadata>;
 export function messageText(msg: Pick<UIMessage, 'parts'>): string {
   const text = msg.parts
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
+    .map((p) => stripTranscriptNotes(p.text))
     .join('\n')
     .trim();
   const images = msg.parts.filter((part) => part.type === 'file' && part.mediaType?.startsWith('image/')).length;
@@ -29,7 +29,7 @@ export function finalText(msg: Pick<UIMessage, 'parts'>): string {
   const tail = msg.parts
     .slice(lastTool + 1)
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
+    .map((p) => stripTranscriptNotes(p.text))
     .join('\n')
     .trim();
   return tail || messageText(msg);

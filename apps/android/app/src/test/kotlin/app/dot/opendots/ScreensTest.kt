@@ -3,7 +3,11 @@ package app.dot.opendots
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
+import coil3.imageDecoderEnabled
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -44,6 +48,13 @@ class ScreensTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val server = MockWebServer()
     private val posts = CopyOnWriteArrayList<Pair<String, String>>()
+    private val gets = CopyOnWriteArrayList<Pair<String, String>>()
+    /** A real 640x400 PNG standing for a desktop capture. */
+    private val desktopPng: ByteArray by lazy {
+        val bitmap = Bitmap.createBitmap(640, 400, Bitmap.Config.ARGB_8888)
+        Canvas(bitmap).apply { drawColor(0xFF2E5AAC.toInt()); drawRect(40f, 40f, 400f, 260f, android.graphics.Paint().apply { color = 0xFFEDEDEF.toInt() }) }
+        java.io.ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    }
     private val out = File("build/shots").apply { mkdirs() }
     private var onboarded = true
     private var signedIn = true
@@ -88,6 +99,9 @@ class ScreensTest {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.url.encodedPath.removePrefix("/api")
+                if (request.method == "GET") gets += path to (request.headers["Cookie"] ?: "")
+                if (path.startsWith("/computer/screenshots/dead")) return MockResponse.Builder().code(404).build()
+                if (path.startsWith("/computer/screenshots/")) return MockResponse.Builder().code(if (request.headers["Cookie"]?.contains("opendots_session=tok123") == true) 200 else 401).addHeader("Content-Type", "image/png").body(okio.Buffer().write(desktopPng)).build()
                 if (request.method != "GET") {
                     posts += path to (request.body?.utf8() ?: "")
                     if (request.headers["x-opendots-client"] != "1") return json("""{"error":"Client non reconnu"}""", 403)
@@ -138,10 +152,21 @@ class ScreensTest {
                     path == "/journal" -> json("""[{"id":"j1","summary":"Sent the weekly recap","createdAt":"2026-11-13T17:00:00Z"}]""")
                     path == "/team/threads" -> json("""[{"conversationId":"pair1","agentIds":["a1","a3"],"lastMessageAt":"2026-11-13T09:00:00Z","lastMessagePreview":"The build is green.","messageCount":2}]""")
                     path == "/conversations/pair1/messages" -> json("""{"messages":[{"id":"t1","role":"user","metadata":{"kind":"team","agentId":"a1"},"parts":[{"type":"text","text":"Is the build green?"}]},{"id":"t2","role":"assistant","metadata":{"kind":"team","agentId":"a3"},"parts":[{"type":"text","text":"The build is green."}]}]}""")
+                    path == "/agents/a3/messages" -> json("""{"conversationId":"c3","cursor":null,"active":false,"messages":[
+                      {"id":"s1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"Show me your screenshots"}]},
+                      {"id":"s2","role":"assistant","metadata":{"agentId":"a3"},"parts":[
+                        {"type":"tool-share_screenshot","toolCallId":"sh1","state":"output-available","input":{"screenshotId":"0123456789abcdef0123456789abcdef"},"output":{"ok":true,"status":"attached","url":"/api/computer/screenshots/0123456789abcdef0123456789abcdef?agentId=a3","filename":"desktop.png","mediaType":"image/png"}},
+                        {"type":"text","text":"Here is my desktop."},
+                        {"type":"tool-share_screenshot","toolCallId":"sh3","state":"output-available","input":{"screenshotId":"deadbeefdeadbeefdeadbeefdeadbeef"},"output":{"ok":true,"status":"attached","url":"/api/computer/screenshots/deadbeefdeadbeefdeadbeefdeadbeef?agentId=a3","filename":"old.png","mediaType":"image/png"}},
+                        {"type":"tool-share_screenshot","toolCallId":"sh2","state":"output-available","input":{"screenshotId":"ffff"},"output":{"ok":false,"status":"not_found","error":"expired"}}]}]}""")
+                    path == "/agents/a3/stream" -> MockResponse.Builder().code(204).build()
                     path == "/settings" -> json("""{"openrouterKey":"sk-or-…-9f2c","defaultModel":{"provider":"openrouter","model":"openai/gpt-5"},"timezone":"Europe/Brussels","paused":false,"ollamaUrl":null,"turnStepLimit":null}""")
                     path == "/codex/account" -> json("""{"account":null,"error":null}""")
                     path == "/codex/login" -> json("""{"verificationUrl":"https://auth.openai.com/codex/device","userCode":"TEST-1234"}""")
-                    path == "/events" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"hello\"}\n\n").build()
+                    // Like the real server, the event stream stays open (keep-alive comments) instead of ending at once,
+                    // which would make the app reconnect and refresh everything every second.
+                    path == "/events" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream")
+                        .body("data: {\"type\":\"hello\"}\n\n" + ": keep-alive\n".repeat(20_000)).throttleBody(64, 1, java.util.concurrent.TimeUnit.SECONDS).build()
                     path == "/approvals/ap1" -> json("""{"ok":true,"status":"executed","error":null}""")
                     path.endsWith("/read") -> json("""{"ok":true}""")
                     else -> json("""{"error":"Introuvable"}""", 404)
@@ -168,6 +193,19 @@ class ScreensTest {
         val bitmap = Bitmap.createBitmap(view.width.coerceAtLeast(1), view.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         view.draw(Canvas(bitmap))
         File(out, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /**
+     * Taps [label], then waits for [expected]; taps again only if nothing came of it after a few seconds (a tap that
+     * landed while a page was sliding in). Re-tapping sooner would hit the scrim of a sheet that is still loading.
+     */
+    private fun tapUntil(label: String, expected: String) {
+        repeat(4) {
+            runCatching { compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction())[0].performScrollToNode(hasText(label)) }
+            runCatching { compose.onAllNodes(hasText(label))[0].performClick() }
+            if (runCatching { compose.waitUntil(6_000) { compose.onAllNodesWithTextCompat(expected) } }.isSuccess) return
+        }
+        waitFor(expected)
     }
 
     private fun waitFor(text: String) = compose.waitUntil(10_000) { compose.onAllNodesWithTextCompat(text) }
@@ -360,8 +398,7 @@ class ScreensTest {
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companion details").performClick()
         waitFor("Read public web pages")
-        compose.onNodeWithText("Memory").performClick()
-        waitFor("Robin prefers short answers.")
+        tapUntil("Memory", "Robin prefers short answers.")
         waitFor("shared by all companions")
         compose.onAllNodes(hasText("Forget"))[0].performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/memories/mem1" } }
@@ -373,11 +410,40 @@ class ScreensTest {
         compose.onNodeWithContentDescription("Companions").performClick()
         waitFor("Venty")
         tab("Settings")
-        compose.onNodeWithText("Team exchanges").performClick()
-        waitFor("Ari ↔ Dev")
-        compose.onNodeWithText("Ari ↔ Dev").performClick()
-        waitFor("Is the build green?")
+        tapUntil("Team exchanges", "Ari ↔ Dev")
+        tapUntil("Ari ↔ Dev", "Is the build green?")
         shoot("team-thread-dark")
+    }
+
+    /** Issue #22: a screenshot the companion really shared is fetched by the Android client, with the session. */
+    @Test fun aSharedScreenshotIsFetchedWithTheSessionAndShownInTheThread() {
+        val store = MemorySessionStore(serverUrl = server.url("/").toString(), sessionCookie = "tok123")
+        val client = OpenDotsClient(store)
+        // The same image loader as OpenDotsApp: attachments are fetched with the API's HTTP client and cookie.
+        coil3.SingletonImageLoader.setUnsafe(coil3.ImageLoader.Builder(compose.activity).components { add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = { client.http })) }.imageDecoderEnabled(false).build())
+        val app = AppState(store, client)
+        compose.setContent { DotTheme(ThemeMode.DARK) { OpenDotsRoot(app, app.state.collectAsStateForTest()) } }
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        waitFor("Venty")
+        tapUntil("Dev", "Here is my desktop.")
+        // The shared capture is an image of the thread (not a line of text), and only the one that was really attached.
+        compose.waitUntil(15_000) { compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("desktop.png")).fetchSemanticsNodes().size == 1 }
+        compose.waitUntil(15_000) { gets.any { it.first.startsWith("/computer/screenshots/0123456789abcdef") } }
+        val fetched = gets.first { it.first.startsWith("/computer/screenshots/") }
+        assertTrue(fetched.second, "opendots_session=tok123" in fetched.second)
+        assertTrue(gets.none { it.first.contains("ffff") })
+        // A capture that can no longer be fetched is still visible as a frame that says so, never as nothing.
+        waitFor("Image unavailable")
+        // The image is laid out at its decoded size, and its pixels are the capture's (blue with a light window).
+        // (Robolectric has no ImageDecoder, so this test decodes with BitmapFactory; devices use either.)
+        compose.waitUntil(15_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("image-loaded")).fetchSemanticsNodes().size == 1 }
+        val pixels = compose.onNode(androidx.compose.ui.test.hasTestTag("image-loaded")).captureToImage().asAndroidBitmap()
+        File(out, "screenshot-shared-image.png").outputStream().use { pixels.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val sample = pixels.getPixel(pixels.width * 3 / 4, pixels.height * 3 / 4)
+        // The capture's blue background, within rounding of scaling and blending.
+        assertTrue("pixel ${Integer.toHexString(sample)}", kotlin.math.abs(android.graphics.Color.red(sample) - 0x2E) < 24 && kotlin.math.abs(android.graphics.Color.green(sample) - 0x5A) < 24 && kotlin.math.abs(android.graphics.Color.blue(sample) - 0xAC) < 24)
+        shoot("screenshot-shared-dark")
     }
 
     @Test fun signInThenEnter() {
