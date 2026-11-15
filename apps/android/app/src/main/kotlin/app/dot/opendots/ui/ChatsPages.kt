@@ -28,6 +28,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.dot.design.components.DotIconButton
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -77,7 +79,7 @@ fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
     QuietPage(stringResource(R.string.chats), onBack = null, inTabs = true, subtitle = if (!ui.connected) stringResource(R.string.reconnecting) else null) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
-                if (ui.chats.size > 5) SearchField(query, { query = it }, Modifier.weight(1f).padding(end = DotSpacing.m), placeholder = stringResource(R.string.search_chats)) else Spacer(Modifier.weight(1f))
+                if (ui.chats.isNotEmpty()) SearchField(query, { query = it }, Modifier.weight(1f).padding(end = DotSpacing.m), placeholder = stringResource(R.string.search_chats)) else Spacer(Modifier.weight(1f))
                 DotButton(stringResource(R.string.new_chat), { app.createChat { app.state.value.currentChat?.let(onOpen) } }, icon = Icons.Outlined.Add, compact = true)
             }
         }
@@ -85,14 +87,14 @@ fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
             EmptyState(Icons.Outlined.Forum, stringResource(if (query.isBlank()) R.string.chats_empty_title else R.string.chats_none_found), if (query.isBlank()) stringResource(R.string.chats_empty_body) else "")
         }
         items(shown, key = { it.id }) { chat ->
-            ChatRow(chat) { onOpen(chat) }
+            ChatRow(chat, onPin = { app.updateChat(chat.id, buildJsonObject { put("pinned", !chat.pinned) }) }) { onOpen(chat) }
             Hairline(inset = DotSpacing.gutter + 48.dp + DotSpacing.l)
         }
     }
 }
 
 @Composable
-private fun ChatRow(chat: GeneralChat, onClick: () -> Unit) {
+private fun ChatRow(chat: GeneralChat, onPin: () -> Unit, onClick: () -> Unit) {
     val c = Dot.colors
     Row(
         Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 76.dp).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("chat-row"),
@@ -103,6 +105,7 @@ private fun ChatRow(chat: GeneralChat, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(chat.title.ifBlank { stringResource(R.string.new_chat) }, style = Dot.type.headline, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (chat.pinned) Icon(Icons.Outlined.PushPin, stringResource(R.string.pinned), Modifier.padding(end = DotSpacing.xs).size(14.dp), tint = c.textTertiary)
                 formatWhen(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { Text(it.substringBefore(","), style = Dot.type.caption, color = c.textTertiary, maxLines = 1) }
             }
             Text(
@@ -110,6 +113,7 @@ private fun ChatRow(chat: GeneralChat, onClick: () -> Unit) {
                 style = Dot.type.callout, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
+        DotIconButton(if (chat.pinned) Icons.Outlined.PushPin else Icons.Outlined.PushPin, stringResource(if (chat.pinned) R.string.unpin else R.string.pin), onClick = onPin, tint = if (chat.pinned) c.textPrimary else c.textTertiary, modifier = Modifier.testTag("chat-pin"))
     }
 }
 

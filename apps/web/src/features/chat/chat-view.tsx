@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgentModelControl } from './chat-controls';
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AlertCircleIcon } from "lucide-react";
@@ -172,6 +173,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           autoFocus
           reply={reply}
           onClearReply={() => setReply(null)}
+          tools={<AgentModelControl agent={agent} />}
           placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
           onSubmit={async (text, attachments) => {
             if (busy) await chat.stop();

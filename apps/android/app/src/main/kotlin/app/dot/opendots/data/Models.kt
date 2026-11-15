@@ -27,6 +27,16 @@ data class AccountResponse(val account: Account)
 data class ModelConfig(val provider: String = "openrouter", val model: String = "", val reasoning: String? = null, val providerOrder: List<String>? = null)
 
 @Serializable
+data class FavoriteModel(val provider: String = "openrouter", val model: String = "")
+
+@Serializable
+data class ModelProviderState(val provider: String = "", val name: String = "", val count: Int = 0, val error: String? = null)
+
+/** Every model of the configured providers, and the favourites shown first in the pickers. */
+@Serializable
+data class AvailableModels(val providers: List<ModelProviderState> = emptyList(), val models: List<ModelInfo> = emptyList(), val favorites: List<FavoriteModel> = emptyList())
+
+@Serializable
 data class Bootstrap(
     val onboarded: Boolean = false,
     val openrouterConfigured: Boolean = false,
@@ -233,7 +243,19 @@ data class MessageMeta(
     val model: String? = null,
     /** Message produced by a background task (result, blocker). */
     val taskId: String? = null,
+    /** Answers replaced by a regeneration, kept to be read again. */
+    val previous: List<PreviousAnswer> = emptyList(),
+    /** An edited message: what it replaced, and how many later messages were set aside (kept, hidden). */
+    val edited: EditedNote? = null,
 )
+
+@Immutable
+@Serializable
+data class PreviousAnswer(val id: String = "", val text: String = "", val model: String? = null, val createdAt: String? = null)
+
+@Immutable
+@Serializable
+data class EditedNote(val previousText: String = "", val setAside: Int = 0, val at: String = "")
 
 /** One part of a message, mirroring the AI SDK's UI message parts that BotCircle stores. */
 @Immutable
@@ -378,6 +400,9 @@ data class GeneralChat(
     val title: String = "",
     val model: ModelConfig? = null,
     val effectiveModel: ModelConfig = ModelConfig(),
+    /** Web search allowed in this chat (the web tools are not given to the model otherwise). */
+    val webSearch: Boolean = true,
+    val pinned: Boolean = false,
     val createdAt: String = "",
     val updatedAt: String = "",
     val lastMessagePreview: String? = null,

@@ -113,6 +113,28 @@ class ChatSession(
         follow(resume = false) { client.chat(target, id, text.trim(), files, replyTo, answer) }
     }
 
+    /** General chats: a new answer to the latest message. The replaced answer is kept in the new one's versions. */
+    fun regenerate() {
+        val lastUser = _state.value.messages.indexOfLast { it.isUser }
+        if (lastUser < 0) return
+        streamJob?.cancel()
+        _state.update { it.copy(messages = it.messages.take(lastUser + 1), status = ChatStatus.Submitted, error = null, notSent = false) }
+        follow(resume = false) { client.regenerate(target) }
+    }
+
+    /** General chats: edits one of the user's messages; what followed is set aside (kept, hidden) and an answer restarts. */
+    fun edit(messageId: String, text: String) {
+        val index = _state.value.messages.indexOfFirst { it.id == messageId && it.isUser }
+        if (index < 0 || text.isBlank()) return
+        val original = _state.value.messages[index]
+        val files = original.parts.filterIsInstance<Part.File>()
+        val id = "msg_" + UUID.randomUUID().toString().replace("-", "")
+        val mine = ChatMessage(id, "user", listOf(Part.Text(text.trim())) + files, MessageMeta(kind = "chat"))
+        streamJob?.cancel()
+        _state.update { it.copy(messages = it.messages.take(index) + mine, status = ChatStatus.Submitted, error = null, notSent = false) }
+        follow(resume = false) { client.chat(target, id, text.trim(), files.map { Attachment(id = it.url.substringAfterLast('/'), url = it.url, filename = it.filename ?: "file", mediaType = it.mediaType) }, null, null, editOf = messageId) }
+    }
+
     fun stop() {
         streamJob?.cancel()
         _state.update { it.copy(status = ChatStatus.Ready) }

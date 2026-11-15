@@ -140,6 +140,8 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun openRouterModels(): List<ModelInfo> = get("/models/openrouter")
     /** Models of one provider: "openrouter" or "codex" (ChatGPT sign-in, configured from the web app). */
     suspend fun models(provider: String): List<ModelInfo> = get("/models/$provider")
+    suspend fun availableModels(): AvailableModels = get("/models/available")
+    suspend fun setFavoriteModels(favorites: List<FavoriteModel>) { json("PUT", "/models/favorites", buildJsonObject { put("favorites", OdJson.encodeToJsonElement(favorites)) }) }
     suspend fun completeOnboarding(model: String, timezone: String) {
         json("POST", "/onboarding/complete", buildJsonObject {
             putJsonObject("model") { put("provider", "openrouter"); put("model", model) }
@@ -336,7 +338,11 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     fun chat(agentId: String, messageId: String, text: String, files: List<Attachment>, replyTo: ReplyRef?, answer: JsonObject?): Flow<JsonObject> =
         chat(ChatTarget.Companion(agentId), messageId, text, files, replyTo, answer)
 
-    fun chat(target: ChatTarget, messageId: String, text: String, files: List<Attachment>, replyTo: ReplyRef?, answer: JsonObject?): Flow<JsonObject> {
+    /** A new answer to the latest message of a general chat; the replaced one stays readable in its versions. */
+    fun regenerate(target: ChatTarget): Flow<JsonObject> =
+        sse(Request.Builder().url(url("${target.path}/chat")).post(buildJsonObject { put("regenerate", true) }.toString().toRequestBody(JSON)).build())
+
+    fun chat(target: ChatTarget, messageId: String, text: String, files: List<Attachment>, replyTo: ReplyRef?, answer: JsonObject?, editOf: String? = null): Flow<JsonObject> {
         val message = buildJsonObject {
             put("id", messageId)
             put("role", "user")
@@ -350,7 +356,7 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
                 if (answer != null) put("answer", answer)
             }
         }
-        val body = buildJsonObject { put("message", message) }.toString().toRequestBody(JSON)
+        val body = buildJsonObject { put("message", message); if (editOf != null) put("editOf", editOf) }.toString().toRequestBody(JSON)
         return sse(Request.Builder().url(url("${target.path}/chat")).post(body).build())
     }
 

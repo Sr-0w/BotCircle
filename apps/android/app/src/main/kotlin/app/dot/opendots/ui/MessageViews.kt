@@ -36,6 +36,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -128,6 +132,10 @@ class MessageEnv(
     val onTakeControl: (agentId: String) -> Unit = {},
     /** Opens the code workspace of an OpenCode task. */
     val onOpenCode: (taskId: String) -> Unit = {},
+    /** General chats: edit one of the user's messages. */
+    val onEdit: ((messageId: String, text: String) -> Unit)? = null,
+    /** General chats: a new answer to the latest message. */
+    val onRegenerate: (() -> Unit)? = null,
 )
 
 @Composable
@@ -174,10 +182,12 @@ private fun UserMessage(message: ChatMessage, env: MessageEnv, modifier: Modifie
                 }
                 if (text.isNotEmpty()) Text(text, style = Dot.type.body, color = Dot.colors.textPrimary)
                 files.filter { it.mediaType.startsWith("image/") }.forEach { file -> AttachedImage(file, env) }
-                files.filterNot { it.mediaType.startsWith("image/") }.takeIf { it.isNotEmpty() }?.let { FileGroup(it, env.fileActions, onAccess = env.onFileAccess) }
             }
-            MessageMenu(menu, { menu = false }, text, message.id, "user", env)
+            MessageMenu(menu, { menu = false }, text, message.id, "user", env, onEdit = env.onEdit?.takeIf { text.isNotEmpty() && !env.busy }?.let { edit -> { edit(message.id, text) } })
         }
+        // Files sit under the bubble, at full width: inside it their names and sizes would be cut.
+        files.filterNot { it.mediaType.startsWith("image/") }.takeIf { it.isNotEmpty() }?.let { FileGroup(it, env.fileActions, Modifier.padding(top = DotSpacing.xs).widthIn(max = 360.dp), onAccess = env.onFileAccess) }
+        message.meta.edited?.let { EditedNote(it) }
         Reactions(message.id, message.meta.reactions, env)
     }
 }
@@ -236,7 +246,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                         }
                     }
                 }
-                MessageMenu(menu, { menu = false }, turn.plainText, message.id, "assistant", env, onShowWork = if (turn.hasWork) env.onShowWork else null)
+                MessageMenu(menu, { menu = false }, turn.plainText, message.id, "assistant", env, onShowWork = if (turn.hasWork) env.onShowWork else null, onRegenerate = env.onRegenerate?.takeIf { showActions && !streaming && message.meta.agentId == null })
             }
         }
         // Validations asked one after the other in a turn are shown together; a single one stays a card.
@@ -252,8 +262,10 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                 DotIconButton(Icons.Outlined.ContentCopy, stringResource(R.string.copy), onClick = { env.onCopy(turn.plainText) }, tint = tint, modifier = Modifier.size(40.dp))
                 DotIconButton(Icons.AutoMirrored.Outlined.Reply, stringResource(R.string.reply), onClick = { env.onReply(ReplyRef(message.id, turn.plainText.take(180), "assistant")) }, tint = tint, modifier = Modifier.size(40.dp))
                 DotIconButton(Icons.Outlined.AddReaction, stringResource(R.string.react), onClick = { menu = true }, tint = tint, modifier = Modifier.size(40.dp))
+                env.onRegenerate?.takeIf { message.meta.agentId == null }?.let { DotIconButton(Icons.Outlined.Refresh, stringResource(R.string.regenerate), onClick = it, tint = tint, modifier = Modifier.size(40.dp)) }
             }
         }
+        if (message.meta.previous.isNotEmpty()) PreviousVersions(message.meta.previous)
     }
 }
 
@@ -430,7 +442,7 @@ private fun Reactions(messageId: String, reactions: List<Reaction>, env: Message
 
 /** Long-press menu of a message: quick reactions, copy, reply. */
 @Composable
-private fun MessageMenu(expanded: Boolean, onDismiss: () -> Unit, text: String, messageId: String, role: String, env: MessageEnv, onShowWork: (() -> Unit)? = null) {
+private fun MessageMenu(expanded: Boolean, onDismiss: () -> Unit, text: String, messageId: String, role: String, env: MessageEnv, onShowWork: (() -> Unit)? = null, onEdit: (() -> Unit)? = null, onRegenerate: (() -> Unit)? = null) {
     DotMenu(expanded, onDismiss) {
         Row(Modifier.padding(horizontal = DotSpacing.s)) {
             QUICK_REACTIONS.forEach { emoji ->
@@ -444,7 +456,40 @@ private fun MessageMenu(expanded: Boolean, onDismiss: () -> Unit, text: String, 
             DotMenuItem(stringResource(R.string.copy), Icons.Outlined.ContentCopy) { env.onCopy(text); onDismiss() }
             DotMenuItem(stringResource(R.string.reply), Icons.AutoMirrored.Outlined.Reply) { env.onReply(ReplyRef(messageId, text.take(180), role)); onDismiss() }
         }
+        if (onEdit != null) DotMenuItem(stringResource(R.string.edit), Icons.Outlined.Edit) { onEdit(); onDismiss() }
+        if (onRegenerate != null) DotMenuItem(stringResource(R.string.regenerate), Icons.Outlined.Refresh) { onRegenerate(); onDismiss() }
         if (onShowWork != null) DotMenuItem(stringResource(R.string.show_work), Icons.Outlined.Checklist) { onShowWork(); onDismiss() }
+    }
+}
+
+/** An edited message says so; its original text is one tap away, with how many later messages were set aside. */
+@Composable
+private fun EditedNote(note: app.dot.opendots.data.EditedNote) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(top = DotSpacing.xs), horizontalAlignment = Alignment.End) {
+        Text(
+            stringResource(R.string.edited) + if (note.setAside > 0) " · " + pluralStringResource(R.plurals.set_aside, note.setAside, note.setAside) else "",
+            style = Dot.type.caption, color = Dot.colors.textTertiary,
+            modifier = Modifier.clip(DotShapes.pill).clickable(role = Role.Button) { open = !open }.padding(horizontal = DotSpacing.s, vertical = DotSpacing.xs).testTag("edited"),
+        )
+        if (open) Text(note.previousText, style = Dot.type.callout, color = Dot.colors.textSecondary, modifier = Modifier.widthIn(max = 320.dp).clip(DotShapes.medium).border(DotSpacing.hairline * 2, Dot.colors.border, DotShapes.medium).padding(DotSpacing.m))
+    }
+}
+
+/** Answers replaced by a regeneration: still there to read, one at a time. */
+@Composable
+private fun PreviousVersions(previous: List<app.dot.opendots.data.PreviousAnswer>) {
+    var index by rememberSaveable { mutableStateOf<Int?>(null) }
+    val total = previous.size + 1
+    val current = index ?: (total - 1)
+    Column(Modifier.testTag("versions")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DotIconButton(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, stringResource(R.string.previous_version), onClick = { index = current - 1 }, enabled = current > 0, tint = Dot.colors.textTertiary)
+            Text("${current + 1}/$total", style = Dot.type.caption, color = Dot.colors.textSecondary)
+            DotIconButton(Icons.AutoMirrored.Outlined.KeyboardArrowRight, stringResource(R.string.next_version), onClick = { index = if (current + 1 == total - 1) null else current + 1 }, enabled = current < total - 1, tint = Dot.colors.textTertiary)
+            index?.let { i -> Text(stringResource(R.string.replaced_version) + (previous[i].model?.let { " · $it" } ?: ""), style = Dot.type.caption, color = Dot.colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        index?.let { i -> Box(Modifier.fillMaxWidth(0.92f).clip(DotShapes.large).border(DotSpacing.hairline * 2, Dot.colors.border, DotShapes.large).padding(DotSpacing.m).testTag("previous-version")) { DotMarkdown(previous[i].text) } }
     }
 }
 

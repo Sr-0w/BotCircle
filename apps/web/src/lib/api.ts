@@ -211,6 +211,9 @@ export const api = {
   codexLogin: () => request<{ verificationUrl: string; userCode: string }>("POST", "/codex/login"),
   codexLogout: () => request("POST", "/codex/logout"),
   codexModels: () => request<ModelInfo[]>("GET", "/models/codex"),
+  /** Every model of the configured providers, and the favourites (shown first in the pickers). */
+  availableModels: () => request<{ providers: { provider: ModelInfo['provider']; name: string; count: number; error: string | null }[]; models: ModelInfo[]; favorites: { provider: ModelInfo['provider']; model: string }[] }>("GET", "/models/available"),
+  setFavoriteModels: (favorites: { provider: ModelInfo['provider']; model: string }[]) => request<{ favorites: typeof favorites }>("PUT", "/models/favorites", { favorites }),
   openrouterModels: () => request<ModelInfo[]>("GET", "/models/openrouter"),
   openrouterEndpoints: (id: string) => request<string[]>("GET", `/models/openrouter/endpoints?id=${encodeURIComponent(id)}`),
   ollamaModels: (url?: string) => request<ModelInfo[]>("GET", `/models/ollama${url ? `?url=${encodeURIComponent(url)}` : ""}`),

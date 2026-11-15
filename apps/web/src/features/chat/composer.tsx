@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowUpIcon, SquareIcon, PlusIcon, XIcon, LoaderIcon, FileIcon, AtSignIcon } from 'lucide-react';
+import { ArrowUpIcon, AtSignIcon, FileIcon, LoaderIcon, PaperclipIcon, PlusIcon, SquareIcon, XIcon } from 'lucide-react';
 import { DotAvatar } from '../dot-avatar';
 import { ARTIFACT_MAX_BYTES, IMAGE_MAX_BYTES } from '@opendots/shared';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 
@@ -102,8 +103,16 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
     </div>)}</div>}
     {error && <p role="alert" className="px-3 text-xs text-destructive">{error}</p>}
     <div className="flex items-end gap-2">
-      <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading || files.length >= MAX_FILES} onClick={() => picker.current?.click()} aria-label={t('Joindre des fichiers')}><PlusIcon /></Button>
-      {!!mentions?.length && <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading} aria-label={t('Demander à un compagnon')} title={t('Demander à un compagnon')} onClick={() => { const next = value && !/\s$/.test(value) ? `${value} @` : `${value}@`; setValue(next); pendingCaret.current = next.length; }}><AtSignIcon /></Button>}
+      {/* "+" holds the less frequent actions: attach files, ask a companion (no separate @ button). */}
+      {mentions?.length ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading} aria-label={t('Ajouter')}><PlusIcon /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuItem disabled={files.length >= MAX_FILES} onSelect={() => picker.current?.click()}><PaperclipIcon />{t('Joindre des fichiers')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => { const next = value && !/\s$/.test(value) ? `${value} @` : `${value}@`; setValue(next); pendingCaret.current = next.length; window.setTimeout(() => ref.current?.focus(), 0); }}><AtSignIcon />{t('Demander à un compagnon')}</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading || files.length >= MAX_FILES} onClick={() => picker.current?.click()} aria-label={t('Joindre des fichiers')}><PlusIcon /></Button>}
       <textarea ref={ref} rows={1} value={value} disabled={uploading} maxLength={50_000}
         onChange={(event) => { setValue(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); }}
         onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}

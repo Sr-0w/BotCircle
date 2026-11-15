@@ -12,6 +12,7 @@
     <string name="access_revoke">Accès retiré</string>
     <string name="access_share">Partagé</string>
     <string name="account">Compte</string>
+    <string name="add">Ajouter</string>
     <string name="agent_behaviour">Comportement des agents</string>
     <string name="agent_behaviour_note">Limites de travail, autonomie et fuseau horaire</string>
     <string name="ai_and_agents">IA et agents</string>
@@ -50,6 +51,7 @@
     <string name="chat_empty_title">Nouveau chat</string>
     <string name="chat_files_note">Fichiers échangés dans ce chat</string>
     <string name="chat_model_own">choisi pour ce chat</string>
+    <string name="chat_model_short">Modèle</string>
     <string name="chat_settings">Réglages du chat</string>
     <string name="chat_title">Titre</string>
     <string name="chats">Chats</string>
@@ -171,6 +173,15 @@
     <string name="delete">Supprimer</string>
     <string name="details">Détails</string>
     <string name="discard">Abandonner</string>
+    <string name="edit">Modifier</string>
+    <string name="edit_message">Modifier le message</string>
+    <string name="edit_note">La suite de la conversation sera mise de côté (conservée) et une nouvelle réponse partira de ce message.</string>
+    <string name="edited">Modifié</string>
+    <string name="effort">Effort de raisonnement</string>
+    <string name="effort_auto">Auto</string>
+    <string name="effort_high">Élevé</string>
+    <string name="effort_low">Faible</string>
+    <string name="effort_medium">Moyen</string>
     <string name="email">E-mail</string>
     <string name="empty_named_body">Parle-lui naturellement : il retient, s’organise et agit pour toi.</string>
     <string name="empty_named_title">%1$s est là</string>
@@ -178,6 +189,9 @@
     <string name="empty_new_title">Ton premier compagnon est prêt</string>
     <string name="engine">Moteur</string>
     <string name="event">Événement</string>
+    <string name="favorite_add">Ajouter aux favoris</string>
+    <string name="favorite_remove">Retirer des favoris</string>
+    <string name="favorites">Favoris</string>
     <string name="file">Fichier</string>
     <string name="file_access">Accès</string>
     <string name="file_added_by">ajouté par %1$s</string>
@@ -246,6 +260,7 @@
     <string name="message_actions">Actions du message</string>
     <string name="message_sent_to">Message envoyé à %1$s</string>
     <string name="model">Modèle</string>
+    <string name="model_back_default">Revenir au modèle par défaut</string>
     <string name="model_default">Utilise le modèle par défaut</string>
     <string name="model_own">A son propre modèle</string>
     <string name="model_reset">Revenir au modèle par défaut</string>
@@ -256,9 +271,11 @@
     <string name="new_chat">Nouveau chat</string>
     <string name="new_companion">Nouveau compagnon</string>
     <string name="next">Suivant</string>
+    <string name="next_version">Version suivante</string>
     <string name="no">non</string>
     <string name="no_account">Créer un compte</string>
     <string name="no_answer">(sans réponse)</string>
+    <string name="no_provider">Aucun fournisseur configuré : ajoute-en un dans Paramètres → Fournisseurs de modèles.</string>
     <string name="not_sent">Message non envoyé</string>
     <string name="onboarding_key_body">Les compagnons réfléchissent avec un modèle OpenRouter. Ta clé est chiffrée sur ton serveur et n’est plus jamais affichée.</string>
     <string name="onboarding_key_title">Ajoute ta clé OpenRouter</string>
@@ -293,6 +310,8 @@
     <string name="perm_web">Lire des pages web publiques</string>
     <string name="permissions">Permissions</string>
     <string name="permissions_note">L’envoi d’e-mails et les autres actions sensibles demandent toujours ta validation.</string>
+    <string name="pin">Épingler</string>
+    <string name="pinned">Épinglé</string>
     <string name="preview">Aperçu</string>
     <string name="preview_no_match">Aucun résultat</string>
     <string name="preview_rendered">Rendu</string>
@@ -300,6 +319,7 @@
     <string name="preview_source">Source</string>
     <string name="preview_truncated">Fichier long : seuls les 2 premiers Mo sont affichés. Enregistre-le pour tout voir.</string>
     <string name="previous">Précédent</string>
+    <string name="previous_version">Version précédente</string>
     <string name="provider_api_key">Clé API</string>
     <string name="provider_checking">Vérification…</string>
     <string name="provider_connect">Connecter</string>
@@ -319,12 +339,14 @@
     <string name="reconnecting">Reconnexion…</string>
     <string name="reduce_transparency">Réduire la transparence</string>
     <string name="reduce_transparency_note">Remplace le flou par des surfaces unies</string>
+    <string name="regenerate">Régénérer</string>
     <string name="register_title">Crée ton compte</string>
     <string name="reject">Refuser</string>
     <string name="reject_all">Tout refuser</string>
     <string name="remove_file">Retirer %1$s</string>
     <string name="remove_image">Retirer l’image</string>
     <string name="rename">Renommer</string>
+    <string name="replaced_version">version remplacée</string>
     <string name="reply">Répondre</string>
     <string name="retry">Réessayer</string>
     <string name="save">Enregistrer</string>
@@ -334,6 +356,7 @@
     <string name="search_companions">Rechercher un compagnon</string>
     <string name="search_models">Rechercher un modèle</string>
     <string name="send">Envoyer</string>
+    <string name="send_edit">Envoyer la modification</string>
     <string name="server">Serveur</string>
     <string name="server_address">Adresse du serveur</string>
     <string name="server_body">BotCircle tourne sur ton propre serveur. Indique son adresse pour retrouver tes compagnons.</string>
@@ -458,10 +481,14 @@
     <string name="tool_watch">Surveillance : %1$s</string>
     <string name="tool_writes_to">Écrit à %1$s</string>
     <string name="turn_failed">%1$s n’a pas pu répondre.</string>
+    <string name="unpin">Désépingler</string>
     <string name="unreachable_body">%1$s ne répond pas. Vérifie ta connexion ou le serveur.</string>
     <string name="unreachable_title">Serveur injoignable</string>
     <string name="upload_failed">Impossible de joindre cette image.</string>
     <string name="version">Version</string>
+    <string name="web">Web</string>
+    <string name="web_off">Recherche web coupée pour ce chat</string>
+    <string name="web_on">Recherche web activée pour ce chat</string>
     <string name="web_only">À configurer dans l’app web</string>
     <string name="work">Travail</string>
     <string name="work_empty_body">Le raisonnement et les outils apparaissent ici, jamais dans la conversation.</string>
@@ -524,6 +551,10 @@
     <plurals name="errors">
         <item quantity="one">%d erreur</item>
         <item quantity="other">%d erreurs</item>
+    </plurals>
+    <plurals name="set_aside">
+        <item quantity="one">%d message mis de côté</item>
+        <item quantity="other">%d messages mis de côté</item>
     </plurals>
     <plurals name="task_interval">
         <item quantity="one">Chaque minute</item>

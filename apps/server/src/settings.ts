@@ -10,6 +10,8 @@ interface SettingsShape {
   [key: `desktop.bot.${string}`]: { enabled: boolean; manualControl?: boolean; slot?: number; password?: string; runtimeId?: string };
   'openrouter.key': string; // chiffré
   'models.default': ModelConfig;
+  /** Favourite models, shown first in every model picker. */
+  'models.favorites': { provider: string; model: string }[];
   'ollama.url': string;
   'engine.paused': boolean;
   'engine.turnStepLimit': number;

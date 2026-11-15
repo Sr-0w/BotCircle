@@ -170,6 +170,25 @@ export function createApi() {
   // --- Modèles -------------------------------------------------------------
 
   api.get('/models/openrouter', async (c) => c.json(await listOpenRouterModels()));
+  // Every model of the providers that are configured, for the pickers of the conversations, and the favourites.
+  api.get('/models/available', async (c) => {
+    const [key, ollamaUrl, codex] = await Promise.all([getOpenRouterKey(), getSetting('ollama.url'), codexAccount().catch(() => null)]);
+    const sources: { provider: 'openrouter' | 'ollama' | 'codex'; name: string; load: () => Promise<unknown[]> }[] = [];
+    if (key) sources.push({ provider: 'openrouter', name: 'OpenRouter', load: listOpenRouterModels });
+    if (ollamaUrl) sources.push({ provider: 'ollama', name: 'Ollama', load: () => listOllamaModels() });
+    if (codex) sources.push({ provider: 'codex', name: 'ChatGPT / Codex', load: codexModels });
+    const loaded = await Promise.all(sources.map(async (s) => { try { return { ...s, models: await s.load(), error: null }; } catch (error) { return { ...s, models: [] as unknown[], error: errorMessage(error) }; } }));
+    return c.json({
+      providers: loaded.map((s) => ({ provider: s.provider, name: s.name, count: s.models.length, error: s.error })),
+      models: loaded.flatMap((s) => s.models),
+      favorites: (await getSetting('models.favorites')) ?? [],
+    });
+  });
+  api.put('/models/favorites', async (c) => {
+    const body = z.object({ favorites: z.array(z.object({ provider: z.enum(['openrouter', 'ollama', 'codex']), model: z.string().min(1).max(300) })).max(100) }).parse(await c.req.json());
+    await setSetting('models.favorites', body.favorites);
+    return c.json({ favorites: body.favorites });
+  });
   api.get('/models/openrouter/endpoints', async (c) => c.json(await listOpenRouterEndpoints(c.req.query('id') ?? '')));
   api.get('/models/ollama', async (c) => {
     try {

@@ -1,5 +1,10 @@
 /** Dictionnaire anglais : clé = texte français. */
 export const EN: Record<string, string> = {
+  "Favoris": "Favourites",
+  "Ajouter aux favoris": "Add to favourites",
+  "Retirer des favoris": "Remove from favourites",
+  "Aucun fournisseur configuré : ajoute-en un dans Paramètres → Fournisseurs.": "No provider configured: add one in Settings → Providers.",
+  "Modèle du compagnon": "Companion's model",
   "Effort de raisonnement": "Reasoning effort",
   "Faible": "Low",
   "Auto": "Auto",

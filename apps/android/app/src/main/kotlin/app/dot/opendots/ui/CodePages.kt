@@ -562,9 +562,12 @@ private fun CodeModelSheet(app: AppState, taskId: String, current: OpencodeCurre
     LaunchedEffect(taskId) { runCatching { app.client.codeModels(taskId) }.onSuccess { models = it.models }.onFailure { error = it.message?.ifBlank { null } ?: failed } }
     fun pick(model: OpencodeModel, variant: String?) = app.run { app.client.codeSetModel(taskId, model, variant); app.notify(picked.format(model.name)); onPicked() }
     val list = models
+    // Sheets are separate windows: their state is read here, so changes recompose them.
+    val target = chosen
+    val loadError = error
+    val q = query.trim().lowercase()
     DotBottomSheet(onDismiss) {
         Text(stringResource(R.string.code_model), style = Dot.type.title, color = c.textPrimary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).semantics { heading() })
-        val target = chosen
         if (target != null) {
             Column(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).testTag("code-variants")) {
                 Text(stringResource(R.string.code_effort_for, target.name), style = Dot.type.callout, color = c.textSecondary)
@@ -579,10 +582,9 @@ private fun CodeModelSheet(app: AppState, taskId: String, current: OpencodeCurre
         }
         DotTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter), placeholder = stringResource(R.string.code_model_search))
         when {
-            error != null -> Text(error.orEmpty(), style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(DotSpacing.gutter))
+            loadError != null -> Text(loadError, style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(DotSpacing.gutter))
             list == null -> Box(Modifier.fillMaxWidth().padding(DotSpacing.xl), contentAlignment = Alignment.Center) { DotSpinner() }
             else -> {
-                val q = query.trim().lowercase()
                 val visible = list.filter { q.isEmpty() || "${it.name} ${it.id} ${it.providerName}".lowercase().contains(q) }.take(300)
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), contentPadding = PaddingValues(vertical = DotSpacing.s)) {
                     if (visible.isEmpty()) item { Text(stringResource(R.string.code_model_none), style = Dot.type.callout, color = c.textSecondary, modifier = Modifier.padding(DotSpacing.gutter)) }

@@ -30,6 +30,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.hasTestTag
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -98,7 +101,7 @@ class ScreensTest {
       {"id":"g1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"@Dev summarise the Friday meeting"},{"type":"file","url":"/api/artifacts/art_n1/content","filename":"meeting notes.md","mediaType":"text/markdown"}]},
       {"id":"g2","role":"assistant","metadata":{"kind":"chat"},"parts":[{"type":"tool-invoke_agent","toolCallId":"i1","state":"output-available","input":{"agent":"Dev","instruction":"summarise"},"output":{"ok":true,"status":"queued","taskId":"tk1","agentId":"a3","agentName":"Dev"}}]},
       {"id":"g3","role":"assistant","metadata":{"kind":"chat","agentId":"a3","taskId":"tk1"},"parts":[{"type":"text","text":"Here is the summary."},{"type":"file","url":"/api/artifacts/art_r1/content","filename":"summary.pdf","mediaType":"application/pdf"}]},
-      {"id":"g4","role":"assistant","metadata":{"kind":"chat","model":"openai/gpt-5"},"parts":[{"type":"text","text":"Anything else about that meeting?"}]}
+      {"id":"g4","role":"assistant","metadata":{"kind":"chat","model":"openai/gpt-5","previous":[{"id":"old","text":"An older answer.","model":"openai/gpt-4"}]},"parts":[{"type":"text","text":"Anything else about that meeting?"}]}
     ]}"""
     private val artifact = """{"id":"art_r1","name":"summary.pdf","mediaType":"application/pdf","size":48213,"authorKind":"worker","authorId":"a3","createdAt":"2026-11-13T09:05:00Z","url":"/api/artifacts/art_r1/content",
       "grants":[{"agentId":"a3","grantedBy":"a3","via":"create","createdAt":"2026-11-13T09:05:00Z","revokedAt":null}],
@@ -133,6 +136,12 @@ class ScreensTest {
                     ).build()
                     path == "/chats" -> json(chats)
                     path == "/chats/ch1/messages" -> json(chatHistory)
+                    path == "/models/available" -> json("""{"providers":[{"provider":"openrouter","name":"OpenRouter","count":2,"error":null},{"provider":"ollama","name":"Ollama","count":1,"error":null}],
+                      "models":[{"id":"openai/gpt-5","name":"GPT-5","provider":"openrouter","reasoning":true},{"id":"anthropic/claude-sonnet-5.5","name":"Claude Sonnet 5.5","provider":"openrouter","vision":true},{"id":"llama4","name":"Llama 4","provider":"ollama"}],
+                      "favorites":[{"provider":"openrouter","model":"openai/gpt-5"}]}""")
+                    path == "/models/favorites" -> json("""{"favorites":[]}""")
+                    path.startsWith("/models/") -> json("[]")
+                    path == "/chats/ch1" && request.method == "PATCH" -> json("""{"id":"ch1","title":"Friday meeting","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"webSearch":false,"pinned":false,"createdAt":"2026-11-13T09:00:00Z","updatedAt":"2026-11-13T09:05:00Z"}""")
                     path == "/chats/ch1/stream" -> MockResponse.Builder().code(204).build()
                     path == "/chats/ch1/chat" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"start\",\"messageId\":\"g9\"}\n\ndata: {\"type\":\"finish\"}\n\ndata: [DONE]\n\n").build()
                     path == "/tasks" -> json("[$task,$codeTask]")
@@ -309,6 +318,60 @@ class ScreensTest {
         waitFor("Read public web pages")
         waitFor("anthropic/claude-sonnet-5.5")
         shoot("profile-dark")
+    }
+
+    /** #38: a general chat has its own controls in its field; answers can be regenerated, messages edited, versions read. */
+    @Test fun aGeneralChatHasItsControlsVersionsEditAndRegenerate() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Chats")
+        waitFor("Friday meeting")
+        compose.onNodeWithText("Friday meeting").performClick()
+        waitFor("Anything else about that meeting?")
+        assertTrue(compose.onAllNodes(hasTestTag("chat-controls"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        shoot("chat-controls-dark")
+        // "+" holds attach and "ask a companion"; there is no separate @ button.
+        assertTrue(!compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Ask a companion")).fetchSemanticsNodes().isNotEmpty())
+        compose.onNodeWithContentDescription("Add").performClick()
+        waitFor("Ask a companion")
+        compose.onNodeWithText("Ask a companion").performClick()
+        // The model picker: every configured provider, favourites first; a star keeps a model on top.
+        waitFor("@")
+        repeat(3) {
+            if (compose.onAllNodes(hasTestTag("model-sheet"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {
+                runCatching { compose.onNodeWithTag("chat-model").performClick() }
+                runCatching { compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("model-sheet"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() } }
+            }
+        }
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("model-sheet"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor("FAVOURITES")
+        waitFor("Claude Sonnet 5.5")
+        compose.onAllNodesWithContentDescription("Add to favourites")[0].performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/models/favorites" } }
+        compose.onNodeWithText("Llama 4").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1" && "llama4" in it.second } }
+        // Web search is switched off for this chat, on the server.
+        compose.onNodeWithTag("chat-web").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1" && "webSearch" in it.second } }
+        // The fixture's chat already came back with web search off (after the model change): the switch turns it on.
+        assertEquals("""{"webSearch":true}""", posts.first { it.first == "/chats/ch1" && "webSearch" in it.second }.second)
+        // The replaced answer is still there to read.
+        waitFor("2/2")
+        compose.onNodeWithContentDescription("Previous version").performClick()
+        waitFor("An older answer.")
+        // A new answer to the latest message.
+        compose.onNodeWithContentDescription("Regenerate").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/chat" && "\"regenerate\":true" in it.second } }
+        // Editing a message sends it again, naming the one it replaces.
+        compose.waitUntil(10_000) { compose.onAllNodesWithTextCompat("@Dev summarise the Friday meeting") }
+        compose.onNodeWithText("@Dev summarise the Friday meeting").performTouchInput { longClick() }
+        compose.onNodeWithText("Edit").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("edit-sheet"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("edit-sheet")))[0].performTextReplacement("@Dev summarise Friday in three points")
+        compose.onNodeWithText("Send the edit").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/chat" && "\"editOf\":\"g1\"" in it.second } }
+        assertTrue("three points" in posts.first { "\"editOf\"" in it.second }.second)
     }
 
     @Test fun chatsAreTheirOwnDestinationWithSignedContributions() {

@@ -62,7 +62,7 @@ const { authStore, closeAuthStore, accountById } = await import('../src/auth/sto
 const { withAccount } = await import('../src/auth/context.ts');
 const { openDatabase, closeAllDatabases } = await import('../src/db/client.ts');
 const { createAgent, mainConversationId } = await import('../src/agents/repo.ts');
-const { setSetting, setOpenRouterKey } = await import('../src/settings.ts');
+const { setSetting, getSetting, setOpenRouterKey } = await import('../src/settings.ts');
 const { createTask } = await import('../src/tasks/service.ts');
 const { requestSecureLogin } = await import('../src/securelogin/service.ts');
 const { listInstances, startOpencodeTask, syncTask } = await import('../src/opencode/service.ts');
@@ -347,6 +347,21 @@ try {
   await page.locator('[data-chat-web]').click();
   await page.locator('[data-chat-web="on"]').waitFor();
   await shot('15-chat-controls');
+  // "+" holds "ask a companion" (no separate @ button); the model picker lists the configured providers, favourites first.
+  assert.equal(await page.getByRole('button', { name: 'Demander à un compagnon' }).count(), 0);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Demander à un compagnon' }).click();
+  assert.equal(await chatBox.inputValue(), '@');
+  await chatBox.fill('');
+  await page.locator('[data-chat-model]').click();
+  const menu = page.locator('[data-model-menu]');
+  await menu.getByText('Modèle de test').waitFor();
+  await menu.locator('[data-model-option="openrouter/fixture/model"]').getByRole('button', { name: 'Ajouter aux favoris' }).click();
+  await menu.getByText('Favoris', { exact: true }).waitFor();
+  await withAccount(account, async () => assert.deepEqual(await getSetting('models.favorites'), [{ provider: 'openrouter', model: 'fixture/model' }]));
+  await shot('16-model-menu');
+  await page.keyboard.press('Escape');
+  await menu.getByRole('button', { name: 'Fermer' }).click().catch(() => {});
   await chatBox.fill('@D');
   await page.getByRole('option', { name: '@Dev' }).waitFor();
   assert.equal(await page.getByRole('option').count(), 1);

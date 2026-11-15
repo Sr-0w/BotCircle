@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react';
 import { BrainIcon, CheckIcon, ChevronDownIcon, GlobeIcon } from 'lucide-react';
 import type { ChatDTO, ModelConfig } from '@opendots/shared';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { api, type ModelInfo } from '@/lib/api';
 import { setStoreChats, useStore } from '@/lib/store';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { ModelPicker } from '../model-picker';
+import { ModelMenu } from './model-menu';
 
 const modelCache = new Map<string, Promise<ModelInfo[]>>();
 const modelsOf = (provider: ModelConfig['provider']) => {
@@ -24,7 +23,6 @@ const shortName = (model: string) => model.split('/').pop() ?? model;
 export function ChatControls({ chat }: { chat: ChatDTO }) {
   const chats = useStore((s) => s.chats);
   const [picking, setPicking] = useState(false);
-  const [provider, setProvider] = useState<ModelConfig['provider']>(chat.effectiveModel.provider);
   const [info, setInfo] = useState<ModelInfo | null>(null);
   const model = chat.effectiveModel;
   useEffect(() => { let active = true; void modelsOf(model.provider).then((list) => active && setInfo(list.find((m) => m.id === model.model) ?? null)); return () => { active = false; }; }, [model.provider, model.model]);
@@ -35,9 +33,11 @@ export function ChatControls({ chat }: { chat: ChatDTO }) {
   const efforts = ['low', 'medium', 'high'] as const;
   return (
     <div className="flex min-w-0 items-center gap-0.5" data-chat-controls>
-      <button type="button" onClick={() => setPicking(true)} className="flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-muted-foreground text-xs hover:bg-accent hover:text-foreground" aria-label={t('Modèle de ce chat')} title={model.model} data-chat-model>
+      <button type="button" onClick={() => setPicking(!picking)} aria-expanded={picking} className="flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-muted-foreground text-xs hover:bg-accent hover:text-foreground" aria-label={t('Modèle de ce chat')} title={model.model} data-chat-model>
         <span className="max-w-40 truncate">{info?.name ?? shortName(model.model)}</span><ChevronDownIcon className="size-3 shrink-0" />
       </button>
+      {picking && <ModelMenu current={model} onClose={() => setPicking(false)} onPick={(picked) => { void patch({ model: { provider: picked.provider, model: picked.id, reasoning: picked.reasoning ? model.reasoning ?? null : null } }); setPicking(false); }}
+        footer={chat.model ? <button type="button" className="text-muted-foreground text-xs hover:text-foreground" onClick={() => { void patch({ model: null }); setPicking(false); }}>{t('Revenir au modèle par défaut')}</button> : undefined} />}
       {info?.reasoning && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -59,19 +59,26 @@ export function ChatControls({ chat }: { chat: ChatDTO }) {
         className={cn('flex items-center gap-1 rounded-full px-2 py-1 text-xs', chat.webSearch ? 'bg-primary/10 text-primary hover:bg-primary/15' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
         <GlobeIcon className="size-3.5" />{t('Web')}
       </button>
-      <Dialog open={picking} onOpenChange={setPicking}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{t('Modèle de ce chat')}</DialogTitle>
-            <DialogDescription>{t('Pour les prochaines réponses de ce chat ; chaque réponse garde le modèle qui l’a écrite.')}</DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-1">
-            {(['openrouter', 'ollama', 'codex'] as const).map((value) => <button key={value} type="button" aria-pressed={provider === value} onClick={() => setProvider(value)} className={cn('rounded-full px-3 py-1 text-xs', provider === value ? 'bg-secondary font-medium' : 'text-muted-foreground hover:text-foreground')}>{value === 'openrouter' ? 'OpenRouter' : value === 'ollama' ? 'Ollama' : 'Codex'}</button>)}
-          </div>
-          <ModelPicker value={model.provider === provider ? model.model : null} provider={provider} onChange={(picked) => { void patch({ model: { provider: picked.provider, model: picked.id, reasoning: picked.reasoning ? model.reasoning ?? null : null } }); setPicking(false); }} />
-          {chat.model && <button type="button" className="text-left text-muted-foreground text-xs hover:text-foreground" onClick={() => { void patch({ model: null }); setPicking(false); }}>{t('Revenir au modèle par défaut')}</button>}
-        </DialogContent>
-      </Dialog>
     </div>
+  );
+}
+
+/** A companion's model, from its conversation's field: the same picker, favourites first. */
+export function AgentModelControl({ agent }: { agent: { id: string; model: ModelConfig | null; effectiveModel: ModelConfig } }) {
+  const [picking, setPicking] = useState(false);
+  const [info, setInfo] = useState<ModelInfo | null>(null);
+  const model = agent.effectiveModel;
+  useEffect(() => { let active = true; void modelsOf(model.provider).then((list) => active && setInfo(list.find((m) => m.id === model.model) ?? null)); return () => { active = false; }; }, [model.provider, model.model]);
+  async function set(next: ModelConfig | null) {
+    try { await api.updateAgent(agent.id, { model: next }); } catch (e) { toast.error((e as Error).message); }
+  }
+  return (
+    <>
+      <button type="button" onClick={() => setPicking(!picking)} aria-expanded={picking} className="flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-muted-foreground text-xs hover:bg-accent hover:text-foreground" aria-label={t('Modèle du compagnon')} title={model.model} data-agent-model>
+        <span className="max-w-40 truncate">{info?.name ?? shortName(model.model)}</span><ChevronDownIcon className="size-3 shrink-0" />
+      </button>
+      {picking && <ModelMenu current={model} onClose={() => setPicking(false)} onPick={(picked) => { void set({ provider: picked.provider, model: picked.id, reasoning: picked.reasoning ? model.reasoning ?? null : null }); setPicking(false); }}
+        footer={agent.model ? <button type="button" className="text-muted-foreground text-xs hover:text-foreground" onClick={() => { void set(null); setPicking(false); }}>{t('Revenir au modèle par défaut')}</button> : undefined} />}
+    </>
   );
 }

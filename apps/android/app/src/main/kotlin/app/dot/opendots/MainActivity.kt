@@ -176,6 +176,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     // The code workspace opens from a task card anywhere; Back returns to the page that opened it.
     var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
     var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
+    // The chat model picker opens from the chat's field or from its settings; Back returns there.
+    var modelFromChat by rememberSaveable { mutableStateOf(false) }
     val openCode = { taskId: String -> codeTask = taskId; codeFrom = page; page = Page.CodeWorkspace }
     val keyboard = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
@@ -187,7 +189,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         page = when (page) {
             Page.Model, Page.Desktop -> Page.Profile
             Page.Profile -> Page.Chat
-            Page.ChatModel -> Page.ChatSettings
+            Page.ChatModel -> if (modelFromChat) Page.GeneralChat else Page.ChatSettings
             Page.DefaultModel -> Page.Providers
             Page.CodeWorkspace -> codeFrom
             Page.ChatSettings -> Page.GeneralChat
@@ -257,7 +259,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
                 onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
             )
-            current == Page.ChatSettings -> ChatSettingsPage(app, ui, chat!!, onBack = ::back, onChangeModel = { page = Page.ChatModel }, onDeleted = { page = Page.None })
+            current == Page.ChatSettings -> ChatSettingsPage(app, ui, chat!!, onBack = ::back, onChangeModel = { modelFromChat = false; page = Page.ChatModel }, onDeleted = { page = Page.None })
             current == Page.ChatModel -> ModelPickerPage(app, chat!!.title, chat.effectiveModel, onBack = ::back) { provider, model ->
                 app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model) } })
             }

@@ -72,6 +72,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.outlined.AttachFile
+import app.dot.design.components.DotPrimaryButton
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.platform.testTag
+import app.dot.opendots.data.ChatMessage
+import kotlinx.serialization.json.putJsonObject
+import app.dot.design.components.DotTextField
+import app.dot.design.components.DotMenuItem
+import app.dot.design.components.DotMenu
+import app.dot.opendots.chat.ChatStatus
+import app.dot.opendots.data.Part
+import app.dot.opendots.data.ModelInfo
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clip
@@ -154,6 +172,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     var reply by remember(agent.id) { mutableStateOf<ReplyRef?>(null) }
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
     var workSheet by remember(agent.id) { mutableStateOf(false) }
+    var editing by remember(agent.id) { mutableStateOf<Pair<String, String>?>(null) }
     var taskSheet by remember(agent.id) { mutableStateOf<String?>(null) }
     var accessSheet by remember(agent.id) { mutableStateOf<String?>(null) }
     val fileActions = rememberFileActions(app)
@@ -204,6 +223,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             tasks = ui.tasks, onNeedTask = app::loadTask, onOpenTask = { taskSheet = it }, onTaskAction = app::taskAction,
             fileActions = fileActions, onFileAccess = { accessSheet = it }, attribution = general != null,
             secureLogins = ui.secureLogins, onNeedSecureLogin = app::ensureSecureLogin, onResolveSecureLogin = { id, outcome -> app.resolveSecureLogin(id, outcome) }, onTakeControl = onOpenDesktop, onOpenCode = onOpenCode,
+            onEdit = if (general != null) { id, text -> editing = id to text } else null,
+            onRegenerate = if (general != null && !chat.busy) session::regenerate else null,
         )
     }
 
@@ -230,7 +251,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         Box(Modifier.fillMaxSize()) {
             FrostedHeaderLayout(
                 backdrop = backdrop,
-                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenWork = { workSheet = true }) },
+                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenWork = { workSheet = true }, general = general != null) },
             ) { padding ->
                 val direction = LocalLayoutDirection.current
                 // In landscape the navigation bar or a display cutout can sit beside the content.
@@ -253,7 +274,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                     if (chat.busy) item(key = "live") {
                         val step = liveStepLabel(chat.messages.lastOrNull())
                         LiveStatus(
-                            agent,
+                            agent, orb = if (general != null) orbStateOf(chat.messages.lastOrNull(), chat.status) else null,
                             label = step?.first ?: agent.stateDetail ?: (agentStateLabel(if (agent.state == "available") "thinking" else agent.state) + "…"),
                             actions = step?.second ?: 0,
                             onClick = { workSheet = true },
@@ -281,7 +302,12 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                         DotButton(stringResource(R.string.retry), session::open, style = ButtonStyle.Secondary)
                     }
                 }
-                chat.messages.isEmpty() && !chat.busy -> if (general != null) EmptyState(Icons.Outlined.Forum, stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_body), Modifier.align(Alignment.Center)) else EmptyConversation(agent, Modifier.align(Alignment.Center))
+                chat.messages.isEmpty() && !chat.busy -> if (general != null) Column(Modifier.align(Alignment.Center).padding(DotSpacing.gutter), horizontalAlignment = Alignment.CenterHorizontally) {
+                    ThinkingOrb(OrbState.Breathing, size = 64.dp, label = stringResource(R.string.chat_empty_title))
+                    Spacer(Modifier.height(DotSpacing.l))
+                    Text(stringResource(R.string.chat_empty_title), style = Dot.type.title, color = Dot.colors.textPrimary)
+                    Text(stringResource(R.string.chat_empty_body), style = Dot.type.callout, color = Dot.colors.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = DotSpacing.s))
+                } else EmptyConversation(agent, Modifier.align(Alignment.Center))
             }
 
             val reduced = rememberReducedMotion()
@@ -299,6 +325,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
 
         if (workSheet) WorkSheet(agent, chat, env) { workSheet = false }
+        editing?.let { (id, original) -> EditMessageSheet(original, onDismiss = { editing = null }) { text -> editing = null; session.edit(id, text) } }
         taskSheet?.let { id -> TaskSheet(app, ui, id) { taskSheet = null } }
         accessSheet?.let { id -> ArtifactSheet(app, ui, id) { accessSheet = null } }
 
@@ -345,18 +372,14 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                         }
                     }
                 },
-                leading = {
-                    DotIconButton(
-                        Icons.Outlined.Add, stringResource(R.string.attach_files),
-                        onClick = { picker.launch(arrayOf("*/*")) },
-                        tint = Dot.colors.textSecondary, enabled = images.size < FILES_MAX_COUNT,
+                // Under the text: "+" (attach, ask a companion), then the conversation's model, and for a general chat
+                // its effort and web search.
+                footer = {
+                    PlusMenu(
+                        canAttach = images.size < FILES_MAX_COUNT, onAttach = { picker.launch(arrayOf("*/*")) },
+                        onAsk = if (general != null && mentionable.isNotEmpty()) ({ if (mentionQuery == null) draft = if (draft.isEmpty() || draft.last().isWhitespace()) "$draft@" else "$draft @" }) else null,
                     )
-                    // "Ask a companion", usable by touch: it opens the same completion as typing @.
-                    if (general != null && mentionable.isNotEmpty()) DotIconButton(
-                        Icons.Outlined.AlternateEmail, stringResource(R.string.ask_companion),
-                        onClick = { if (mentionQuery == null) draft = if (draft.isEmpty() || draft.last().isWhitespace()) "$draft@" else "$draft @" },
-                        tint = Dot.colors.textSecondary,
-                    )
+                    if (general != null) ChatControls(app, general) else AgentModelChip(app, agent)
                 },
             )
         }
@@ -368,7 +391,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
  * other, and in the middle the companion itself - its dot, with its name on a small glass pill underneath.
  */
 @Composable
-private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenWork: () -> Unit) {
+private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenWork: () -> Unit, general: Boolean = false) {
     val c = Dot.colors
     val elsewhere = ui.agents.any { it.id != agent.id && it.unread > 0 } || ui.pendingApprovals.isNotEmpty()
     val name = agentDisplayName(agent)
@@ -388,9 +411,10 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
                 .clickable(role = Role.Button, onClickLabel = stringResource(R.string.companion_details), onClick = onOpenCompanion),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            CompanionOrb(agent, size = 48.dp)
+            // A general chat is a conversation, not a companion: no dot, only its title.
+            if (!general) CompanionOrb(agent, size = 48.dp)
             Row(
-                Modifier.padding(top = 4.dp).clip(DotShapes.pill)
+                Modifier.padding(top = if (general) 6.dp else 4.dp).clip(DotShapes.pill)
                     .background(c.surfaceRaised.copy(alpha = 0.92f))
                     .border(DotSpacing.hairline * 2, c.border, DotShapes.pill)
                     .padding(horizontal = DotSpacing.m, vertical = 3.dp),
@@ -409,13 +433,14 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
 
 /** While the companion works: its dot, animated, and one sentence saying what it is doing right now. Opens the work panel. */
 @Composable
-private fun LiveStatus(agent: Agent, label: String, actions: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun LiveStatus(agent: Agent, label: String, actions: Int, onClick: () -> Unit, modifier: Modifier = Modifier, orb: OrbState? = null) {
     Row(
         modifier.clip(DotShapes.pill).clickable(role = Role.Button, onClickLabel = stringResource(R.string.show_work), onClick = onClick)
             .heightIn(min = 40.dp).padding(end = DotSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CompanionOrb(parseAgentColor(agent.color), size = 22.dp, state = if (agent.busy) agent.state else "thinking", named = agent.named)
+        if (orb != null) ThinkingOrb(orb, size = 22.dp, label = label)
+        else CompanionOrb(parseAgentColor(agent.color), size = 22.dp, state = if (agent.busy) agent.state else "thinking", named = agent.named)
         Spacer(Modifier.width(DotSpacing.s + 2.dp))
         Text(label, style = Dot.type.callout, color = Dot.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).dotShimmer())
         if (actions > 0) Text("  ·  " + pluralStringResource(R.plurals.actions, actions, actions), style = Dot.type.caption, color = Dot.colors.textTertiary, maxLines = 1)
@@ -514,5 +539,120 @@ private fun ImageThumb(image: PendingImage, onRemove: () -> Unit) {
                 Icon(Icons.Outlined.Close, null, Modifier.size(13.dp), tint = c.onInverse)
             }
         }
+    }
+}
+
+/** The orb follows what the request is really doing, read from the streamed parts, never from the text. */
+private fun orbStateOf(last: ChatMessage?, status: ChatStatus): OrbState {
+    if (status == ChatStatus.Submitted || last == null || last.isUser) return OrbState.Working
+    val part = last.parts.lastOrNull() ?: return OrbState.Working
+    return when {
+        part is Part.Tool && part.state.startsWith("input") && (part.name == "web_search" || part.name == "web_fetch") -> OrbState.Searching
+        part is Part.Tool && part.state.startsWith("input") && (part.name == "invoke_agent" || part.name.startsWith("task_")) -> OrbState.Connecting
+        part is Part.Tool && part.state.startsWith("input") -> OrbState.Working
+        part is Part.Reasoning -> OrbState.Solving
+        else -> OrbState.Composing
+    }
+}
+
+/** A general chat's own controls, in its field: model (for the next answers), effort when the model has one, web search. */
+@Composable
+private fun ChatControls(app: AppState, chat: GeneralChat) {
+    val c = Dot.colors
+    val model = chat.effectiveModel
+    val info by produceState<ModelInfo?>(null, model.provider, model.model) { value = runCatching { app.client.models(model.provider).firstOrNull { it.id == model.model } }.getOrNull() }
+    var effortMenu by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
+    if (picking) ModelSheet(app, model, onDismiss = { picking = false }, onDefault = if (chat.model != null) ({ picking = false; app.updateChat(chat.id, buildJsonObject { put("model", kotlinx.serialization.json.JsonNull) }) }) else null) { m ->
+        picking = false
+        app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", m.provider); put("model", m.id); if (m.reasoning && model.reasoning != null) put("reasoning", model.reasoning) } })
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("chat-controls")) {
+        Row(
+            Modifier.clip(DotShapes.pill).clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_model_short)) { picking = true }.heightIn(min = 40.dp).padding(horizontal = DotSpacing.s).widthIn(max = 150.dp).testTag("chat-model"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(info?.name?.ifBlank { null } ?: model.model.substringAfterLast('/'), style = Dot.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Icon(Icons.Outlined.ExpandMore, null, Modifier.size(14.dp), tint = c.textTertiary)
+        }
+        if (info?.reasoning == true) Box {
+            Row(Modifier.clip(DotShapes.pill).clickable(role = Role.Button, onClickLabel = stringResource(R.string.effort)) { effortMenu = true }.heightIn(min = 40.dp).padding(horizontal = DotSpacing.s).testTag("chat-effort"), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Psychology, stringResource(R.string.effort), Modifier.size(16.dp), tint = c.textSecondary)
+                Text(" " + stringResource(effortLabel(model.reasoning)), style = Dot.type.caption, color = c.textSecondary)
+            }
+            DotMenu(effortMenu, { effortMenu = false }) {
+                listOf(null, "low", "medium", "high").forEach { value ->
+                    DotMenuItem(stringResource(effortLabel(value)), if (model.reasoning == value) Icons.Outlined.Check else null) {
+                        effortMenu = false
+                        app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", model.provider); put("model", model.model); if (value != null) put("reasoning", value) else put("reasoning", kotlinx.serialization.json.JsonNull) } })
+                    }
+                }
+            }
+        }
+        // Web search: off is enforced on the server, the model is not given the web tools.
+        Row(
+            Modifier.clip(DotShapes.pill).background(if (chat.webSearch) c.accent.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
+                .toggleable(chat.webSearch, role = Role.Switch) { on -> app.updateChat(chat.id, buildJsonObject { put("webSearch", on) }) }
+                .semantics { contentDescription = if (chat.webSearch) "web-on" else "web-off" }
+                .heightIn(min = 40.dp).padding(horizontal = DotSpacing.s).testTag("chat-web"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Language, null, Modifier.size(16.dp), tint = if (chat.webSearch) c.accent else c.textTertiary)
+            Text(" " + stringResource(R.string.web), style = Dot.type.caption, color = if (chat.webSearch) c.accent else c.textSecondary)
+        }
+    }
+}
+
+private fun effortLabel(value: String?) = when (value) { "low" -> R.string.effort_low; "medium" -> R.string.effort_medium; "high" -> R.string.effort_high; else -> R.string.effort_auto }
+
+/** Edits one of the user's messages: what followed is set aside (kept), and an answer restarts from it. */
+@Composable
+private fun EditMessageSheet(original: String, onDismiss: () -> Unit, onSend: (String) -> Unit) {
+    var text by rememberSaveable { mutableStateOf(original) }
+    DotBottomSheet(onDismiss) {
+        Column(Modifier.padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.xl).testTag("edit-sheet"), verticalArrangement = Arrangement.spacedBy(DotSpacing.m)) {
+            Text(stringResource(R.string.edit_message), style = Dot.type.title, color = Dot.colors.textPrimary)
+            DotTextField(text, { text = it }, Modifier.fillMaxWidth(), singleLine = false)
+            Text(stringResource(R.string.edit_note), style = Dot.type.caption, color = Dot.colors.textSecondary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                DotButton(stringResource(R.string.cancel), onDismiss, style = ButtonStyle.Ghost, compact = true)
+                Spacer(Modifier.width(DotSpacing.s))
+                DotPrimaryButton(stringResource(R.string.send_edit), { onSend(text.trim()) }, enabled = text.isNotBlank() && text.trim() != original, compact = true)
+            }
+        }
+    }
+}
+
+/** "+" holds the less frequent actions: attach files, and in a general chat, ask a companion (no separate @ button). */
+@Composable
+private fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?) {
+    var open by remember { mutableStateOf(false) }
+    if (onAsk == null) { DotIconButton(Icons.Outlined.Add, stringResource(R.string.attach_files), onClick = onAttach, tint = Dot.colors.textSecondary, enabled = canAttach); return }
+    Box {
+        DotIconButton(Icons.Outlined.Add, stringResource(R.string.add), onClick = { open = true }, tint = Dot.colors.textSecondary)
+        DotMenu(open, { open = false }) {
+            DotMenuItem(stringResource(R.string.attach_files), Icons.Outlined.AttachFile) { open = false; if (canAttach) onAttach() }
+            DotMenuItem(stringResource(R.string.ask_companion), Icons.Outlined.AlternateEmail) { open = false; onAsk() }
+        }
+    }
+}
+
+/** A companion's model, from its conversation's field: the same picker, favourites first. */
+@Composable
+private fun AgentModelChip(app: AppState, agent: Agent) {
+    val c = Dot.colors
+    val model = agent.effectiveModel
+    val info by produceState<ModelInfo?>(null, model.provider, model.model) { value = runCatching { app.client.models(model.provider).firstOrNull { it.id == model.model } }.getOrNull() }
+    var picking by remember { mutableStateOf(false) }
+    if (picking) ModelSheet(app, model, onDismiss = { picking = false }, onDefault = if (agent.model != null) ({ picking = false; app.updateAgent(agent.id, buildJsonObject { put("model", kotlinx.serialization.json.JsonNull) }) }) else null) { m ->
+        picking = false
+        app.updateAgent(agent.id, buildJsonObject { putJsonObject("model") { put("provider", m.provider); put("model", m.id); if (m.reasoning && model.reasoning != null) put("reasoning", model.reasoning) } })
+    }
+    Row(
+        Modifier.clip(DotShapes.pill).clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_model_short)) { picking = true }.heightIn(min = 40.dp).padding(horizontal = DotSpacing.s).widthIn(max = 180.dp).testTag("agent-model"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(info?.name?.ifBlank { null } ?: model.model.substringAfterLast('/'), style = Dot.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Icon(Icons.Outlined.ExpandMore, null, Modifier.size(14.dp), tint = c.textTertiary)
     }
 }
