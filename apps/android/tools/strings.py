@@ -338,6 +338,10 @@ S = {
  "code_steer": ('Fold it in now', 'L’intégrer maintenant'),
  "code_queue": ('After this work', 'Après ce travail'),
  "code_steered": ('Folded into the work in progress', 'Intégrée au travail en cours'),
+ "code_working": ('Working…', 'Travaille…'),
+ "code_thought": ('Thought', 'A réfléchi'),
+ "hide": ('Hide', 'Masquer'),
+ "show": ('Show', 'Afficher'),
 }
 P = {
  "code_active": (("%d task running", "%d tasks running"), ("%d tâche en cours", "%d tâches en cours")),
@@ -345,6 +349,12 @@ P = {
  "errors": (("%d error", "%d errors"), ("%d erreur", "%d erreurs")),
  "task_interval": (("Every minute", "Every %d minutes"), ("Chaque minute", "Toutes les %d minutes")),
  "worked_seconds": (("Worked for %d s", "Worked for %d s"), ("A travaillé %d s", "A travaillé %d s")),
+ "code_files": (('%d file', '%d files'), ('%d fichier', '%d fichiers')),
+ "code_g_commands": (('Ran %d command', 'Ran %d commands'), ('%d commande lancée', '%d commandes lancées')),
+ "code_g_reads": (('Read %d file', 'Read %d files'), ('%d fichier lu', '%d fichiers lus')),
+ "code_g_edits": (('Edited %d file', 'Edited %d files'), ('%d fichier modifié', '%d fichiers modifiés')),
+ "code_g_searches": (('%d search', '%d searches'), ('%d recherche', '%d recherches')),
+ "code_g_other": (('%d other step', '%d other steps'), ('%d autre étape', '%d autres étapes')),
 }
 def esc(s): return escape(s).replace("'", "\\'").replace('"', '\\"')
 base = sys.argv[1]

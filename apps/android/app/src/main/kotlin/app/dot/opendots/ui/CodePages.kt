@@ -1,6 +1,29 @@
 package app.dot.opendots.ui
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Difference
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.SwapVert
+import app.dot.design.components.DotIconButton
+import app.dot.design.components.DotMenu
+import app.dot.design.components.DotMenuItem
+import app.dot.design.components.FrostedHeaderLayout
+import app.dot.design.components.backdropSource
+import app.dot.design.components.dotShimmer
+import app.dot.design.components.rememberQuietBackdrop
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -236,8 +259,10 @@ private fun InstanceForm(existing: OpencodeInstance?, onCancel: () -> Unit, onSa
 private enum class CodeTab { Session, Changes, Files, Exchanges }
 
 /**
- * The code workspace of one OpenCode task, full screen: that exact session, live. Session (messages and tools), what
- * changed, the project's files, and the exchanges; a field to write to OpenCode directly, permission prompts, Stop.
+ * The code workspace of one OpenCode task, full screen, laid out like a coding agent on a phone: OpenCode's prose, and
+ * between its paragraphs one quiet line per stretch of work ("Ran 4 commands, read 2 files") that unfolds on demand.
+ * The frosted header and its glass buttons are the conversation's. What changed opens from a pill above the field;
+ * files and exchanges from the header menu. Stop is the field's own button while OpenCode works.
  */
 @Composable
 fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () -> Unit) {
@@ -247,6 +272,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
     var tab by rememberSaveable(taskId) { mutableStateOf(CodeTab.Session) }
     var draft by rememberSaveable(taskId) { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf(false) }
     // While OpenCode works, a message is folded into the current work (steer) or handled after it (queue).
     var delivery by rememberSaveable(taskId) { mutableStateOf("steer") }
     val live = ui.tasks[taskId]
@@ -258,133 +284,282 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
         runCatching { app.client.codeWorkspace(taskId) }.onSuccess { data = it; error = null }.onFailure { error = it.message?.ifBlank { null } ?: failed }
     }
     LaunchedEffect(taskId, data?.task?.active) { while (data?.task?.active != false) { delay(3000); revision++ } }
+    BackHandler(enabled = tab != CodeTab.Session) { tab = CodeTab.Session }
     val task = live ?: data?.task
+    val space = data
+    val busy = space?.sessionStatus == "busy" || space?.sessionStatus == "retry"
+    val stop: () -> Unit = { app.taskAction(taskId, "cancel"); revision++ }
+    val backdrop = rememberQuietBackdrop()
     val listState = rememberLazyListState()
-    val parts = data?.messages?.sumOf { it.parts.size } ?: 0
-    LaunchedEffect(parts, tab) { if (tab == CodeTab.Session && parts > 0) listState.scrollToItem(Int.MAX_VALUE / 2) }
+    val blocks = remember(space?.messages) { codeBlocks(space?.messages.orEmpty()) }
+    val pending = (space?.permissions?.size ?: 0) + (space?.questions?.size ?: 0)
+    // The newest content is at the bottom, like a conversation: follow it while the user is there.
+    LaunchedEffect(blocks.size, blocks.lastOrNull()?.size, pending, tab) {
+        if (tab == CodeTab.Session && blocks.isNotEmpty()) listState.scrollToItem(Int.MAX_VALUE / 2)
+    }
 
     Column(Modifier.fillMaxSize().background(c.background).testTag("code-workspace")) {
-        Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = DotSpacing.s, vertical = DotSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
-            BackButton(onBack)
-            Column(Modifier.weight(1f).padding(horizontal = DotSpacing.s)) {
-                Text(task?.title ?: stringResource(R.string.code_workspace), style = Dot.type.headline, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
-                Text(listOfNotNull("OpenCode", task?.external?.instanceName, task?.external?.directory).joinToString(" · "), style = Dot.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (task?.active == true) DotButton(stringResource(R.string.code_stop), { app.taskAction(taskId, "cancel"); revision++ }, style = ButtonStyle.Secondary, compact = true)
-        }
-        if (task != null) Text(
-            listOfNotNull(taskStatusLabel(task.status), if (task.completedSteps > 0) pluralStringResource(R.plurals.actions, task.completedSteps, task.completedSteps) else null, task.blocker ?: task.currentActionSummary).joinToString(" · "),
-            style = Dot.type.caption, color = if (task.status == "failed" || task.status == "waiting_for_user") c.danger else c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s).testTag("code-status"),
-        )
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-            DotFilterChip(stringResource(R.string.code_tab_session), tab == CodeTab.Session, { tab = CodeTab.Session }, radio = true)
-            DotFilterChip(stringResource(R.string.code_tab_changes) + (data?.diffs?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""), tab == CodeTab.Changes, { tab = CodeTab.Changes }, radio = true)
-            DotFilterChip(stringResource(R.string.files), tab == CodeTab.Files, { tab = CodeTab.Files }, radio = true)
-            DotFilterChip(stringResource(R.string.code_tab_exchanges), tab == CodeTab.Exchanges, { tab = CodeTab.Exchanges }, radio = true)
-        }
-        Hairline()
-        val space = data
-        if (space != null && !space.reachable) Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s), verticalAlignment = Alignment.Top) {
-            Icon(Icons.Outlined.CloudOff, null, Modifier.padding(top = 2.dp).size(14.dp), tint = c.textSecondary)
-            Spacer(Modifier.width(DotSpacing.s))
-            Text(stringResource(R.string.code_unreachable) + " " + space.error.orEmpty(), style = Dot.type.caption, color = c.textSecondary)
-        }
         Box(Modifier.weight(1f)) {
+            FrostedHeaderLayout(
+                backdrop = backdrop,
+                header = {
+                    Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = DotSpacing.m, vertical = 6.dp)) {
+                        DotIconButton(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), onClick = { if (tab != CodeTab.Session) tab = CodeTab.Session else onBack() }, modifier = Modifier.align(Alignment.TopStart))
+                        Column(Modifier.align(Alignment.Center).padding(horizontal = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                when (tab) { CodeTab.Session -> task?.title ?: stringResource(R.string.code_workspace); CodeTab.Changes -> stringResource(R.string.code_tab_changes); CodeTab.Files -> stringResource(R.string.files); CodeTab.Exchanges -> stringResource(R.string.code_tab_exchanges) },
+                                style = Dot.type.label, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() },
+                            )
+                            Text(
+                                listOfNotNull(task?.external?.instanceName, task?.external?.directory?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }).joinToString(" · ").ifBlank { "OpenCode" },
+                                style = Dot.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Box(Modifier.align(Alignment.TopEnd)) {
+                            DotIconButton(Icons.Outlined.MoreVert, stringResource(R.string.more), onClick = { menu = true })
+                            DotMenu(menu, { menu = false }) {
+                                DotMenuItem(stringResource(R.string.code_tab_changes) + (space?.diffs?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""), Icons.Outlined.Difference) { menu = false; tab = CodeTab.Changes }
+                                DotMenuItem(stringResource(R.string.files), Icons.Outlined.Folder) { menu = false; tab = CodeTab.Files }
+                                DotMenuItem(stringResource(R.string.code_tab_exchanges), Icons.Outlined.SwapHoriz) { menu = false; tab = CodeTab.Exchanges }
+                                if (task?.active == true) DotMenuItem(stringResource(R.string.code_stop), Icons.Outlined.StopCircle, color = c.danger) { menu = false; stop() }
+                            }
+                        }
+                    }
+                },
+            ) { padding ->
+                val top = padding.calculateTopPadding()
+                when {
+                    space == null && error != null -> Text(error.orEmpty(), style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(top = top).padding(DotSpacing.gutter))
+                    space == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
+                    tab == CodeTab.Session -> LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l),
+                        verticalArrangement = Arrangement.spacedBy(DotSpacing.l),
+                        modifier = Modifier.fillMaxSize().backdropSource(backdrop),
+                    ) {
+                        if (!space.reachable) item(key = "offline") {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Icon(Icons.Outlined.CloudOff, null, Modifier.padding(top = 2.dp).size(14.dp), tint = c.textTertiary)
+                                Spacer(Modifier.width(DotSpacing.s))
+                                Text(stringResource(R.string.code_unreachable) + " " + space.error.orEmpty(), style = Dot.type.caption, color = c.textTertiary)
+                            }
+                        }
+                        if (space.messages.isEmpty()) item(key = "empty") { Text(stringResource(if (space.reachable) R.string.code_no_message else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
+                        items(blocks, key = { it.key }) { block ->
+                            when (block) {
+                                is CodeBlock.User -> CodeUserBubble(block.text)
+                                is CodeBlock.Prose -> DotMarkdown(block.text)
+                                is CodeBlock.Failure -> Text(block.text, style = Dot.type.callout, color = c.danger)
+                                is CodeBlock.Work -> CodeWorkGroup(block, live = busy && block === blocks.last())
+                            }
+                        }
+                        // Working, between two visible steps: one quiet line, like the conversation's.
+                        if (busy && pending == 0 && (blocks.lastOrNull() as? CodeBlock.Work)?.running == null) item(key = "live") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                DotSpinner(size = 14.dp)
+                                Spacer(Modifier.width(DotSpacing.s + 2.dp))
+                                Text(stringResource(R.string.code_working), style = Dot.type.callout, color = c.textSecondary, modifier = Modifier.dotShimmer())
+                            }
+                        }
+                        items(space.permissions, key = { "p-" + it.id }) { request ->
+                            DotCard(Modifier.fillMaxWidth().testTag("code-permission"), emphasized = true) {
+                                Text(stringResource(R.string.code_permission), style = Dot.type.bodyStrong, color = c.textPrimary)
+                                Text(listOf(request.permission, request.patterns.joinToString(", ")).filter { it.isNotBlank() }.joinToString(" · "), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textSecondary, maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = DotSpacing.s))
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                                    DotButton(stringResource(R.string.code_allow_once), { app.run { app.client.codePermission(taskId, request.id, "once"); revision++ } }, compact = true)
+                                    DotButton(stringResource(R.string.code_allow_always), { app.run { app.client.codePermission(taskId, request.id, "always"); revision++ } }, style = ButtonStyle.Secondary, compact = true)
+                                    DotButton(stringResource(R.string.code_deny), { app.run { app.client.codePermission(taskId, request.id, "reject"); revision++ } }, style = ButtonStyle.Ghost, compact = true)
+                                }
+                            }
+                        }
+                        items(space.questions, key = { "q-" + it.id }) { request -> CodeQuestionCard(request) { answers -> app.run { app.client.codeQuestion(taskId, request.id, answers); revision++ } } }
+                    }
+                    tab == CodeTab.Changes -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l), verticalArrangement = Arrangement.spacedBy(DotSpacing.s), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
+                        if (space.diffs.isEmpty()) item { Text(stringResource(if (space.reachable) R.string.code_no_change else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
+                        items(space.diffs, key = { it.path }) { diff -> CodeDiffView(diff) }
+                    }
+                    tab == CodeTab.Files -> Box(Modifier.fillMaxSize().backdropSource(backdrop)) { CodeFiles(app, taskId, top) }
+                    else -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l), verticalArrangement = Arrangement.spacedBy(DotSpacing.l), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
+                        items(space.exchanges, key = { it.seq }) { entry ->
+                            val author = when (entry.author) { "user" -> stringResource(R.string.you); "opencode" -> "OpenCode"; else -> ui.agents.firstOrNull { it.id == entry.agentId }?.name ?: stringResource(R.string.a_companion) }
+                            Column(Modifier.fillMaxWidth().testTag("exchange-${entry.author}")) {
+                                Text(author + " → " + (if (entry.author == "opencode") stringResource(R.string.code_to_companion) else "OpenCode") + " · " + formatWhen(entry.createdAt), style = Dot.type.caption, color = c.textTertiary)
+                                Text(entry.text, style = Dot.type.callout, color = c.textPrimary, maxLines = 12, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = DotSpacing.xs))
+                                entry.original?.takeIf { it.isNotBlank() }?.let { original ->
+                                    var open by remember(entry.seq) { mutableStateOf(false) }
+                                    DotDisclosure(stringResource(R.string.code_original), open, { open = !open }) { Text(original, style = Dot.type.caption, color = c.textSecondary) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (tab == CodeTab.Session) {
+            // What changed, as one pill above the field: it opens the diff.
+            val diffs = space?.diffs.orEmpty()
+            if (diffs.isNotEmpty()) Box(Modifier.fillMaxWidth().padding(bottom = DotSpacing.xs), contentAlignment = Alignment.Center) {
+                Row(
+                    Modifier.clip(DotShapes.pill).background(c.surfaceRaised).border(DotSpacing.hairline * 2, c.border, DotShapes.pill)
+                        .clickable(role = Role.Button) { tab = CodeTab.Changes }.heightIn(min = 36.dp).padding(horizontal = DotSpacing.m).testTag("code-changes-pill"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(pluralStringResource(R.plurals.code_files, diffs.size, diffs.size), style = Dot.type.caption, color = c.textPrimary)
+                    Text("  +${diffs.sumOf { it.additions }}", style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.success)
+                    Text(" −${diffs.sumOf { it.deletions }}", style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.danger)
+                }
+            }
+            Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)).padding(horizontal = DotSpacing.m).padding(bottom = DotSpacing.s)) {
+                DotComposer(
+                    value = draft, onValueChange = { draft = it },
+                    placeholder = stringResource(if (space?.reachable == false) R.string.code_offline else R.string.code_write),
+                    enabled = space?.reachable != false,
+                    busy = busy && task?.active == true,
+                    onStop = stop,
+                    // While OpenCode works, one quiet switch says when the message is taken into account.
+                    header = if (busy && draft.isNotBlank()) {
+                        {
+                            Row(
+                                Modifier.clip(DotShapes.pill).clickable(role = Role.Switch) { delivery = if (delivery == "steer") "queue" else "steer" }.padding(vertical = DotSpacing.xs).testTag("code-delivery"),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.SwapVert, null, Modifier.size(14.dp), tint = c.textTertiary)
+                                Spacer(Modifier.width(DotSpacing.xs))
+                                Text(stringResource(if (delivery == "steer") R.string.code_steer else R.string.code_queue), style = Dot.type.caption, color = c.textSecondary)
+                            }
+                        }
+                    } else null,
+                    onSend = { val text = draft.trim(); draft = ""; app.run { val result = app.client.codePrompt(taskId, text, if (busy) delivery else null); if (result.queued) app.notify(if (result.delivery == "steer") steered else queued); revision++ } },
+                )
+            }
+        } else Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+    }
+}
+
+/** What the session shows, in order: requests, OpenCode's prose, and the stretches of work between them. */
+private sealed interface CodeBlock {
+    val key: String
+    val size: Int get() = 1
+    data class User(override val key: String, val text: String) : CodeBlock
+    data class Prose(override val key: String, val text: String) : CodeBlock
+    data class Failure(override val key: String, val text: String) : CodeBlock
+    data class Work(override val key: String, val parts: List<CodePart>) : CodeBlock {
+        override val size: Int get() = parts.size
+        val running: CodePart? get() = parts.lastOrNull { it.type == "tool" && (it.status == "running" || it.status == "pending") }
+    }
+}
+
+/** Consecutive tools and reasoning, even across OpenCode's steps, fold into one line; prose and requests break it. */
+private fun codeBlocks(messages: List<CodeMessage>): List<CodeBlock> {
+    val out = mutableListOf<CodeBlock>()
+    var work = mutableListOf<CodePart>()
+    var workKey = ""
+    fun flush() { if (work.isNotEmpty()) { out += CodeBlock.Work(workKey, work); work = mutableListOf() } }
+    for (message in messages) {
+        if (message.role == "user") {
+            flush()
+            val body = message.parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }.trim()
+            if (body.isNotEmpty()) out += CodeBlock.User("u-${message.id}", body)
+            continue
+        }
+        message.parts.forEachIndexed { index, part ->
             when {
-                space == null && error != null -> Text(error.orEmpty(), style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(DotSpacing.gutter))
-                space == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
-                tab == CodeTab.Session -> LazyColumn(state = listState, contentPadding = PaddingValues(DotSpacing.gutter), verticalArrangement = Arrangement.spacedBy(DotSpacing.m)) {
-                    if (space.messages.isEmpty()) item { Text(stringResource(if (space.reachable) R.string.code_no_message else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
-                    items(space.messages, key = { it.id }) { message -> CodeMessageView(message) }
-                    items(space.permissions, key = { "p-" + it.id }) { request ->
-                        DotCard(Modifier.fillMaxWidth().testTag("code-permission"), emphasized = true) {
-                            Text(stringResource(R.string.code_permission), style = Dot.type.bodyStrong, color = c.textPrimary)
-                            Text(listOf(request.permission, request.patterns.joinToString(", ")).filter { it.isNotBlank() }.joinToString(" · "), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textSecondary, modifier = Modifier.padding(vertical = DotSpacing.s))
-                            @OptIn(ExperimentalLayoutApi::class)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                                DotButton(stringResource(R.string.code_allow_once), { app.run { app.client.codePermission(taskId, request.id, "once"); revision++ } }, compact = true)
-                                DotButton(stringResource(R.string.code_allow_always), { app.run { app.client.codePermission(taskId, request.id, "always"); revision++ } }, style = ButtonStyle.Secondary, compact = true)
-                                DotButton(stringResource(R.string.code_deny), { app.run { app.client.codePermission(taskId, request.id, "reject"); revision++ } }, style = ButtonStyle.Ghost, compact = true)
-                            }
-                        }
-                    }
-                    items(space.questions, key = { "q-" + it.id }) { request -> CodeQuestionCard(request) { answers -> app.run { app.client.codeQuestion(taskId, request.id, answers); revision++ } } }
-                }
-                tab == CodeTab.Changes -> LazyColumn(contentPadding = PaddingValues(DotSpacing.gutter), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                    if (space.diffs.isEmpty()) item { Text(stringResource(if (space.reachable) R.string.code_no_change else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
-                    items(space.diffs, key = { it.path }) { diff -> CodeDiffView(diff) }
-                }
-                tab == CodeTab.Files -> CodeFiles(app, taskId)
-                else -> LazyColumn(contentPadding = PaddingValues(DotSpacing.gutter), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                    items(space.exchanges, key = { it.seq }) { entry ->
-                        val author = when (entry.author) { "user" -> stringResource(R.string.you); "opencode" -> "OpenCode"; else -> ui.agents.firstOrNull { it.id == entry.agentId }?.name ?: stringResource(R.string.a_companion) }
-                        DotCard(Modifier.fillMaxWidth().testTag("exchange-${entry.author}")) {
-                            Text(author + " → " + (if (entry.author == "opencode") stringResource(R.string.code_to_companion) else "OpenCode") + " · " + formatWhen(entry.createdAt), style = Dot.type.caption, color = c.textSecondary)
-                            Text(entry.text, style = Dot.type.callout, color = c.textPrimary, modifier = Modifier.padding(top = DotSpacing.xs))
-                            entry.original?.takeIf { it.isNotBlank() }?.let { original ->
-                                var open by remember(entry.seq) { mutableStateOf(false) }
-                                DotDisclosure(stringResource(R.string.code_original), open, { open = !open }) { Text(original, style = Dot.type.caption, color = c.textSecondary) }
-                            }
-                        }
-                    }
-                }
+                part.type == "text" -> { if (part.text.isNotBlank()) { flush(); out += CodeBlock.Prose("t-${message.id}-$index", part.text.trim()) } }
+                part.type == "reasoning" && part.text.isBlank() -> Unit
+                else -> { if (work.isEmpty()) workKey = "w-${message.id}-$index"; work += part }
             }
         }
-        if (space?.sessionStatus == "busy") Row(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xs), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.code_while_working), style = Dot.type.caption, color = c.textSecondary)
-            DotFilterChip(stringResource(R.string.code_steer), delivery == "steer", { delivery = "steer" }, radio = true)
-            DotFilterChip(stringResource(R.string.code_queue), delivery == "queue", { delivery = "queue" }, radio = true)
+        message.error?.let { flush(); out += CodeBlock.Failure("e-${message.id}", it) }
+    }
+    flush()
+    return out
+}
+
+private enum class ToolKind { Command, Read, Edit, Search, Other }
+
+private fun toolKind(tool: String): ToolKind = when (tool.lowercase()) {
+    "bash", "shell", "command", "terminal" -> ToolKind.Command
+    "read", "view", "cat" -> ToolKind.Read
+    "edit", "write", "patch", "multiedit", "apply_patch" -> ToolKind.Edit
+    "grep", "glob", "list", "ls", "find", "search", "codesearch", "websearch", "webfetch", "fetch" -> ToolKind.Search
+    else -> ToolKind.Other
+}
+
+@Composable
+private fun CodeUserBubble(text: String) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+        Text(text, style = Dot.type.body, color = Dot.colors.textPrimary, modifier = Modifier.fillMaxWidth(0.85f).wrapContentWidth(Alignment.End).clip(DotShapes.large).background(Dot.colors.surfaceRaised).padding(horizontal = DotSpacing.l, vertical = DotSpacing.m).testTag("code-user"))
+    }
+}
+
+/** One line for a stretch of work: what is running now, or a summary ("Ran 4 commands, read 2 files"). Tap to unfold. */
+@Composable
+private fun CodeWorkGroup(block: CodeBlock.Work, live: Boolean) {
+    val c = Dot.colors
+    var open by rememberSaveable(block.key) { mutableStateOf(false) }
+    val tools = block.parts.filter { it.type == "tool" }
+    val running = block.running
+    val failures = tools.count { it.status == "error" }
+    val counts = tools.groupingBy { toolKind(it.tool) }.eachCount()
+    val summary = buildList {
+        counts[ToolKind.Command]?.let { add(pluralStringResource(R.plurals.code_g_commands, it, it)) }
+        counts[ToolKind.Read]?.let { add(pluralStringResource(R.plurals.code_g_reads, it, it)) }
+        counts[ToolKind.Edit]?.let { add(pluralStringResource(R.plurals.code_g_edits, it, it)) }
+        counts[ToolKind.Search]?.let { add(pluralStringResource(R.plurals.code_g_searches, it, it)) }
+        counts[ToolKind.Other]?.let { add(pluralStringResource(R.plurals.code_g_other, it, it)) }
+        block.parts.count { it.type == "patch" }.takeIf { it > 0 && counts[ToolKind.Edit] == null }?.let { add(pluralStringResource(R.plurals.code_files, it, it)) }
+    }.mapIndexed { i, item -> if (i == 0) item else item.replaceFirstChar { it.lowercase() } }.joinToString(", ").ifEmpty { stringResource(R.string.code_thought) }
+    Column(Modifier.fillMaxWidth().testTag("code-work")) {
+        Row(
+            Modifier.clip(DotShapes.small).clickable(role = Role.Button, onClickLabel = stringResource(if (open) R.string.hide else R.string.show)) { open = !open }.heightIn(min = 32.dp).padding(end = DotSpacing.s),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (running != null && live) {
+                DotSpinner(size = 14.dp)
+                Spacer(Modifier.width(DotSpacing.s + 2.dp))
+                Text(running.title?.ifBlank { null } ?: running.tool, style = Dot.type.callout, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).dotShimmer())
+            } else {
+                Text(summary, style = Dot.type.callout, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (failures > 0) Text("  ·  " + pluralStringResource(R.plurals.errors, failures, failures), style = Dot.type.callout, color = c.danger, maxLines = 1)
+            }
+            Spacer(Modifier.width(DotSpacing.xs))
+            Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ChevronRight, null, Modifier.size(18.dp), tint = c.textTertiary)
         }
-        Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)).padding(horizontal = DotSpacing.m).padding(bottom = DotSpacing.s)) {
-            DotComposer(
-                value = draft, onValueChange = { draft = it },
-                placeholder = stringResource(if (space?.reachable == false) R.string.code_offline else R.string.code_write),
-                enabled = space?.reachable != false,
-                onSend = { val text = draft.trim(); draft = ""; app.run { val result = app.client.codePrompt(taskId, text, if (space?.sessionStatus == "busy") delivery else null); if (result.queued) app.notify(if (result.delivery == "steer") steered else queued); revision++ } },
+        if (open) Column(Modifier.padding(top = DotSpacing.xs).fillMaxWidth().clip(DotShapes.medium).background(c.surface).padding(vertical = DotSpacing.xs)) {
+            block.parts.forEach { part -> CodeStep(part) }
+        }
+    }
+}
+
+/** One step inside an unfolded stretch of work: an icon, its title; tap for its input and output. */
+@Composable
+private fun CodeStep(part: CodePart) {
+    val c = Dot.colors
+    var open by remember { mutableStateOf(false) }
+    val mono = Dot.type.caption.copy(fontFamily = FontFamily.Monospace)
+    val label = when (part.type) {
+        "tool" -> part.title?.ifBlank { null } ?: part.tool
+        "reasoning" -> stringResource(R.string.reasoning)
+        "patch" -> part.files.joinToString(", ")
+        else -> part.filename.orEmpty()
+    }
+    val detail = when (part.type) {
+        "tool" -> (part.input + (part.output?.let { "\n\n$it" } ?: "")).trim()
+        "reasoning" -> part.text
+        else -> ""
+    }
+    Column(Modifier.fillMaxWidth().clickable(enabled = detail.isNotEmpty(), role = Role.Button) { open = !open }.padding(horizontal = DotSpacing.m, vertical = DotSpacing.s).testTag("code-tool-${part.status}")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val running = part.type == "tool" && (part.status == "running" || part.status == "pending")
+            if (running) DotSpinner(size = 12.dp) else Icon(
+                when { part.type == "reasoning" -> Icons.Outlined.Lightbulb; part.type == "patch" -> Icons.Outlined.Difference; else -> when (toolKind(part.tool)) { ToolKind.Command -> Icons.Outlined.Terminal; ToolKind.Read -> Icons.AutoMirrored.Outlined.InsertDriveFile; ToolKind.Edit -> Icons.Outlined.Edit; ToolKind.Search -> Icons.Outlined.Search; ToolKind.Other -> Icons.Outlined.Build } },
+                null, Modifier.size(14.dp), tint = if (part.status == "error") c.danger else c.textTertiary,
             )
+            Spacer(Modifier.width(DotSpacing.s))
+            Text(label, style = if (part.type == "tool") mono else Dot.type.caption, color = if (part.status == "error") c.danger else c.textSecondary, maxLines = if (open) 6 else 1, overflow = TextOverflow.Ellipsis)
         }
-    }
-}
-
-@Composable
-private fun CodeMessageView(message: CodeMessage) {
-    val c = Dot.colors
-    if (message.role == "user") {
-        val body = message.parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
-        if (body.isNotBlank()) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-            Text(body, style = Dot.type.callout, color = c.textPrimary, modifier = Modifier.fillMaxWidth(0.9f).clip(DotShapes.large).background(c.surfaceRaised).padding(horizontal = DotSpacing.m, vertical = DotSpacing.s).testTag("code-user"))
-        }
-        return
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-        message.parts.forEach { part -> CodePartView(part) }
-        message.error?.let { Text(it, style = Dot.type.caption, color = c.danger) }
-        if (message.model != null && message.completedAt != null) Text(message.model, style = Dot.type.caption, color = c.textTertiary)
-    }
-}
-
-@Composable
-private fun CodePartView(part: CodePart) {
-    val c = Dot.colors
-    when (part.type) {
-        "text" -> DotMarkdown(part.text)
-        "reasoning" -> { var open by remember { mutableStateOf(false) }; DotDisclosure(stringResource(R.string.reasoning), open, { open = !open }) { Text(part.text, style = Dot.type.caption, color = c.textSecondary) } }
-        "tool" -> {
-            var open by remember { mutableStateOf(false) }
-            val running = part.status == "running" || part.status == "pending"
-            Column(Modifier.fillMaxWidth().clip(DotShapes.medium).background(c.surface).clickable(role = Role.Button) { open = !open }.padding(horizontal = DotSpacing.m, vertical = DotSpacing.s).testTag("code-tool-${part.status}")) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (running) { DotSpinner(size = 12.dp); Spacer(Modifier.width(DotSpacing.s)) }
-                    Text(part.tool, style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textTertiary)
-                    Spacer(Modifier.width(DotSpacing.s))
-                    Text(part.title.orEmpty(), style = Dot.type.caption, color = if (part.status == "error") c.danger else c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                if (open) Text((part.input + (part.output?.let { "\n\n$it" } ?: "")).take(6000), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textSecondary, modifier = Modifier.padding(top = DotSpacing.s))
-            }
-        }
-        "patch" -> Text(stringResource(R.string.code_files_changed, part.files.joinToString(", ")), style = Dot.type.caption, color = c.textSecondary)
-        else -> Text(part.filename.orEmpty(), style = Dot.type.caption, color = c.textSecondary)
+        if (open) Text(detail.take(6000), style = mono, color = c.textSecondary, modifier = Modifier.padding(top = DotSpacing.s, start = 22.dp))
     }
 }
 
@@ -433,7 +608,7 @@ private fun CodeQuestionCard(request: CodeQuestion, onAnswer: (List<List<String>
 
 /** The project's files, read on the development machine on demand: nothing is copied to BotCircle. */
 @Composable
-private fun CodeFiles(app: AppState, taskId: String) {
+private fun CodeFiles(app: AppState, taskId: String, top: androidx.compose.ui.unit.Dp = 0.dp) {
     val c = Dot.colors
     var path by rememberSaveable(taskId) { mutableStateOf("") }
     var nodes by remember { mutableStateOf<List<CodeFileNode>?>(null) }
@@ -441,7 +616,7 @@ private fun CodeFiles(app: AppState, taskId: String) {
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(taskId, path) { nodes = null; error = null; runCatching { app.client.codeFiles(taskId, path) }.onSuccess { nodes = it }.onFailure { error = it.message } }
     val opened = file
-    LazyColumn(contentPadding = PaddingValues(vertical = DotSpacing.s)) {
+    LazyColumn(contentPadding = PaddingValues(top = top + DotSpacing.s, bottom = DotSpacing.l)) {
         if (opened != null) {
             item { Text("← " + stringResource(R.string.code_back_files), style = Dot.type.label, color = c.accent, modifier = Modifier.clickable(role = Role.Button) { file = null }.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m)) }
             item { Text(opened.path, style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textSecondary, modifier = Modifier.padding(horizontal = DotSpacing.gutter)) }

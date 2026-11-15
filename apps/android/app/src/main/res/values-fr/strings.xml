@@ -101,6 +101,7 @@
     <string name="code_tab_changes">Changements</string>
     <string name="code_tab_exchanges">Échanges</string>
     <string name="code_tab_session">Session</string>
+    <string name="code_thought">A réfléchi</string>
     <string name="code_to_companion">compagnon</string>
     <string name="code_unchanged">inchangé</string>
     <string name="code_unknown">état inconnu</string>
@@ -108,6 +109,7 @@
     <string name="code_url">Adresse de l’API</string>
     <string name="code_user">Utilisateur</string>
     <string name="code_while_working">Pendant que OpenCode travaille :</string>
+    <string name="code_working">Travaille…</string>
     <string name="code_workspace">Espace de code</string>
     <string name="code_write">Écrire directement à OpenCode…</string>
     <string name="codex_connect">Connecter ChatGPT</string>
@@ -179,6 +181,7 @@
     <string name="form_waiting">Ta réponse est attendue</string>
     <string name="generic_error">Une erreur est survenue. Réessaie.</string>
     <string name="have_account">J’ai déjà un compte</string>
+    <string name="hide">Masquer</string>
     <string name="image_open_anyway">Ouvrir</string>
     <string name="image_unavailable">Image indisponible</string>
     <string name="intervention">intervention</string>
@@ -300,6 +303,7 @@
     <string name="settings">Paramètres</string>
     <string name="setup_body">Connecte une boîte mail, ajoute des connecteurs ou démarre l’ordinateur d’un compagnon depuis l’app web.</string>
     <string name="setup_title">Aller plus loin</string>
+    <string name="show">Afficher</string>
     <string name="show_work">Voir le travail</string>
     <string name="sign_in">Se connecter</string>
     <string name="sign_in_body">Ton compte sur %1$s</string>
@@ -438,6 +442,30 @@
     <plurals name="code_active">
         <item quantity="one">%d tâche en cours</item>
         <item quantity="other">%d tâches en cours</item>
+    </plurals>
+    <plurals name="code_files">
+        <item quantity="one">%d fichier</item>
+        <item quantity="other">%d fichiers</item>
+    </plurals>
+    <plurals name="code_g_commands">
+        <item quantity="one">%d commande lancée</item>
+        <item quantity="other">%d commandes lancées</item>
+    </plurals>
+    <plurals name="code_g_edits">
+        <item quantity="one">%d fichier modifié</item>
+        <item quantity="other">%d fichiers modifiés</item>
+    </plurals>
+    <plurals name="code_g_other">
+        <item quantity="one">%d autre étape</item>
+        <item quantity="other">%d autres étapes</item>
+    </plurals>
+    <plurals name="code_g_reads">
+        <item quantity="one">%d fichier lu</item>
+        <item quantity="other">%d fichiers lus</item>
+    </plurals>
+    <plurals name="code_g_searches">
+        <item quantity="one">%d recherche</item>
+        <item quantity="other">%d recherches</item>
     </plurals>
     <plurals name="errors">
         <item quantity="one">%d erreur</item>

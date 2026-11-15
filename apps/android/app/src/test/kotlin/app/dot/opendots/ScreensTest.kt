@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTextInput
 import app.dot.design.DotTheme
 import app.dot.design.ThemeMode
@@ -130,7 +131,9 @@ class ScreensTest {
                     path == "/tasks" -> json("[$task,$codeTask]")
                     path == "/opencode/tasks/tk2" -> json("""{"task":$codeTask,"reachable":true,"error":null,"sessionStatus":"busy",
                       "messages":[{"id":"cm1","role":"user","createdAt":1,"completedAt":null,"model":null,"error":null,"parts":[{"type":"text","text":"Group OAuth with the providers."}]},
-                        {"id":"cm2","role":"assistant","createdAt":2,"completedAt":null,"model":"openai/gpt-5","error":null,"parts":[{"type":"text","text":"Grouping the provider settings."},{"type":"tool","tool":"bash","status":"running","title":"Runs the tests","input":"pnpm test","output":null}]}],
+                        {"id":"cm1b","role":"assistant","createdAt":2,"completedAt":3,"model":"opencode/iceman-free","error":null,"parts":[{"type":"reasoning","text":"Look at the settings first."},{"type":"tool","tool":"bash","status":"completed","title":"find . -name '*.tsx' -path '*settings*'","input":"find .","output":"apps/web/src/settings-page.tsx"},{"type":"tool","tool":"read","status":"completed","title":"apps/web/src/settings-page.tsx","input":"","output":"…"}]},
+                        {"id":"cm1c","role":"assistant","createdAt":3,"completedAt":4,"model":"opencode/iceman-free","error":null,"parts":[{"type":"tool","tool":"bash","status":"completed","title":"pnpm lint","input":"pnpm lint","output":"ok"},{"type":"tool","tool":"bash","status":"completed","title":"git status","input":"git status","output":"clean"},{"type":"tool","tool":"read","status":"completed","title":"apps/web/src/oauth.tsx","input":"","output":"…"}]},
+                        {"id":"cm2","role":"assistant","createdAt":5,"completedAt":null,"model":"opencode/iceman-free","error":null,"parts":[{"type":"text","text":"Grouping the provider settings."},{"type":"tool","tool":"edit","status":"completed","title":"apps/web/src/settings-page.tsx","input":"","output":null},{"type":"tool","tool":"bash","status":"running","title":"Runs the tests","input":"pnpm test","output":null}]}],
                       "permissions":[{"id":"per1","permission":"bash","patterns":["rm -rf dist"]}],"questions":[],
                       "diffs":[{"path":"apps/web/src/settings-page.tsx","status":"modified","additions":12,"deletions":4,"patch":"@@ -1 +1 @@\n-old\n+new"}],
                       "exchanges":[{"seq":1,"taskId":"tk2","author":"companion","agentId":"a1","kind":"delegation","text":"Group OAuth with the providers.","original":"tidy the settings","createdAt":"2026-11-13T09:01:00Z"}]}""")
@@ -375,24 +378,40 @@ class ScreensTest {
         shoot("tasks-opencode-dark")
         compose.onNodeWithText("Open code workspace").performClick()
         waitFor("Grouping the provider settings.")
-        waitFor("OpenCode · Dev PC · /home/dev/opendots")
+        waitFor("Dev PC · opendots")
+        // Work between two paragraphs is one quiet line; the step running now is shown live.
+        waitFor("Ran 3 commands, read 2 files")
+        waitFor("Runs the tests")
+        assertTrue(!compose.onAllNodesWithTextCompat("opencode/iceman-free"))
+        assertTrue(!compose.onAllNodesWithTextCompat("git status"))
         waitFor("OpenCode asks for permission")
         shoot("code-workspace-dark")
+        compose.onNodeWithText("Ran 3 commands, read 2 files").performClick()
+        waitFor("git status")
+        shoot("code-workspace-unfolded-dark")
         compose.onNodeWithText("Allow once").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/permissions/per1" } }
         assertEquals("""{"reply":"once"}""", posts.first { it.first == "/opencode/tasks/tk2/permissions/per1" }.second)
-        // Writing here goes to the task's own session, as the user.
-        // OpenCode is working: the message can wait for the end of this work instead of being folded in.
-        compose.onNodeWithText("After this work").performClick()
+        // Writing here goes to the task's own session, as the user. OpenCode is working: the message can wait for the
+        // end of this work instead of being folded in.
         compose.onNodeWithContentDescription("Write to OpenCode directly…").performTextInput("Keep the animations.")
+        compose.onNodeWithText("Fold it in now").performClick()
+        waitFor("After this work")
         compose.onNodeWithContentDescription("Send").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/prompt" } }
         assertEquals("""{"text":"Keep the animations.","delivery":"queue"}""", posts.first { it.first == "/opencode/tasks/tk2/prompt" }.second)
-        compose.onNodeWithText("Changes · 1").performClick()
+        // What changed opens from the pill above the field; back returns to the session.
+        compose.onNodeWithTag("code-changes-pill").performClick()
         waitFor("apps/web/src/settings-page.tsx")
+        assertTrue(!compose.onAllNodesWithTextCompat("Grouping the provider settings."))
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Grouping the provider settings.")
+        compose.onNodeWithContentDescription("More").performClick()
         compose.onNodeWithText("Exchanges").performClick()
         waitFor("Ari → OpenCode")
         waitFor("Original request")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Grouping the provider settings.")
         // Android back returns to the page that opened the workspace.
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Weekly recap")

@@ -221,22 +221,26 @@ try {
   // La conversation reste utilisable à côté de l'espace de code.
   await page.getByRole('textbox', { name: 'Écrire à Ari…' }).waitFor();
   await shot('10-code-workspace');
-  await space.getByRole('tab', { name: /Changements/ }).click();
+  // Le travail entre deux paragraphes tient sur une ligne ; le nom du modèle n'est plus répété.
+  assert.equal(await space.getByText('openai/gpt-5').count(), 0);
+  await space.locator('[data-code-changes]').click();
   await space.locator('[data-code-diff]').getByText('apps/web/src/settings-page.tsx').click();
   await space.getByText('+nouveau', { exact: true }).waitFor();
-  await space.getByRole('tab', { name: 'Fichiers' }).click();
+  await space.getByRole('button', { name: 'Retour à la session' }).click();
+  await space.getByRole('button', { name: 'Fichiers' }).click();
   await space.locator('[data-code-files]').getByText('README.md').click();
   await space.locator('[data-code-file]').getByText('# BotCircle').waitFor();
+  await space.getByRole('button', { name: 'Retour à la session' }).click();
   await space.getByRole('textbox', { name: 'Écrire directement à OpenCode…' }).fill('Garde les animations.');
   await space.getByRole('button', { name: 'Envoyer' }).click();
-  await page.waitForFunction(() => true); await space.getByRole('tab', { name: 'Session' }).click();
   await space.locator('[data-code-message="user"]').getByText('Garde les animations.').waitFor();
   assert.deepEqual(oc.prompts, ['Regroupe OAuth avec les fournisseurs.', 'Garde les animations.']);
-  await space.getByRole('tab', { name: 'Échanges' }).click();
+  await space.getByRole('button', { name: 'Échanges' }).click();
   await space.locator('[data-exchange="user"]').getByText('Garde les animations.').waitFor(); // attribuée à l'utilisateur
   await space.locator('[data-exchange="companion"]').getByText('Demande d’origine').waitFor();
+  await space.getByRole('button', { name: 'Retour à la session' }).click();
   await space.getByRole('button', { name: 'Arrêter' }).click();
-  await space.locator('[data-code-status="cancelled"]').waitFor();
+  await page.locator(`[data-code-workspace="${codeTaskId}"][data-code-status="cancelled"]`).waitFor();
   await space.getByRole('button', { name: 'Fermer l’espace de code' }).click();
 
   // --- Chats (#29) : destination distincte, @mention, intervention signée, renommage, suppression.
