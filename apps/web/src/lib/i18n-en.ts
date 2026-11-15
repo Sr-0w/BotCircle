@@ -1,5 +1,7 @@
 /** Dictionnaire anglais : clé = texte français. */
 export const EN: Record<string, string> = {
+  "demandé pour cette tâche": "asked for this task",
+  "modèle du compagnon": "the companion's model",
   "Favoris": "Favourites",
   "Ajouter aux favoris": "Add to favourites",
   "Retirer des favoris": "Remove from favourites",

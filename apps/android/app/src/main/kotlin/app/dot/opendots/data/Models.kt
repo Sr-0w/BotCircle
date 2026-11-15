@@ -384,6 +384,10 @@ data class BgTask(
     /** `opencode`: the work happens in a remote OpenCode session, opened in the code workspace. */
     val provider: String = "worker",
     val external: TaskExternal? = null,
+    /** Model asked for this task at its creation (null: the companion's). */
+    val model: ModelConfig? = null,
+    /** Model that really served the task. */
+    val usedModel: String? = null,
 ) {
     val isCode: Boolean get() = provider == "opencode"
     val active: Boolean get() = status in ACTIVE

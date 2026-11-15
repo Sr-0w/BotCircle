@@ -17,6 +17,7 @@ import { onSessionRevoked, sessionAccount } from '../auth/store.ts';
 import { streamSSE } from 'hono/streaming';
 import { createUIMessageStreamResponse } from 'ai';
 import { z } from 'zod';
+import { availableModels } from '../models/available.ts';
 import type { BootstrapDTO, ModelConfig } from '@opendots/shared';
 import { subscribe } from '../bus.ts';
 import { getAgent, listAgentRows, listAgents, mainConversationId, toAgentDTO, updateAgent, createAgent } from '../agents/repo.ts';
@@ -171,19 +172,7 @@ export function createApi() {
 
   api.get('/models/openrouter', async (c) => c.json(await listOpenRouterModels()));
   // Every model of the providers that are configured, for the pickers of the conversations, and the favourites.
-  api.get('/models/available', async (c) => {
-    const [key, ollamaUrl, codex] = await Promise.all([getOpenRouterKey(), getSetting('ollama.url'), codexAccount().catch(() => null)]);
-    const sources: { provider: 'openrouter' | 'ollama' | 'codex'; name: string; load: () => Promise<unknown[]> }[] = [];
-    if (key) sources.push({ provider: 'openrouter', name: 'OpenRouter', load: listOpenRouterModels });
-    if (ollamaUrl) sources.push({ provider: 'ollama', name: 'Ollama', load: () => listOllamaModels() });
-    if (codex) sources.push({ provider: 'codex', name: 'ChatGPT / Codex', load: codexModels });
-    const loaded = await Promise.all(sources.map(async (s) => { try { return { ...s, models: await s.load(), error: null }; } catch (error) { return { ...s, models: [] as unknown[], error: errorMessage(error) }; } }));
-    return c.json({
-      providers: loaded.map((s) => ({ provider: s.provider, name: s.name, count: s.models.length, error: s.error })),
-      models: loaded.flatMap((s) => s.models),
-      favorites: (await getSetting('models.favorites')) ?? [],
-    });
-  });
+  api.get('/models/available', async (c) => c.json(await availableModels()));
   api.put('/models/favorites', async (c) => {
     const body = z.object({ favorites: z.array(z.object({ provider: z.enum(['openrouter', 'ollama', 'codex']), model: z.string().min(1).max(300) })).max(100) }).parse(await c.req.json());
     await setSetting('models.favorites', body.favorites);

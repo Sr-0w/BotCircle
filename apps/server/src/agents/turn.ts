@@ -1,4 +1,4 @@
-import { addTaskEvent, getTask, hasRunningTask, listTasks, recordStep, registerTaskStream, releaseTaskStream, takeInstructions, updateTask, waitForUser, TASK_LOOP_REPEATS, TASK_MAX_STEPS } from '../tasks/service.ts';
+import { TASK_LOOP_REPEATS, TASK_MAX_STEPS, addTaskEvent, getTask, hasRunningTask, listTasks, recordStep, registerTaskStream, releaseTaskStream, takeInstructions, updateTask, waitForUser } from '../tasks/service.ts';
 import { workerTools } from '../tasks/tools.ts';
 import { pendingSecureLogin, SENSITIVE_TOOL } from '../securelogin/service.ts';
 import type { ArtifactRow } from '../artifacts/service.ts';
@@ -501,7 +501,8 @@ async function executeTurn(
     for (const name of ['computer_action', 'computer_target', 'computer_keyboard']) delete (tools as Record<string, unknown>)[name];
   }
   serializeTools(tools, live.key);
-  const modelCfg = await effectiveModel(agent);
+  // A task runs on the model it was created with (when one was asked), otherwise on the companion's.
+  const modelCfg = (taskId ? (await getTask(taskId))?.model : null) ?? await effectiveModel(agent);
   if (tools.computer_screenshot) {
     try { await requireDesktopVision(modelCfg); }
     catch (error) {
@@ -574,6 +575,8 @@ async function executeTurn(
 
   try {
     const resolved = await resolveModel(modelCfg);
+    // The task shows the model that really serves it.
+    if (taskId) await updateTask(taskId, { usedModel: resolved.label }).catch(() => {});
     const result = streamText({
       model: resolved.model,
       instructions: system,

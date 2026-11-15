@@ -4,7 +4,7 @@ import type { ToolContext } from '../agents/tools.ts';
 import { getTask, listTasks, cancelTask, TaskError, type TaskRow } from '../tasks/service.ts';
 import { errorMessage } from '../util.ts';
 import { OpencodeHttpError, OpencodeUnreachable } from './client.ts';
-import { checkInstance, findInstance, instanceProjects, instanceSessions, instructOpencode, listInstances, OpencodeError, sessionDiffs, startOpencodeTask, syncTask, type InstanceRow } from './service.ts';
+import { OpencodeError, checkInstance, findInstance, instanceModelList, instanceProjects, instanceSessions, instructOpencode, listInstances, sessionDiffs, startOpencodeTask, syncTask, type InstanceRow } from './service.ts';
 
 const fail = (error: unknown) => {
   if (error instanceof OpencodeUnreachable) return { ok: false as const, status: 'unreachable', error: `${error.message} L'état de la machine est inconnu : ne conclus ni à un succès ni à un échec.` };
@@ -40,6 +40,17 @@ export function opencodeTools(ctx: ToolContext): ToolSet {
         } catch (error) { return fail(error); }
       },
     }),
+    opencode_models: tool({
+      description: "Modèles proposés par une instance OpenCode (ses fournisseurs configurés), avec leurs efforts possibles. À utiliser avant de choisir un modèle explicite pour opencode_start.",
+      inputSchema: z.object({ instance: z.string().optional(), query: z.string().max(100).optional().describe('Filtre sur le nom ou l’identifiant') }).strict(),
+      execute: async ({ instance, query }) => {
+        try {
+          const row = await pick(instance);
+          const models = await instanceModelList(row, row.defaultDirectory ?? null, query);
+          return { ok: true as const, instance: row.name, count: models.length, models: models.slice(0, 30).map((m) => ({ model: `${m.providerID}/${m.id}`, name: m.name, efforts: m.variants, input: m.input })) };
+        } catch (error) { return fail(error); }
+      },
+    }),
     opencode_projects: tool({
       description: "Projets connus d'une instance OpenCode et, pour un dossier, ses sessions récentes (y compris celles créées hors d'BotCircle). Sert à choisir le bon projet ou à retrouver une session à poursuivre.",
       inputSchema: z.object({ instance: z.string().optional().describe('Nom de l’instance ; inutile s’il n’y en a qu’une'), directory: z.string().optional().describe('Dossier du projet dont lister les sessions') }).strict(),
@@ -63,10 +74,14 @@ export function opencodeTools(ctx: ToolContext): ToolSet {
         instance: z.string().optional().describe('Nom de l’instance ; inutile s’il n’y en a qu’une'),
         directory: z.string().optional().describe('Dossier du projet sur la machine ; par défaut celui de l’instance'),
         session_id: z.string().optional().describe('Session OpenCode existante à poursuivre'),
+        model: z.string().max(300).optional().describe('Modèle explicite « fournisseur/modèle » tel que listé par opencode_models, seulement si l’utilisateur le demande ou si la tâche l’exige'),
+        effort: z.string().max(30).optional().describe('Effort (variant) du modèle, si opencode_models en liste'),
       }).strict(),
-      execute: async ({ title, instruction, user_request, instance, directory, session_id }) => {
+      execute: async ({ title, instruction, user_request, instance, directory, session_id, model, effort }) => {
         try {
-          const row = await startOpencodeTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, instance: await pick(instance), directory, sessionId: session_id, title, instruction, original: user_request, requestedBy: 'agent' });
+          const ref = model ? { providerID: model.split('/')[0], id: model.split('/').slice(1).join('/'), variant: effort ?? null } : null;
+          if (ref && !ref.id) return fail(new OpencodeError('Modèle attendu sous la forme « fournisseur/modèle » (voir opencode_models).'));
+          const row = await startOpencodeTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, instance: await pick(instance), directory, sessionId: session_id, title, instruction, original: user_request, requestedBy: 'agent', model: ref });
           return { ok: true as const, status: row.status, taskId: row.id, title: row.title, sessionId: row.external!.sessionId, note: 'The instruction was accepted by the instance. You will be handed the real result when the session stops; do not announce any result before that.' };
         } catch (error) { return fail(error); }
       },

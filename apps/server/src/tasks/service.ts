@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { TaskDTO, TaskEventDTO, TaskStatus } from '@opendots/shared';
+import type { ModelConfig } from '@opendots/shared';
 import { ACTIVE_TASK_STATUSES } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
 import { publish } from '../bus.ts';
@@ -40,7 +41,7 @@ export async function toTaskDTO(row: TaskRow): Promise<TaskDTO> {
     phase: row.phase, currentActionSummary: row.currentAction, completedSteps: row.completedSteps, totalSteps: row.totalSteps,
     blocker: row.blocker, requiresUserInput: row.requiresUserInput, result: row.result, error: row.error,
     artifacts: (await artifactsByIds(row.artifacts)).map(toArtifactDTO), requestedBy: row.requestedBy,
-    provider: row.provider, external: row.external ? { ...row.external, instanceName: (await externalName?.(row.external.instanceId)) ?? 'OpenCode' } : null,
+    provider: row.provider, model: row.model ?? null, usedModel: row.usedModel ?? null, external: row.external ? { ...row.external, instanceName: (await externalName?.(row.external.instanceId)) ?? 'OpenCode' } : null,
     lastHeartbeat: row.lastHeartbeat?.toISOString() ?? null, createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null, finishedAt: row.finishedAt?.toISOString() ?? null,
   };
@@ -98,7 +99,7 @@ export async function updateTask(id: string, patch: Partial<Omit<TaskRow, 'id' |
 }
 
 /** Crée une tâche en file et lance le worker si le compagnon n'en exécute pas déjà une. */
-export async function createTask(input: { agentId: string; conversationId: string; title: string; instruction: string; requestedBy: 'agent' | 'user' | 'assistant'; artifacts?: string[] }): Promise<TaskRow> {
+export async function createTask(input: { agentId: string; conversationId: string; title: string; instruction: string; requestedBy: 'agent' | 'user' | 'assistant'; artifacts?: string[]; model?: ModelConfig | null }): Promise<TaskRow> {
   const active = await db().select({ id: schema.tasks.id }).from(schema.tasks).where(and(eq(schema.tasks.agentId, input.agentId), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES)));
   if (active.length >= MAX_ACTIVE_PER_AGENT) throw new TaskError(`Ce compagnon a déjà ${MAX_ACTIVE_PER_AGENT} tâches en cours ou en attente : termines-en ou annules-en une d'abord.`);
   const id = newId('task');
@@ -106,7 +107,7 @@ export async function createTask(input: { agentId: string; conversationId: strin
   await db().insert(schema.conversations).values({ id: workConversationId, kind: 'task', agentId: input.agentId, title: input.title.slice(0, 200) });
   await db().insert(schema.tasks).values({
     id, agentId: input.agentId, conversationId: input.conversationId, workConversationId,
-    title: input.title.trim().slice(0, 200), instruction: input.instruction.trim(), requestedBy: input.requestedBy, artifacts: input.artifacts ?? [],
+    title: input.title.trim().slice(0, 200), instruction: input.instruction.trim(), requestedBy: input.requestedBy, artifacts: input.artifacts ?? [], model: input.model ?? null,
   });
   await addTaskEvent(id, 'status', 'Tâche créée, en file');
   await log(input.agentId, 'task.created', `Tâche créée : ${input.title.slice(0, 120)}`, { taskId: id });

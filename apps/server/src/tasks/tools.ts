@@ -2,6 +2,8 @@ import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ToolContext } from '../agents/tools.ts';
 import { errorMessage } from '../util.ts';
+import { checkModel } from '../models/gateway.ts';
+import { searchModels } from '../models/available.ts';
 import { ArtifactError, artifactFor } from '../artifacts/service.ts';
 import { addTaskEvent, cancelTask, createTask, getTask, listTasks, pauseTask, resumeTask, sendInstruction, taskEvents, TaskError, toTaskDTO, updateTask, waitForUser, type TaskRow } from './service.ts';
 
@@ -34,14 +36,26 @@ export function taskTools(ctx: ToolContext): ToolSet {
         title: z.string().min(1).max(120).describe('Titre court affiché sur la carte'),
         instruction: z.string().min(1).max(8000).describe('Consigne complète : objectif, contraintes, résultat attendu'),
         artifacts: z.array(z.string()).max(8).optional().describe("Ids d'artefacts à remettre au worker"),
+        model: z.object({ provider: z.enum(['openrouter', 'ollama', 'codex']), model: z.string().min(1) }).strict().optional()
+          .describe("Modèle explicite pour cette tâche, seulement si l'utilisateur le demande ou si la tâche l'exige (vision, raisonnement). Choisis-le avec models_available. Sans : ton propre modèle."),
       }).strict(),
-      execute: async ({ title, instruction, artifacts }) => {
+      execute: async ({ title, instruction, artifacts, model }) => {
         try {
           for (const id of artifacts ?? []) await artifactFor(ctx.agent.id, id);
-          const row = await createTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, title, instruction, requestedBy: 'agent', artifacts });
-          return { ok: true, status: row.status, taskId: row.id, title: row.title };
+          // An explicit model must exist and be usable: never a silent substitute.
+          if (model) {
+            const check = await checkModel(model);
+            if (!check.ok) return { ok: false as const, status: 'model_unavailable', error: `${check.error ?? 'Modèle indisponible.'} Aucune tâche créée. Utilise models_available pour trouver un modèle valide, ou crée la tâche sans modèle (ton propre modèle).` };
+          }
+          const row = await createTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, title, instruction, requestedBy: 'agent', artifacts, model: model ?? null });
+          return { ok: true, status: row.status, taskId: row.id, title: row.title, model: model ? `${model.provider}:${model.model}` : 'companion default' };
         } catch (error) { return error instanceof TaskError || error instanceof ArtifactError ? fail(error) : (() => { throw error; })(); }
       },
+    }),
+    models_available: tool({
+      description: "Liste les modèles réellement disponibles (fournisseurs configurés), favoris de l'utilisateur en premier, avec ce qu'ils savent faire (outils, vision, raisonnement). À utiliser avant de choisir un modèle explicite pour une tâche.",
+      inputSchema: z.object({ query: z.string().max(100).optional().describe('Filtre sur le nom ou l’identifiant (ex. "sonnet", "qwen", "vision")') }).strict(),
+      execute: async ({ query }) => ({ ok: true, ...(await searchModels(query)) }),
     }),
     task_list: tool({
       description: 'Liste tes tâches récentes (en file, en cours, en pause, en attente, terminées) avec leur état réel.',

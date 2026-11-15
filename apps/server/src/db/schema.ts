@@ -401,6 +401,10 @@ export const tasks = pgTable(
     pendingInstructions: jsonb('pending_instructions').$type<string[]>().notNull().default([]),
     /** Qui exécute : un worker BotCircle (`worker`) ou une session OpenCode distante (`opencode`). */
     provider: text('provider').$type<TaskProviderName>().notNull().default('worker'),
+    /** Model asked for this task at its creation; null = the companion's model. */
+    model: jsonb('model').$type<ModelConfig | null>(),
+    /** Model that really served the task's last run (resolved label). */
+    usedModel: text('used_model'),
     /** Pour une exécution externe : l'instance, la session et le dossier exacts. */
     external: jsonb('external').$type<TaskExternalRef | null>(),
     /** `agent` (délégation par le compagnon), `user` (mention depuis un chat) ou `assistant` (chat général). */

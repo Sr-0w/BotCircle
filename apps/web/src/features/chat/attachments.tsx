@@ -78,6 +78,8 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
           <p className="text-muted-foreground text-xs">
             {t(TASK_STATUS_LABELS[task.status])}
             {task.completedSteps > 0 && ` · ${t('{count} actions', { count: task.completedSteps })}`}
+            {/* The model that really served the task (or the one asked, before it ran). */}
+            {(task.usedModel ?? (task.model ? `${task.model.provider}:${task.model.model}` : null)) && <span data-task-model> · {(task.usedModel ?? task.model!.model).split(/[:/]/).pop()}</span>}
           </p>
         </div>
       </div>

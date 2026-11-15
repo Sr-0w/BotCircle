@@ -397,6 +397,10 @@ export interface TaskDTO {
   /** `opencode` : le travail se fait dans une session OpenCode distante, ouvrable dans l'espace de code. */
   provider: TaskProviderName;
   external: (TaskExternalRef & { instanceName: string }) | null;
+  /** Model asked for this task at its creation; null = the companion's model. */
+  model: ModelConfig | null;
+  /** Model that really served the task (null until it ran). */
+  usedModel: string | null;
   requestedBy: string;
   lastHeartbeat: string | null;
   createdAt: string;

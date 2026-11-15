@@ -318,7 +318,9 @@ fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, m
             Column(Modifier.weight(1f)) {
                 Text(task.title, style = Dot.type.bodyStrong, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    taskStatusLabel(task.status) + if (task.completedSteps > 0) "  ·  " + pluralStringResource(R.plurals.actions, task.completedSteps, task.completedSteps) else "",
+                    taskStatusLabel(task.status) + (if (task.completedSteps > 0) "  ·  " + pluralStringResource(R.plurals.actions, task.completedSteps, task.completedSteps) else "") +
+                        // The model that really served the task (or the one asked, before it ran).
+                        ((task.usedModel ?: task.model?.model)?.let { "  ·  " + it.substringAfterLast(':').substringAfterLast('/') } ?: ""),
                     style = Dot.type.caption, color = c.textSecondary,
                 )
             }

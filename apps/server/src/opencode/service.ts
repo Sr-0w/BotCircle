@@ -177,19 +177,27 @@ async function patchExternal(task: TaskRow, patch: Partial<TaskExternalRef>, mor
  * Lance une tâche de code : une session OpenCode réelle (créée, ou réutilisée si `sessionId` est donné) reçoit la
  * consigne. La tâche n'existe dans le registre qu'une fois la consigne acceptée par l'instance.
  */
-export async function startOpencodeTask(input: { agentId: string; conversationId: string; instance: InstanceRow; directory?: string | null; sessionId?: string | null; title: string; instruction: string; original?: string | null; requestedBy: 'agent' | 'user' }): Promise<TaskRow> {
+export async function startOpencodeTask(input: { agentId: string; conversationId: string; instance: InstanceRow; directory?: string | null; sessionId?: string | null; title: string; instruction: string; original?: string | null; requestedBy: 'agent' | 'user'; model?: OpencodeModelRef | null }): Promise<TaskRow> {
   const client = await clientFor(input.instance);
   const directory = input.directory?.trim() || input.instance.defaultDirectory || null;
+  // An explicit model must be one the instance offers: checked before anything is created, never silently replaced.
+  let model: OpencodeModelRef | null = null;
+  if (input.model) {
+    const info = (await instanceModels(input.instance, client, directory, true)).find((m) => sameModel(input.model!, m));
+    if (!info) throw new OpencodeError(`Le modèle « ${input.model.providerID}/${input.model.id} » n’est pas proposé par l’instance ${input.instance.name}. Liste ses modèles avec opencode_models, ou démarre sans modèle (celui de la session).`);
+    model = { providerID: info.providerID, id: info.id, variant: input.model.variant && info.variants.includes(input.model.variant) ? input.model.variant : null };
+  }
   const session = input.sessionId ? await client.session(input.sessionId, directory) : await client.createSession(input.title.slice(0, 120), directory);
   if (input.sessionId) {
     const clash = (await db().select().from(schema.tasks).where(and(eq(schema.tasks.provider, 'opencode'), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES)))).find((t) => t.external?.sessionId === session.id && t.external.instanceId === input.instance.id);
     if (clash) throw new OpencodeError(`Cette session a déjà une tâche en cours (« ${clash.title} ») : envoie-lui une consigne plutôt que d’en lancer une seconde.`);
   }
   const promptedAt = Date.now();
-  await client.prompt(session.id, input.instruction, session.directory ?? directory);
+  if (model) await client.setModel(session.id, model, session.directory ?? directory);
+  await client.prompt(session.id, input.instruction, session.directory ?? directory, undefined, { model: client.version === 'v1' ? model : null });
   const id = newId('task'), workConversationId = newId('cv');
   await db().insert(schema.conversations).values({ id: workConversationId, kind: 'task', agentId: input.agentId, title: input.title.slice(0, 200) });
-  const external: TaskExternalRef = { instanceId: input.instance.id, sessionId: session.id, directory: session.directory ?? directory, promptedAt, seenMessageId: null, unreachable: false };
+  const external: TaskExternalRef = { instanceId: input.instance.id, sessionId: session.id, directory: session.directory ?? directory, promptedAt, seenMessageId: null, unreachable: false, ...(model ? { model } : {}) };
   await db().insert(schema.tasks).values({
     id, agentId: input.agentId, conversationId: input.conversationId, workConversationId, title: input.title.trim().slice(0, 200), instruction: input.instruction.trim(),
     requestedBy: input.requestedBy, provider: 'opencode', external, status: 'running', startedAt: new Date(), lastHeartbeat: new Date(), phase: 'Démarrage', currentAction: 'Consigne transmise à OpenCode',
@@ -263,6 +271,13 @@ function checkFiles(files: PromptFile[], model: OpencodeCurrentModelDTO | null) 
   const name = model.name ?? model.id;
   if (files.some((f) => f.mime.startsWith('image/')) && !input.includes('image')) throw new OpencodeError(`${name} ne lit pas les images : choisis un modèle qui les accepte, ou retire l’image.`);
   if (files.some((f) => f.mime === 'application/pdf') && !input.includes('pdf')) throw new OpencodeError(`${name} ne lit pas les PDF : choisis un modèle qui les accepte, ou retire le PDF.`);
+}
+
+/** Models an instance offers, for an agent choosing one: optionally filtered by name. */
+export async function instanceModelList(instance: InstanceRow, directory: string | null, query?: string) {
+  const client = await clientFor(instance);
+  const q = query?.trim().toLowerCase();
+  return (await instanceModels(instance, client, directory)).filter((m) => !q || `${m.name} ${m.id} ${m.providerID}`.toLowerCase().includes(q));
 }
 
 /** Une consigne dans LA session de la tâche. Si elle travaille, OpenCode la traite à la suite ; sinon elle relance la session. */
