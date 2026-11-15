@@ -207,3 +207,11 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Aperçu de code (Shiki, deux thèmes) : numéros de ligne, résultats de recherche. */
+.code-preview .shiki { background: transparent !important; margin: 0; padding: 0.75rem 0; counter-reset: line; font-family: var(--font-mono, ui-monospace, monospace); }
+.dark .code-preview .shiki .line span[style] { color: var(--shiki-dark) !important; }
+.code-preview .shiki .line { display: inline-block; min-width: 100%; padding-right: 1rem; color: var(--foreground); }
+.code-preview .shiki .line::before { counter-increment: line; content: counter(line); display: inline-block; width: 3.5rem; padding-right: 1rem; text-align: right; color: var(--muted-foreground); opacity: 0.6; user-select: none; }
+.code-preview .line[data-hit] { background: color-mix(in oklch, var(--primary) 12%, transparent); }
+.code-preview .line[data-hit="current"] { background: color-mix(in oklch, var(--primary) 30%, transparent); }

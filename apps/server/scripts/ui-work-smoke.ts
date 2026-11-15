@@ -18,6 +18,17 @@ globalThis.fetch = async (input, init) => {
   return nativeFetch(input, init);
 };
 
+/** A minimal valid one-page PDF with one line of text, for the preview test. */
+function tinyPdf(text: string) {
+  const content = `BT /F1 24 Tf 72 720 Td (${text}) Tj ET`;
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>', `<< /Length ${content.length} >>\nstream\n${content}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+  let pdf = '%PDF-1.4\n'; const offsets: number[] = [];
+  objects.forEach((body, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${body}\nendobj\n`; });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}
+
 /** Une fausse instance `opencode serve` : mêmes chemins et mêmes formes que l'API réelle. */
 const oc = { prompts: [] as string[], bodies: [] as any[], busy: true, messages: [
   { info: { id: 'm_u1', role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'a', type: 'text', text: 'Regroupe OAuth avec les fournisseurs.' }] },
@@ -56,6 +67,7 @@ const { createTask } = await import('../src/tasks/service.ts');
 const { requestSecureLogin } = await import('../src/securelogin/service.ts');
 const { listInstances, startOpencodeTask, syncTask } = await import('../src/opencode/service.ts');
 const { saveMessage } = await import('../src/conversations/repo.ts');
+const { createApproval } = await import('../src/approvals/service.ts');
 const { registerLifeHandlers } = await import('../src/life/engine.ts');
 const { startQueue, stopQueue } = await import('../src/jobs/queue.ts');
 registerLifeHandlers();
@@ -68,7 +80,7 @@ const browser = await chromium.launch({ executablePath: process.env.OPENDOTS_CHR
 try {
   const context = await browser.newContext({ locale: 'fr-BE', viewport: { width: 1365, height: 900 } });
   const page = await context.newPage();
-  const errors: string[] = []; page.on('pageerror', (e) => errors.push(e.message));
+  const errors: string[] = []; page.on('pageerror', (e) => errors.push(e.message)); if (process.env.SMOKE_CONSOLE) page.on('console', (m) => console.log('[console]', m.type(), m.text().slice(0, 300)));
   page.on('dialog', (dialog) => void dialog.accept());
   const shot = async (name: string) => { if (shots) await page.screenshot({ path: join(shots, `${name}.png`) }); };
   await page.goto(origin);
@@ -93,21 +105,54 @@ try {
   // --- Fichiers (#30) : tout type de fichier, carte dans le fil, accès et historique.
   const composer = page.getByRole('textbox', { name: 'Écrire à Ari…' });
   await composer.waitFor();
-  await page.getByLabel('Choisir des fichiers').setInputFiles({ name: 'notes de réunion.md', mimeType: 'text/markdown', buffer: Buffer.from('# Réunion\n\nDécision : livrer vendredi.\n') });
+  await page.getByLabel('Choisir des fichiers').setInputFiles([
+    { name: 'notes de réunion.md', mimeType: 'text/markdown', buffer: Buffer.from('# Réunion\n\nDécision : livrer vendredi.\n') },
+    { name: 'notepad.py', mimeType: 'text/x-python', buffer: Buffer.from('def total(items):\n    # Somme des prix.\n    return sum(i.price for i in items)\n') },
+    { name: 'audit.pdf', mimeType: 'application/pdf', buffer: tinyPdf('Bonjour PDF') },
+  ]);
   const draft = page.getByLabel('Fichiers joints');
   await draft.getByText('notes de réunion.md', { exact: true }).waitFor();
   await draft.getByText('41 o', { exact: true }).waitFor();
   await composer.fill('Voici les notes.');
   await page.getByRole('button', { name: 'Envoyer' }).click();
-  const fileCard = page.locator('[data-file-card]').first();
+  // #42 : les fichiers envoyés ensemble partagent une seule surface, une ligne compacte chacun.
+  const group = page.locator('[data-file-group]').first();
+  await group.getByText('audit.pdf', { exact: true }).waitFor();
+  assert.equal(await group.locator('[data-file-row]').count(), 3);
+  const fileCard = group.locator('[data-file-row]').filter({ hasText: 'notes de réunion.md' });
   await fileCard.getByText('notes de réunion.md', { exact: true }).waitFor();
+  assert.ok((await fileCard.boundingBox())!.height <= 60, 'une ligne de fichier reste compacte');
+  await group.locator('[data-file-row]').filter({ hasText: 'notepad.py' }).getByText(/Python/).waitFor();
   await fileCard.getByText(/41 o/).waitFor();
   const href = await fileCard.getByRole('link', { name: 'Télécharger' }).getAttribute('href');
   const download = await context.request.get(`${origin}${href}`);
   assert.equal(await download.text(), '# Réunion\n\nDécision : livrer vendredi.\n');
   assert.match(download.headers()['content-disposition'], /^attachment/);
   await shot('1-file-card');
-  await fileCard.getByRole('button', { name: 'Accès' }).click();
+  // Aperçu : code coloré (Shiki) avec recherche ; Markdown rendu ou source ; PDF en pages, avec recherche.
+  await group.locator('[data-file-row]').filter({ hasText: 'notepad.py' }).getByRole('button', { name: 'Aperçu', exact: true }).click();
+  const preview = page.locator('[data-file-preview]');
+  await preview.locator('[data-code-preview="highlighted"]').waitFor({ timeout: 10_000 }).catch(async (e) => { console.log('PREVIEW:', (await preview.innerHTML()).slice(0, 1500)); throw e; });
+  assert.equal(await preview.locator('.line').count(), 4);
+  await preview.getByRole('textbox', { name: 'Rechercher dans le fichier' }).fill('return');
+  await preview.getByText('1/1').waitFor();
+  await shot('1b-preview-code');
+  await page.keyboard.press('Escape');
+  await fileCard.getByRole('button', { name: 'Aperçu', exact: true }).click();
+  await preview.getByRole('heading', { name: 'Réunion', exact: true }).waitFor();
+  await preview.getByRole('tab', { name: 'Source' }).click();
+  await preview.locator('[data-code-preview]').getByText('# Réunion').waitFor();
+  await page.keyboard.press('Escape');
+  await group.locator('[data-file-row]').filter({ hasText: 'audit.pdf' }).getByRole('button', { name: 'Aperçu', exact: true }).click();
+  await preview.locator('[data-pdf-pages="1"]').waitFor();
+  await preview.getByRole('textbox', { name: 'Rechercher dans le PDF' }).fill('Bonjour');
+  await preview.getByRole('textbox', { name: 'Rechercher dans le PDF' }).press('Enter');
+  await preview.getByText('Pages : 1').waitFor();
+  await shot('1c-preview-pdf');
+  await page.keyboard.press('Escape');
+  // Les actions rares (accès, informations) sont dans le menu de la ligne.
+  await fileCard.getByRole('button', { name: 'Plus d’actions' }).click();
+  await page.getByRole('menuitem', { name: 'Accès et historique' }).click();
   const access = page.getByRole('dialog');
   await access.locator('[data-grant]').filter({ hasText: 'Ari' }).waitFor();
   await access.locator('[data-artifact-history]').getByText(/Créé/).waitFor();
@@ -120,7 +165,9 @@ try {
   await access.locator('[data-artifact-history]').getByText(/Partagé → Dev/).waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('tab', { name: 'Fichiers' }).click();
-  await page.getByText('Aucun fichier', { exact: true }).waitFor(); // Ari n'y a plus accès
+  // Ari n'a plus accès aux notes ; il garde les deux autres fichiers.
+  await page.locator('[data-files-list]').getByText('notepad.py', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-files-list]').getByText('notes de réunion.md', { exact: true }).count(), 0);
 
   // --- Tâches (#24) : une carte, mise à jour sur place, sans recharger.
   await page.getByRole('tab', { name: /Tâches/ }).click();
@@ -261,6 +308,27 @@ try {
   await codeCard.locator('[data-code-changes-stats]').getByText('+12').waitFor();
   await codeCard.getByText(/Arrêté · OpenCode/).waitFor();
   await shot('13-code-result-card');
+
+  // --- Validations (#42) : demandées ensemble, une seule surface ; une action à risque montre ses conséquences
+  // d'emblée ; une fois décidée, la validation tient sur une ligne avec son état réel.
+  await withAccount(account, async () => {
+    const conv = await mainConversationId(devId);
+    const risky = await createApproval({ agentId: devId, conversationId: conv, action: 'shell.exec', summary: 'Terminal · rm -rf build · {"cwd":"/home/dev/app"}', input: {} });
+    const mail = await createApproval({ agentId: devId, conversationId: conv, action: 'mail.send', summary: 'Mail — work@example.com · Envoyer le compte rendu · {"to":"team@example.com"}', input: {} });
+    await saveMessage(conv, { id: 'approvals-fixture', role: 'assistant', metadata: { agentId: devId }, parts: [risky, mail].map((ap, i) => ({ type: i ? 'tool-mail_send' : 'tool-shell_exec', toolCallId: `ap-call-${i}`, state: 'output-available', input: {}, output: { ok: true, status: 'pending_approval', approvalId: ap.id, summary: ap.summary } })) } as any, { author: 'agent', agentId: devId });
+  });
+  await page.goto(`${origin}/#/agent/${devId}`);
+  const approvals = page.locator('[data-approval-group="2"]');
+  await approvals.waitFor();
+  await approvals.getByText(/Action à conséquences/).waitFor();
+  await approvals.locator('[data-approval-details]').getByText('/home/dev/app').waitFor();
+  await approvals.getByText(/Demandé par Dev/).first().waitFor();
+  await shot('14-approvals');
+  await approvals.locator('[data-approval="pending"]').filter({ hasText: 'Envoyer le compte rendu' }).getByRole('button', { name: 'Refuser' }).click();
+  const decided = approvals.locator('[data-approval="rejected"]');
+  await decided.getByText('Refusé', { exact: true }).waitFor();
+  assert.ok((await decided.boundingBox())!.height <= 64, 'une validation décidée tient sur une ligne');
+  assert.equal(await decided.getByRole('button', { name: 'Autoriser' }).count(), 0);
 
   // --- Chats (#29) : destination distincte, @mention, intervention signée, renommage, suppression.
   await page.getByRole('button', { name: 'Nouveau chat' }).click();

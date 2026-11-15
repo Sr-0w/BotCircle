@@ -11,7 +11,7 @@ import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 import { DotAvatar } from '../dot-avatar';
-import { formatBytes } from './composer';
+import { FileGroup } from '../files/file-row';
 
 const KINDS: [RegExp, string][] = [
   [/pdf/, 'PDF'], [/zip|tar|gzip|compressed/, 'Archive'], [/spreadsheet|excel|csv/, 'Tableur'], [/word|document/, 'Document'],
@@ -24,33 +24,9 @@ export function fileKind(mediaType: string, name: string) {
   return extension ? extension.toUpperCase() : t('Fichier');
 }
 
-/** Pièce jointe du fil : nom, type et taille réels, ouverture, téléchargement et accès. */
+/** Pièce jointe du fil : une ligne compacte (format, nom, taille), Aperçu et Télécharger. */
 export function FileCard({ file, align }: { file: PresentedFile; align?: 'end' }) {
-  const [size, setSize] = useState(file.size);
-  // La taille n'est pas portée par le message : elle vient de l'artefact lui-même.
-  useEffect(() => {
-    if (file.size != null || !file.artifactId) return;
-    let active = true;
-    api.artifact(file.artifactId).then((artifact) => active && setSize(artifact.size)).catch(() => {});
-    return () => { active = false; };
-  }, [file.artifactId, file.size]);
-  return (
-    <div data-file-card className={cn('flex w-[min(100%,22rem)] flex-col gap-2 rounded-2xl border bg-card px-3 py-2.5 text-left text-foreground', align === 'end' && 'ml-auto')}>
-      <div className="flex items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted"><FileIcon className="size-5 text-muted-foreground" /></div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-sm" title={file.filename}>{file.filename}</p>
-          <p className="text-muted-foreground text-xs">{fileKind(file.mediaType, file.filename)}{size != null && ` · ${formatBytes(size)}`}</p>
-        </div>
-      </div>
-      {file.caption && <p className="text-muted-foreground text-xs">{file.caption}</p>}
-      <div className="flex flex-wrap gap-1.5">
-        <Button asChild size="sm" variant="secondary" className="h-7 rounded-full text-xs"><a href={file.url} target="_blank" rel="noreferrer"><ExternalLinkIcon /> {t('Ouvrir')}</a></Button>
-        <Button asChild size="sm" variant="secondary" className="h-7 rounded-full text-xs"><a href={`${file.url}?download=1`} download={file.filename}><DownloadIcon /> {t('Télécharger')}</a></Button>
-        {file.artifactId && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => openDialog({ kind: 'artifact', artifactId: file.artifactId! })}><ShieldIcon /> {t('Accès')}</Button>}
-      </div>
-    </div>
-  );
+  return <FileGroup files={[file]} align={align} />;
 }
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {

@@ -147,6 +147,8 @@ export interface ActivityDTO {
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'expired';
 
 export interface ApprovalDTO {
+  /** Provenance (github, gmail, google-drive, google-calendar, outlook, mail, computer, terminal, mcp), for its logo. */
+  service: string | null;
   id: string;
   agentId: string;
   conversationId: string;

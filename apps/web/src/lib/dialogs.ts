@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { ActivityDTO, ConnectorDTO, IntegrationProvider, SkillDTO } from "@opendots/shared";
+import type { ActivityDTO, ConnectorDTO, IntegrationProvider, PresentedFile, SkillDTO } from "@opendots/shared";
 
 /** Modales globales, ouvrables depuis n'importe où (cartes de conversation, pages…). */
 export type DialogState =
@@ -13,6 +13,7 @@ export type DialogState =
   | { kind: "team"; agentA: string; agentB: string }
   | { kind: "task"; taskId: string }
   | { kind: "artifact"; artifactId: string }
+  | { kind: "file-preview"; file: PresentedFile }
   | null;
 
 let current: DialogState = null;

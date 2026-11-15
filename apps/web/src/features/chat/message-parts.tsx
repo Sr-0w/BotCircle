@@ -20,20 +20,21 @@ import {
   WebhookIcon,
 } from "lucide-react";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
-import { artifactIdFromUrl, isActionToolPart, presentAssistantTurn } from "@opendots/shared";
+import { artifactIdFromUrl, isActionToolPart, presentAssistantTurn, type PresentedFile } from "@opendots/shared";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import type { ODMessage } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { formatDateTime } from "@/lib/utils";
-import { ApprovalCard } from "./approval-card";
+import { ApprovalCard, ApprovalGroup } from "./approval-card";
 import { ActivityCreatedCard, AnswerBubble, AskUserCard, ConnectionRequestCard, MailDraftCard, SearchResultsCard, TerminalCard } from "./cards";
 import { DotAvatar } from "../dot-avatar";
 import { openDialog } from "@/lib/dialogs";
 import { ComputerSetupCard, WelcomeSetupCards } from './setup-cards';
 import { DesktopScreenshot } from './desktop-screenshot';
 import { MessageActions, MessageQuote, ReactionPills } from './message-actions';
-import { FileCard, TaskCard } from './attachments';
+import { TaskCard } from './attachments';
+import { FileGroup } from '../files/file-row';
 import { SecureLoginCard } from './secure-login-card';
 
 import { t } from "@/lib/i18n";
@@ -317,9 +318,8 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
             <MessageContent>
               {quote && <MessageQuote reply={quote} />}
               {message.metadata?.answer ? <AnswerBubble text={text} /> : text && <p className="whitespace-pre-wrap">{text}</p>}
-              {files.map((part, index) => part.mediaType?.startsWith('image/')
-                ? <a key={index} href={part.url} target="_blank" rel="noreferrer"><img src={part.url} alt={part.filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" /></a>
-                : <FileCard key={index} align="end" file={{ url: part.url, filename: part.filename ?? t('Fichier'), mediaType: part.mediaType ?? 'application/octet-stream', artifactId: artifactIdFromUrl(part.url) }} />)}
+              {files.filter((part) => part.mediaType?.startsWith('image/')).map((part, index) => <a key={index} href={part.url} target="_blank" rel="noreferrer"><img src={part.url} alt={part.filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" /></a>)}
+              <FileGroup align="end" files={files.filter((part) => !part.mediaType?.startsWith('image/')).map((part) => ({ url: part.url, filename: part.filename ?? t('Fichier'), mediaType: part.mediaType ?? 'application/octet-stream', artifactId: artifactIdFromUrl(part.url) }))} />
             </MessageContent>
           </Message>
         </MessageActions>
@@ -340,7 +340,9 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
   return (
     <div id={`message-${message.id}`} className="flex scroll-mt-24 flex-col gap-2 rounded-2xl [&[data-flash]]:ring-2 [&[data-flash]]:ring-ring">
       {attribution && view.bubbles.length > 0 && <Author agentId={message.metadata?.agentId} model={message.metadata?.model} />}
-      {view.bubbles.map((bubble) => 'text' in bubble ? (
+      {groupFiles(view.bubbles).map((bubble) => 'files' in bubble ? (
+        <div key={bubble.key} data-bubble={bubble.key}><FileGroup files={bubble.files} /></div>
+      ) : 'text' in bubble ? (
         <MessageActions key={bubble.key} text={bubble.text} onReply={() => reply(bubble.text)} onReact={react}>
           <Message from="assistant" data-bubble={bubble.key} className="max-w-[min(100%,36rem)]">
             <MessageContent className="w-fit rounded-2xl rounded-bl-md bg-muted px-3.5 py-2">
@@ -349,15 +351,15 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
             </MessageContent>
           </Message>
         </MessageActions>
-      ) : 'file' in bubble ? (
-        <div key={bubble.key} data-bubble={bubble.key}><FileCard file={bubble.file} /></div>
       ) : (
         <a key={bubble.key} data-bubble={bubble.key} href={(bubble.image as { url?: string }).url} target="_blank" rel="noreferrer" className="w-fit">
           <img src={(bubble.image as { url?: string }).url} alt={(bubble.image as { filename?: string }).filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" />
         </a>
       ))}
       {streaming && computerUse && owner && <Suspense fallback={null}><LiveComputer key={owner} agentId={owner} /></Suspense>}
-      {view.actions.map((part) => <ToolCard key={`action-${(part as AnyTool).toolCallId}`} part={part as ToolUIPart} agentId={owner} date={message.metadata?.createdAt} />)}
+      {groupApprovals(view.actions as ToolUIPart[]).map((item) => Array.isArray(item)
+        ? <ApprovalGroup key={`approvals-${item[0]}`} ids={item} />
+        : <ToolCard key={`action-${(item as AnyTool).toolCallId}`} part={item} agentId={owner} date={message.metadata?.createdAt} />)}
       {setup && <WelcomeSetupCards agentId={owner!} />}
       {!textBubbles.length && (view.work.length > 0 || view.actions.length > 0) && (
         <MessageActions text="" onReply={() => reply(t('Travail'))} onReact={react}><span className="sr-only">{t('Actions du message')}</span></MessageActions>
@@ -365,6 +367,32 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
       <ReactionPills reactions={reactions} onToggle={react} />
     </div>
   );
+}
+
+const approvalOf = (part: ToolUIPart) => { const out = (part as any).output; return part.state === 'output-available' && out?.status === 'pending_approval' && typeof out.approvalId === 'string' ? out.approvalId as string : null; };
+/** Validations asked one after the other in a turn are shown together; a single one stays a card. */
+function groupApprovals(parts: ToolUIPart[]): (ToolUIPart | string[])[] {
+  const out: (ToolUIPart | string[])[] = [];
+  let run: { parts: ToolUIPart[]; ids: string[] } = { parts: [], ids: [] };
+  const flush = () => { if (run.ids.length > 1) out.push(run.ids); else out.push(...run.parts); run = { parts: [], ids: [] }; };
+  for (const part of parts) {
+    const id = approvalOf(part);
+    if (id) { run.parts.push(part); run.ids.push(id); } else { flush(); out.push(part); }
+  }
+  flush();
+  return out;
+}
+
+/** Files sent one after the other share one surface: a group, never a card per file. */
+function groupFiles<T extends { key: string }>(bubbles: (T | (T & { file: PresentedFile }))[]) {
+  const out: (Exclude<T, { file: PresentedFile }> | { key: string; files: PresentedFile[] })[] = [];
+  for (const bubble of bubbles) {
+    if ('file' in bubble) {
+      const last = out.at(-1);
+      if (last && 'files' in last) last.files.push(bubble.file); else out.push({ key: bubble.key, files: [bubble.file] });
+    } else out.push(bubble as Exclude<T, { file: PresentedFile }>);
+  }
+  return out;
 }
 
 /** Signature d'une réponse dans un chat général : le compagnon intervenu, sinon l'assistant et son modèle. */

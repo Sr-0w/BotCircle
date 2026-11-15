@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { LoaderIcon } from "lucide-react";
 import type { MailDraftDTO, SkillDTO } from "@opendots/shared";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { ActivityDialog, Field } from "./activity-dialog";
 import { TeamThreadDialog } from "./team-thread-dialog";
 import { ArtifactDialog, TaskDialog } from "./work-dialogs";
 import { McpDialog, MailDialog, PluginDialog } from "./connector-dialogs";
+const FilePreviewDialog = lazy(() => import("../files/file-preview").then((m) => ({ default: m.FilePreviewDialog })));
 
 import { t } from "@/lib/i18n";
 import { IntegrationConnectDialog } from '../integration-catalog';
@@ -39,6 +40,8 @@ export function DialogHost() {
       return <TaskDialog taskId={d.taskId} onClose={closeDialog} />;
     case "artifact":
       return <ArtifactDialog artifactId={d.artifactId} onClose={closeDialog} />;
+    case "file-preview":
+      return <Suspense fallback={null}><FilePreviewDialog file={d.file} onClose={closeDialog} /></Suspense>;
   }
 }
 

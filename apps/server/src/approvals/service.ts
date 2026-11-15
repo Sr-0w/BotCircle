@@ -6,6 +6,7 @@ import { publish } from '../bus.ts';
 import { log } from '../journal.ts';
 import { enqueue } from '../jobs/queue.ts';
 import { errorMessage, newId } from '../util.ts';
+import { getConnector } from '../connectors/repo.ts';
 
 /**
  * Moteur d'approbation : une opération sensible est enregistrée « préparée »,
@@ -25,6 +26,7 @@ export function registerApprovalAction(action: string, executor: Executor, onRej
 
 export function toApprovalDTO(r: Row): ApprovalDTO {
   return {
+    service: r.service ?? null,
     id: r.id,
     agentId: r.agentId,
     conversationId: r.conversationId,
@@ -47,7 +49,9 @@ export async function createApproval(input: {
   summary: string;
   input: unknown;
 }): Promise<Row> {
+  const service = await serviceOf(input.action, input.input);
   const row = {
+    service,
     id: newId('ap'),
     agentId: input.agentId,
     conversationId: input.conversationId,
@@ -61,6 +65,20 @@ export async function createApproval(input: {
   publish({ type: 'approval.changed', approval: toApprovalDTO(created) });
   await log(input.agentId, 'approval.requested', `Validation demandée : ${input.summary}`, { approvalId: row.id });
   return created;
+}
+
+/** Where an operation acts, for the card's logo: the connected service, or the kind of capability. */
+async function serviceOf(action: string, input: unknown): Promise<string | null> {
+  if (action === 'integration.call') {
+    const id = (input as { connectorId?: string } | null)?.connectorId;
+    const connector = id ? await getConnector(id).catch(() => null) : null;
+    return (connector?.config as { provider?: string } | undefined)?.provider ?? null;
+  }
+  if (action.startsWith('mail.')) return 'mail';
+  if (action.startsWith('computer.')) return 'computer';
+  if (action.startsWith('shell.')) return 'terminal';
+  if (action.startsWith('mcp.')) return 'mcp';
+  return null;
 }
 
 export async function getApproval(id: string): Promise<Row | null> {

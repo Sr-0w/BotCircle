@@ -187,6 +187,8 @@ export const approvals = pgTable('approvals', {
   resolvedBy: text('resolved_by'),
   createdAt: ts('created_at').notNull().defaultNow(),
   resolvedAt: ts('resolved_at'),
+  /** Provenance shown on the card: github, gmail, google-drive, google-calendar, outlook, mail, computer, terminal, mcp. */
+  service: text('service'),
 });
 
 export const teamMessages = pgTable('team_messages', {
