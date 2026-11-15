@@ -87,12 +87,12 @@ fun ActionCard(part: Part.Tool, message: ChatMessage, env: MessageEnv) {
             LaunchedEffect(id, login == null) { if (login == null) env.onNeedSecureLogin(id) }
             SecureLoginCard(login, env)
         }
-        (part.name == "task_start" || part.name == "invoke_agent") && out.str("taskId") != null -> {
+        (part.name == "task_start" || part.name == "invoke_agent" || part.name == "opencode_start") && out.str("taskId") != null -> {
             val taskId = out.str("taskId")!!
             val task = env.tasks[taskId]
             LaunchedEffect(taskId, task == null) { if (task == null) env.onNeedTask(taskId) }
             TaskCard(
-                task, onDetails = { env.onOpenTask(taskId) }, onAction = { env.onTaskAction(taskId, it) },
+                task, onDetails = { env.onOpenTask(taskId) }, onAction = { env.onTaskAction(taskId, it) }, onOpenCode = env.onOpenCode,
                 agent = if (part.name == "invoke_agent") env.agents.firstOrNull { it.id == (task?.agentId ?: out.str("agentId")) } else null,
             )
         }

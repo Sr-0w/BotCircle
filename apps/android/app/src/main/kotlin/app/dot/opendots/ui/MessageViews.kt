@@ -122,6 +122,8 @@ class MessageEnv(
     val onResolveSecureLogin: (id: String, outcome: String) -> Unit = { _, _ -> },
     /** Opens the companion's browser with the user in control. */
     val onTakeControl: (agentId: String) -> Unit = {},
+    /** Opens the code workspace of an OpenCode task. */
+    val onOpenCode: (taskId: String) -> Unit = {},
 )
 
 @Composable

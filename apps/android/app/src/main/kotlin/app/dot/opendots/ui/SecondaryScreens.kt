@@ -94,7 +94,7 @@ fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, sub
 // --- Scheduled tasks ---------------------------------------------------------------------------
 
 @Composable
-fun TasksScreen(app: AppState, ui: AppUiState) {
+fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}) {
     LaunchedEffect(Unit) { app.loadActivities() }
     val started = stringResource(R.string.task_started)
     var deleting by remember { mutableStateOf<Activity?>(null) }
@@ -110,7 +110,7 @@ fun TasksScreen(app: AppState, ui: AppUiState) {
             item(key = "bg-$label") { SectionLabel(stringResource(label), Modifier.padding(top = DotSpacing.l)) }
             items(list, key = { "bg-" + it.id }) { task ->
                 TaskCard(
-                    task, onDetails = { openTask = task.id }, onAction = { app.taskAction(task.id, it) },
+                    task, onDetails = { openTask = task.id }, onAction = { app.taskAction(task.id, it) }, onOpenCode = onOpenCode,
                     modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xs), agent = ui.agents.firstOrNull { it.id == task.agentId },
                 )
             }
@@ -200,7 +200,7 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}) {
+fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}) {
     var confirmSignOut by remember { mutableStateOf(false) }
     QuietPage(stringResource(R.string.settings), onBack = null, inTabs = true) {
         item {
@@ -220,6 +220,7 @@ fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onO
             ListRow(stringResource(R.string.providers), subtitle = stringResource(R.string.providers_note), onClick = onOpenProviders)
             ListRow(stringResource(R.string.default_model), subtitle = stringResource(R.string.default_model_note), onClick = onOpenModel)
             ListRow(stringResource(R.string.agent_behaviour), subtitle = stringResource(R.string.agent_behaviour_note), onClick = onOpenBehaviour)
+            ListRow("OpenCode", subtitle = stringResource(R.string.opencode_row_note), onClick = onOpenCode)
             Hairline(Modifier.padding(top = DotSpacing.s))
         }
         item {

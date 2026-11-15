@@ -63,6 +63,8 @@ import androidx.compose.material.icons.outlined.Forum
 import app.dot.opendots.data.Agent
 import app.dot.opendots.ui.AgentBehaviourPage
 import app.dot.opendots.ui.ChatSettingsPage
+import app.dot.opendots.ui.CodeWorkspacePage
+import app.dot.opendots.ui.OpencodeInstancesPage
 import app.dot.opendots.ui.DefaultModelPage
 import app.dot.opendots.ui.ProvidersPage
 import app.dot.opendots.ui.ChatsPage
@@ -154,15 +156,19 @@ fun OpenDotsRoot(app: AppState, ui: AppUiState) {
 private enum class Tab { Companions, Chats, Tasks, Approvals, Settings }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Providers, Page.DefaultModel, Page.AgentBehaviour)
+private val SETTINGS_PAGES get() = setOf(Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace)
 
-private enum class Page { None, Chat, Profile, Model, Desktop, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour }
+private enum class Page { None, Chat, Profile, Model, Desktop, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
     var tab by rememberSaveable { mutableStateOf(Tab.Companions) }
     // The app reopens on the conversation it was left on; Back leads to the Companions page.
     var page by rememberSaveable { mutableStateOf(if (ui.currentAgentId != null) Page.Chat else Page.None) }
+    // The code workspace opens from a task card anywhere; Back returns to the page that opened it.
+    var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
+    var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
+    val openCode = { taskId: String -> codeTask = taskId; codeFrom = page; page = Page.CodeWorkspace }
     val keyboard = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     val reduced = rememberReducedMotion()
@@ -175,6 +181,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             Page.Profile -> Page.Chat
             Page.ChatModel -> Page.ChatSettings
             Page.DefaultModel -> Page.Providers
+            Page.CodeWorkspace -> codeFrom
             Page.ChatSettings -> Page.GeneralChat
             else -> Page.None
         }
@@ -204,9 +211,9 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                     when (tab) {
                         Tab.Companions -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
                         Tab.Chats -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
-                        Tab.Tasks -> TasksScreen(app, ui)
+                        Tab.Tasks -> TasksScreen(app, ui, onOpenCode = openCode)
                         Tab.Approvals -> ApprovalsScreen(app, ui)
-                        Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour })
+                        Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances })
                     }
                 }
                 DotBottomBar(
@@ -225,10 +232,12 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })
             current == Page.DefaultModel -> DefaultModelPage(app, onBack = ::back)
             current == Page.AgentBehaviour -> AgentBehaviourPage(app, ui.paused, onBack = ::back)
-            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); page = Page.Desktop })
+            current == Page.CodeInstances -> OpencodeInstancesPage(app, onBack = ::back)
+            current == Page.CodeWorkspace && codeTask != null -> CodeWorkspacePage(app, ui, codeTask!!, onBack = ::back)
+            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); page = Page.Desktop }, onOpenCode = openCode)
             current == Page.GeneralChat -> ChatScreen(
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
-                onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat,
+                onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
             )
             current == Page.ChatSettings -> ChatSettingsPage(app, ui, chat!!, onBack = ::back, onChangeModel = { page = Page.ChatModel }, onDeleted = { page = Page.None })
             current == Page.ChatModel -> ModelPickerPage(app, chat!!.title, chat.effectiveModel, onBack = ::back) { provider, model ->

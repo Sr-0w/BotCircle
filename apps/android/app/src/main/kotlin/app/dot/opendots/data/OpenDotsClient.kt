@@ -265,6 +265,25 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun resolveSecureLogin(id: String, outcome: String): SecureLogin =
         OdJson.decodeFromJsonElement(json("POST", "/secure-logins/$id/resolve", buildJsonObject { put("outcome", outcome) }))
 
+    // --- OpenCode ---------------------------------------------------------------------------------
+
+    suspend fun opencodeInstances(): List<OpencodeInstance> = get("/opencode/instances")
+    /** [body] holds name, baseUrl, username, defaultDirectory and, only when it changes, password. */
+    suspend fun saveOpencodeInstance(id: String?, body: JsonObject): OpencodeInstance =
+        OdJson.decodeFromJsonElement(json(if (id == null) "POST" else "PUT", "/opencode/instances" + (id?.let { "/$it" } ?: ""), body))
+    suspend fun checkOpencodeInstance(id: String): OpencodeInstance = OdJson.decodeFromJsonElement(json("POST", "/opencode/instances/$id/check"))
+    suspend fun deleteOpencodeInstance(id: String) { json("DELETE", "/opencode/instances/$id") }
+    suspend fun codeWorkspace(taskId: String): CodeWorkspace = get("/opencode/tasks/$taskId")
+    /** Written by the user in the workspace: attributed to the user, sent to the task's own session. */
+    suspend fun codePrompt(taskId: String, text: String): PromptResult = OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/prompt", buildJsonObject { put("text", text) }))
+    /** [reply] is once, always or reject. */
+    suspend fun codePermission(taskId: String, requestId: String, reply: String) { json("POST", "/opencode/tasks/$taskId/permissions/$requestId", buildJsonObject { put("reply", reply) }) }
+    suspend fun codeQuestion(taskId: String, requestId: String, answers: List<List<String>>) {
+        json("POST", "/opencode/tasks/$taskId/questions/$requestId", buildJsonObject { put("answers", buildJsonArray { answers.forEach { list -> add(buildJsonArray { list.forEach { add(JsonPrimitive(it)) } }) } }) })
+    }
+    suspend fun codeFiles(taskId: String, path: String): List<CodeFileNode> = get("/opencode/tasks/$taskId/files?path=" + java.net.URLEncoder.encode(path, "UTF-8"))
+    suspend fun codeFile(taskId: String, path: String): CodeFile = get("/opencode/tasks/$taskId/file?path=" + java.net.URLEncoder.encode(path, "UTF-8"))
+
     // --- Background tasks ------------------------------------------------------------------------
 
     suspend fun tasks(): List<BgTask> = get("/tasks")

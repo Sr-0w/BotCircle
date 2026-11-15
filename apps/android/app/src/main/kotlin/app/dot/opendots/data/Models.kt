@@ -45,6 +45,8 @@ data class Permissions(
     val connectors: Boolean = true,
     val shell: Boolean = true,
     val computer: Boolean = false,
+    /** May delegate development to an OpenCode instance the user connected. */
+    val code: Boolean = false,
 )
 
 @Immutable
@@ -355,7 +357,11 @@ data class BgTask(
     val createdAt: String = "",
     val finishedAt: String? = null,
     val events: List<BgTaskEvent> = emptyList(),
+    /** `opencode`: the work happens in a remote OpenCode session, opened in the code workspace. */
+    val provider: String = "worker",
+    val external: TaskExternal? = null,
 ) {
+    val isCode: Boolean get() = provider == "opencode"
     val active: Boolean get() = status in ACTIVE
     /** The one line worth showing under the title right now. */
     val line: String? get() = when (status) { "completed" -> null; "failed" -> error; else -> blocker ?: currentActionSummary ?: phase }
@@ -421,3 +427,91 @@ data class SecureLogin(
     val host: String get() = origin.substringAfter("://")
     val encrypted: Boolean get() = origin.startsWith("https://")
 }
+
+// --- OpenCode: see packages/shared -----------------------------------------------------------------------------
+
+@Immutable
+@Serializable
+data class TaskExternal(val instanceId: String = "", val instanceName: String = "OpenCode", val sessionId: String = "", val directory: String? = null, val unreachable: Boolean = false) {
+    /** Last path segment: enough to recognise the project on a card. */
+    val project: String? get() = directory?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }
+}
+
+@Immutable
+@Serializable
+data class OpencodeInstance(
+    val id: String,
+    val name: String = "",
+    val baseUrl: String = "",
+    val username: String = "opencode",
+    val hasPassword: Boolean = false,
+    val defaultDirectory: String? = null,
+    val version: String? = null,
+    /** online, offline or unknown (never checked). */
+    val state: String = "unknown",
+    val lastError: String? = null,
+    val activeTasks: Int = 0,
+)
+
+/** One part of an OpenCode message; which fields are set depends on [type] (text, reasoning, tool, patch, file). */
+@Immutable
+@Serializable
+data class CodePart(
+    val type: String = "text",
+    val text: String = "",
+    val tool: String = "",
+    val status: String = "",
+    val title: String? = null,
+    val input: String = "",
+    val output: String? = null,
+    val files: List<String> = emptyList(),
+    val filename: String? = null,
+)
+
+@Immutable
+@Serializable
+data class CodeMessage(val id: String, val role: String = "assistant", val completedAt: Long? = null, val model: String? = null, val error: String? = null, val parts: List<CodePart> = emptyList())
+
+@Immutable
+@Serializable
+data class CodeDiff(val path: String = "", val status: String = "modified", val additions: Int = 0, val deletions: Int = 0, val patch: String = "")
+
+@Immutable
+@Serializable
+data class CodePermission(val id: String, val permission: String = "", val patterns: List<String> = emptyList())
+
+@Serializable
+data class CodeQuestionItem(val question: String = "", val options: List<String> = emptyList(), val multiple: Boolean = false)
+
+@Immutable
+@Serializable
+data class CodeQuestion(val id: String, val questions: List<CodeQuestionItem> = emptyList())
+
+@Immutable
+@Serializable
+data class CodeExchange(val seq: Long = 0, val author: String = "companion", val agentId: String? = null, val kind: String = "", val text: String = "", val original: String? = null, val createdAt: String = "")
+
+@Immutable
+@Serializable
+data class CodeFileNode(val name: String = "", val path: String = "", val type: String = "file")
+
+@Serializable
+data class CodeFile(val path: String = "", val binary: Boolean = false, val content: String = "")
+
+/** The code workspace of one task: that exact session, its real state, and what waits for the user. */
+@Immutable
+@Serializable
+data class CodeWorkspace(
+    val task: BgTask,
+    /** False: the instance does not answer; lists are empty and the task shows its last known state. */
+    val reachable: Boolean = true,
+    val error: String? = null,
+    val messages: List<CodeMessage> = emptyList(),
+    val permissions: List<CodePermission> = emptyList(),
+    val questions: List<CodeQuestion> = emptyList(),
+    val diffs: List<CodeDiff> = emptyList(),
+    val exchanges: List<CodeExchange> = emptyList(),
+)
+
+@Serializable
+data class PromptResult(val queued: Boolean = false)

@@ -18,6 +18,9 @@ It speaks the same HTTP API as the web app, so it works with any OpenDots server
   control of its browser; the companion's tools are suspended and it only learns the outcome.
 - Settings: model providers with their status (OpenRouter key, ChatGPT device-code sign-in, Ollama), default model,
   agent behaviour.
+- OpenCode: connect development machines (Settings → OpenCode); a delegated coding task is a single live card that
+  opens a full-screen code workspace on that exact session (messages and tools, changes with diffs, project files,
+  exchanges, permission prompts, direct instructions, Stop).
 - Replies, reactions, stop.
 - Full-screen pages, no drawer: Companions (home), Chats, Tasks, Approvals and Settings behind a quiet bottom bar; a
   conversation, a companion's profile (name, model, permissions) and its computer are pushed pages.
@@ -34,6 +37,8 @@ original Quiet UI spec for OpenDots Android (issue #28): do not reintroduce it.
 - Top level: Companions, Chats, Tasks, Approvals, Settings, switched with the bottom bar. Android back returns to Companions.
 - Companions → conversation → profile → model picker or computer. Back always leads to the page that opened the current one.
 - Chats → chat → chat settings → model picker.
+- Settings → model providers / default model / agent behaviour / OpenCode. A task card → code workspace, back to the
+  page that opened it.
 - The app reopens on the conversation it was left on.
 
 ## Modules

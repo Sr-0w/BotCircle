@@ -35,7 +35,7 @@ fun Part.Tool.isAction(): Boolean {
     if (name == "team_send_message" && out.str("status") == "sent") return true
     if (name in ACTION_TOOLS) return true
     if (name == "request_secure_login" && out.str("loginId") != null) return true
-    if ((name == "task_start" || name == "invoke_agent") && out.str("taskId") != null) return true
+    if ((name == "task_start" || name == "invoke_agent" || name == "opencode_start") && out.str("taskId") != null) return true
     return out.str("status") == "pending_approval"
 }
 

@@ -55,6 +55,47 @@
     <string name="chats_empty_title">Aucun chat</string>
     <string name="chats_none_found">Aucun chat trouvé</string>
     <string name="close">Fermer</string>
+    <string name="code_add">Ajouter une instance</string>
+    <string name="code_allow_always">Toujours autoriser</string>
+    <string name="code_allow_once">Autoriser cette fois</string>
+    <string name="code_answer">Répondre</string>
+    <string name="code_back_files">Retour aux fichiers</string>
+    <string name="code_binary">Fichier binaire : pas d’aperçu.</string>
+    <string name="code_cannot_read">Illisible pour l’instant.</string>
+    <string name="code_check">Contrôler</string>
+    <string name="code_deny">Refuser</string>
+    <string name="code_directory">Dossier du projet par défaut</string>
+    <string name="code_edit">Modifier</string>
+    <string name="code_expose_note">Sur la machine de développement, lance : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. Le serveur OpenDots doit joindre cette adresse : réseau privé, tunnel SSH ou reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
+    <string name="code_files_changed">Fichiers modifiés : %1$s</string>
+    <string name="code_instances_note">Les machines de développement où tes compagnons délèguent du code</string>
+    <string name="code_name_hint">PC de dev</string>
+    <string name="code_never_checked">Jamais contrôlée</string>
+    <string name="code_no_change">OpenCode ne signale aucun fichier modifié dans cette session.</string>
+    <string name="code_no_instance">Aucune instance connectée</string>
+    <string name="code_no_message">La session n’a pas encore de message.</string>
+    <string name="code_no_patch">Diff non fourni par OpenCode.</string>
+    <string name="code_offline">Injoignable</string>
+    <string name="code_online">En ligne</string>
+    <string name="code_open">Ouvrir l’espace de code</string>
+    <string name="code_original">Demande d’origine</string>
+    <string name="code_permission">OpenCode demande une autorisation</string>
+    <string name="code_queued">Placée à la suite du travail en cours</string>
+    <string name="code_remove_note">Les tâches et échanges passés restent consultables.</string>
+    <string name="code_remove_title">Retirer cette instance ?</string>
+    <string name="code_save">Enregistrer et contrôler</string>
+    <string name="code_stop">Arrêter</string>
+    <string name="code_tab_changes">Changements</string>
+    <string name="code_tab_exchanges">Échanges</string>
+    <string name="code_tab_session">Session</string>
+    <string name="code_to_companion">compagnon</string>
+    <string name="code_unchanged">inchangé</string>
+    <string name="code_unknown">état inconnu</string>
+    <string name="code_unreachable">Instance injoignable : l’état affiché est le dernier connu, pas un résultat.</string>
+    <string name="code_url">Adresse de l’API</string>
+    <string name="code_user">Utilisateur</string>
+    <string name="code_workspace">Espace de code</string>
+    <string name="code_write">Écrire directement à OpenCode…</string>
     <string name="codex_connect">Connecter ChatGPT</string>
     <string name="codex_enter_code">Entre ce code sur la page officielle :</string>
     <string name="codex_open">Ouvrir ChatGPT</string>
@@ -168,6 +209,7 @@
     <string name="open">Ouvrir</string>
     <string name="open_web_app">Ouvrir l’app web</string>
     <string name="open_web_app_note">Connecteurs, skills, mémoire et bureau graphique</string>
+    <string name="opencode_row_note">Machines de développement et leur état</string>
     <string name="openrouter_key">Clé OpenRouter</string>
     <string name="openrouter_key_hint">Crée-la sur openrouter.ai/keys</string>
     <string name="other">Autre…</string>
@@ -178,6 +220,7 @@
     <string name="paused_long">Activités autonomes suspendues</string>
     <string name="paused_short">En pause</string>
     <string name="perm_activities">Gérer ses planifications</string>
+    <string name="perm_code">Déléguer du code à OpenCode</string>
     <string name="perm_computer">Voir et utiliser le bureau</string>
     <string name="perm_connectors">Utiliser les connecteurs</string>
     <string name="perm_mail">Lire les e-mails connectés</string>
@@ -358,6 +401,10 @@
     <plurals name="actions">
         <item quantity="one">%d action</item>
         <item quantity="other">%d actions</item>
+    </plurals>
+    <plurals name="code_active">
+        <item quantity="one">%d tâche en cours</item>
+        <item quantity="other">%d tâches en cours</item>
     </plurals>
     <plurals name="errors">
         <item quantity="one">%d erreur</item>

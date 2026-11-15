@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -298,7 +299,7 @@ private fun taskIcon(status: String): ImageVector = when (status) {
  * Pause / Cancel. [agent] signs a companion's contribution to a general chat.
  */
 @Composable
-fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, modifier: Modifier = Modifier, agent: Agent? = null) {
+fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, modifier: Modifier = Modifier, agent: Agent? = null, onOpenCode: ((String) -> Unit)? = null) {
     val c = Dot.colors
     var cancelling by remember { mutableStateOf(false) }
     DotCard(modifier.fillMaxWidth().testTag("task-card"), emphasized = task?.status == "waiting_for_user") {
@@ -308,6 +309,13 @@ fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, m
             Spacer(Modifier.width(DotSpacing.s))
             Text(agentDisplayName(agent), style = Dot.type.label, color = c.textPrimary)
             Text("  ·  " + stringResource(R.string.intervention), style = Dot.type.caption, color = c.textTertiary)
+        }
+        if (task.isCode) Row(Modifier.padding(bottom = DotSpacing.s).testTag("task-opencode"), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Terminal, null, Modifier.size(15.dp), tint = c.textSecondary)
+            Spacer(Modifier.width(DotSpacing.s))
+            Text("OpenCode", style = Dot.type.label, color = c.textPrimary)
+            task.external?.let { Text("  ·  " + listOfNotNull(it.instanceName, it.project).joinToString(" · "), style = Dot.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)) }
+            if (task.external?.unreachable == true) Text("  ·  " + stringResource(R.string.code_unknown), style = Dot.type.caption, color = c.danger, maxLines = 1)
         }
         val alert = task.status == "failed" || task.status == "waiting_for_user"
         Row(verticalAlignment = Alignment.Top) {
@@ -328,10 +336,12 @@ fun TaskCard(task: BgTask?, onDetails: () -> Unit, onAction: (String) -> Unit, m
         Spacer(Modifier.height(DotSpacing.m))
         @OptIn(ExperimentalLayoutApi::class)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+            if (task.isCode && onOpenCode != null) DotButton(stringResource(R.string.code_open), { onOpenCode(task.id) }, compact = true)
             DotButton(stringResource(R.string.details), onDetails, style = ButtonStyle.Secondary, compact = true)
-            if (task.status == "running" || task.status == "queued") DotButton(stringResource(R.string.task_pause), { onAction("pause") }, style = ButtonStyle.Ghost, compact = true)
-            if (task.status == "paused" || task.status == "waiting_for_user") DotButton(stringResource(R.string.task_resume), { onAction("resume") }, style = ButtonStyle.Ghost, compact = true)
-            if (task.active) DotButton(stringResource(R.string.cancel), { cancelling = true }, style = ButtonStyle.Ghost, compact = true)
+            // OpenCode has no pause: a session is stopped or given an instruction.
+            if (!task.isCode && (task.status == "running" || task.status == "queued")) DotButton(stringResource(R.string.task_pause), { onAction("pause") }, style = ButtonStyle.Ghost, compact = true)
+            if (!task.isCode && (task.status == "paused" || task.status == "waiting_for_user")) DotButton(stringResource(R.string.task_resume), { onAction("resume") }, style = ButtonStyle.Ghost, compact = true)
+            if (task.active) DotButton(stringResource(if (task.isCode) R.string.code_stop else R.string.cancel), { cancelling = true }, style = ButtonStyle.Ghost, compact = true)
         }
     }
     if (cancelling && task != null) DotDialog(

@@ -184,6 +184,7 @@ fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () ->
                 Triple("mail", R.string.perm_mail, p.mail),
                 Triple("shell", R.string.perm_shell, p.shell),
                 Triple("computer", R.string.perm_computer, p.computer),
+                Triple("code", R.string.perm_code, p.code),
                 Triple("connectors", R.string.perm_connectors, p.connectors),
                 Triple("manageMemory", R.string.perm_memory, p.manageMemory),
                 Triple("manageActivities", R.string.perm_activities, p.manageActivities),

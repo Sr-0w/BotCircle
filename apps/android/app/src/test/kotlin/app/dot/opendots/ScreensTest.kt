@@ -73,6 +73,7 @@ class ScreensTest {
 
     private val chats = """[{"id":"ch1","title":"Friday meeting","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"createdAt":"2026-11-13T09:00:00Z","updatedAt":"2026-11-13T09:05:00Z","lastMessagePreview":"Here is the summary."}]"""
     private val task = """{"id":"tk1","agentId":"a3","conversationId":"ch1","title":"Summarise the Friday meeting","instruction":"@Dev summarise the Friday meeting","status":"completed","completedSteps":4,"result":"Here is the summary.","artifacts":[{"id":"art_r1","name":"summary.pdf","mediaType":"application/pdf","size":48213,"url":"/api/artifacts/art_r1/content"}],"createdAt":"2026-11-13T09:01:00Z","finishedAt":"2026-11-13T09:05:00Z","events":[{"seq":1,"kind":"status","summary":"Started","createdAt":"2026-11-13T09:01:00Z"},{"seq":2,"kind":"step","summary":"Reads the meeting notes","createdAt":"2026-11-13T09:02:00Z"}]}"""
+    private val codeTask = """{"id":"tk2","agentId":"a1","conversationId":"c1","title":"Refactor the settings","instruction":"Group OAuth with the providers.","status":"running","completedSteps":3,"currentActionSummary":"Runs the tests","provider":"opencode","external":{"instanceId":"oc1","instanceName":"Dev PC","sessionId":"ses_1","directory":"/home/dev/opendots","unreachable":false},"createdAt":"2026-11-13T10:00:00Z"}"""
     private val chatHistory = """{"conversationId":"ch1","cursor":null,"active":false,"tasks":[],"messages":[
       {"id":"g1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"@Dev summarise the Friday meeting"},{"type":"file","url":"/api/artifacts/art_n1/content","filename":"meeting notes.md","mediaType":"text/markdown"}]},
       {"id":"g2","role":"assistant","metadata":{"kind":"chat"},"parts":[{"type":"tool-invoke_agent","toolCallId":"i1","state":"output-available","input":{"agent":"Dev","instruction":"summarise"},"output":{"ok":true,"status":"queued","taskId":"tk1","agentId":"a3","agentName":"Dev"}}]},
@@ -111,7 +112,15 @@ class ScreensTest {
                     path == "/chats/ch1/messages" -> json(chatHistory)
                     path == "/chats/ch1/stream" -> MockResponse.Builder().code(204).build()
                     path == "/chats/ch1/chat" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"start\",\"messageId\":\"g9\"}\n\ndata: {\"type\":\"finish\"}\n\ndata: [DONE]\n\n").build()
-                    path == "/tasks" -> json("[$task]")
+                    path == "/tasks" -> json("[$task,$codeTask]")
+                    path == "/opencode/tasks/tk2" -> json("""{"task":$codeTask,"reachable":true,"error":null,"sessionStatus":"busy",
+                      "messages":[{"id":"cm1","role":"user","createdAt":1,"completedAt":null,"model":null,"error":null,"parts":[{"type":"text","text":"Group OAuth with the providers."}]},
+                        {"id":"cm2","role":"assistant","createdAt":2,"completedAt":null,"model":"openai/gpt-5","error":null,"parts":[{"type":"text","text":"Grouping the provider settings."},{"type":"tool","tool":"bash","status":"running","title":"Runs the tests","input":"pnpm test","output":null}]}],
+                      "permissions":[{"id":"per1","permission":"bash","patterns":["rm -rf dist"]}],"questions":[],
+                      "diffs":[{"path":"apps/web/src/settings-page.tsx","status":"modified","additions":12,"deletions":4,"patch":"@@ -1 +1 @@\n-old\n+new"}],
+                      "exchanges":[{"seq":1,"taskId":"tk2","author":"companion","agentId":"a1","kind":"delegation","text":"Group OAuth with the providers.","original":"tidy the settings","createdAt":"2026-11-13T09:01:00Z"}]}""")
+                    path == "/opencode/tasks/tk2/prompt" -> json("""{"queued":true}""")
+                    path == "/opencode/tasks/tk2/permissions/per1" -> json("""{"ok":true}""")
                     path == "/tasks/tk1" -> json(task)
                     path == "/tasks/tk1/instruction" -> json(task)
                     path == "/artifacts/art_r1" -> json(artifact)
@@ -260,8 +269,8 @@ class ScreensTest {
         waitFor("Finished")
         waitFor("Weekly recap")
         shoot("tasks-background-dark")
-        compose.onAllNodes(hasText("Details")).fetchSemanticsNodes()
-        compose.onNodeWithText("Details").performClick()
+        // The finished worker task is the second card: the first is the running OpenCode session.
+        compose.onAllNodes(hasText("Details"))[1].performClick()
         waitFor("Reads the meeting notes")
         waitFor("summary.pdf")
         waitFor("PDF · 47 KB")
@@ -304,6 +313,40 @@ class ScreensTest {
         assertEquals("""{"outcome":"cancelled"}""", posts.first { it.first == "/secure-logins/sl1/resolve" }.second)
         waitFor("Sign-in cancelled")
         assertTrue(!compose.onAllNodesWithTextCompat("Take control of the browser"))
+    }
+
+    @Test fun anOpenCodeTaskOpensItsOwnLiveSession() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Tasks")
+        // One card, marked OpenCode, with the machine, the project and the activity read from the session.
+        waitFor("Refactor the settings")
+        waitFor("Dev PC · opendots")
+        waitFor("Runs the tests")
+        assertTrue(!compose.onAllNodesWithTextCompat("Pause"))
+        shoot("tasks-opencode-dark")
+        compose.onNodeWithText("Open code workspace").performClick()
+        waitFor("Grouping the provider settings.")
+        waitFor("OpenCode · Dev PC · /home/dev/opendots")
+        waitFor("OpenCode asks for permission")
+        shoot("code-workspace-dark")
+        compose.onNodeWithText("Allow once").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/permissions/per1" } }
+        assertEquals("""{"reply":"once"}""", posts.first { it.first == "/opencode/tasks/tk2/permissions/per1" }.second)
+        // Writing here goes to the task's own session, as the user.
+        compose.onNodeWithContentDescription("Write to OpenCode directly…").performTextInput("Keep the animations.")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/opencode/tasks/tk2/prompt" } }
+        assertEquals("""{"text":"Keep the animations."}""", posts.first { it.first == "/opencode/tasks/tk2/prompt" }.second)
+        compose.onNodeWithText("Changes · 1").performClick()
+        waitFor("apps/web/src/settings-page.tsx")
+        compose.onNodeWithText("Exchanges").performClick()
+        waitFor("Ari → OpenCode")
+        waitFor("Original request")
+        // Android back returns to the page that opened the workspace.
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Weekly recap")
     }
 
     @Test fun signInThenEnter() {
