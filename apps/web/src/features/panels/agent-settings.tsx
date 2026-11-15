@@ -25,6 +25,7 @@ const PERMS: { key: Exclude<keyof AgentPermissions, "createAgents">; label: stri
   { key: "connectors", label: t("Utiliser les connecteurs MCP") },
   { key: "computer", label: t("Voir et piloter le bureau graphique") },
   { key: "shell", label: t("Utiliser l’ordinateur (shell)") },
+  { key: "code", label: t("Déléguer du code à OpenCode") },
 ];
 
 /**

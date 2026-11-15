@@ -27,6 +27,12 @@ import type {
   TaskEventDTO,
   ChatDTO,
   SecureLoginDTO,
+  OpencodeInstanceDTO,
+  OpencodeProjectDTO,
+  OpencodeSessionDTO,
+  OpencodeWorkspaceDTO,
+  OpencodeExchangeDTO,
+  OpencodeFileNodeDTO,
   JournalEntryDTO,
   MemoryDTO,
   ModelConfig,
@@ -142,6 +148,23 @@ export const api = {
   secureLogins: (pending = false) => request<SecureLoginDTO[]>('GET', `/secure-logins${pending ? '?pending=1' : ''}`),
   secureLogin: (id: string) => request<SecureLoginDTO>('GET', `/secure-logins/${id}`),
   resolveSecureLogin: (id: string, outcome: 'authenticated' | 'cancelled' | 'failed') => request<SecureLoginDTO>('POST', `/secure-logins/${id}/resolve`, { outcome }),
+
+  opencodeInstances: () => request<OpencodeInstanceDTO[]>('GET', '/opencode/instances'),
+  saveOpencodeInstance: (input: { id?: string; name: string; baseUrl: string; username?: string; password?: string | null; defaultDirectory?: string | null }) => {
+    const { id, ...body } = input;
+    return request<OpencodeInstanceDTO>(id ? 'PUT' : 'POST', id ? `/opencode/instances/${id}` : '/opencode/instances', body);
+  },
+  checkOpencodeInstance: (id: string) => request<OpencodeInstanceDTO>('POST', `/opencode/instances/${id}/check`),
+  deleteOpencodeInstance: (id: string) => request<{ ok: boolean }>('DELETE', `/opencode/instances/${id}`),
+  opencodeProjects: (id: string) => request<OpencodeProjectDTO[]>('GET', `/opencode/instances/${id}/projects`),
+  opencodeSessions: (id: string, directory?: string) => request<OpencodeSessionDTO[]>('GET', `/opencode/instances/${id}/sessions${directory ? `?directory=${encodeURIComponent(directory)}` : ''}`),
+  opencodeExchanges: () => request<OpencodeExchangeDTO[]>('GET', '/opencode/exchanges'),
+  codeWorkspace: (taskId: string) => request<OpencodeWorkspaceDTO>('GET', `/opencode/tasks/${taskId}`),
+  codePrompt: (taskId: string, text: string) => request<{ queued: boolean }>('POST', `/opencode/tasks/${taskId}/prompt`, { text }),
+  codePermission: (taskId: string, requestId: string, reply: 'once' | 'always' | 'reject') => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/permissions/${requestId}`, { reply }),
+  codeQuestion: (taskId: string, requestId: string, answers: string[][]) => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/questions/${requestId}`, { answers }),
+  codeFiles: (taskId: string, path: string) => request<OpencodeFileNodeDTO[]>('GET', `/opencode/tasks/${taskId}/files?path=${encodeURIComponent(path)}`),
+  codeFile: (taskId: string, path: string) => request<{ path: string; binary: boolean; content: string }>('GET', `/opencode/tasks/${taskId}/file?path=${encodeURIComponent(path)}`),
 
   chats: (q?: string) => request<ChatDTO[]>('GET', `/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createChat: (input: { title?: string; model?: ModelConfig | null } = {}) => request<ChatDTO>('POST', '/chats', input),

@@ -1,4 +1,4 @@
-import { onWorkPanelRequested } from "@/lib/work-store";
+import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store";
 import { useEffect, useMemo, useState } from "react";
 import {
   MenuIcon,
@@ -30,6 +30,7 @@ import { lazy, Suspense } from "react";
 import { t } from "@/lib/i18n";
 import { useAccount } from '@/lib/account';
 // Pages et modales secondaires chargées à la demande.
+const CodeWorkspace = lazy(() => import("./code/code-workspace").then((m) => ({ default: m.CodeWorkspace })));
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
 type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean };
@@ -210,6 +211,12 @@ export function Shell() {
   const [navOpen, setNavOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
   const [mobilePanel, setMobilePanel] = useState(false);
+  // L'espace de code s'ouvre à côté de la conversation (grand écran) ou en plein écran (petit écran).
+  const [codeTask, setCodeTask] = useState<string | null>(null);
+  const [codeExpanded, setCodeExpanded] = useState(false);
+  const [wideScreen, setWideScreen] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => { const query = window.matchMedia("(min-width: 1024px)"); const on = () => setWideScreen(query.matches); query.addEventListener("change", on); return () => query.removeEventListener("change", on); }, []);
+  useEffect(() => onCodeWorkspaceRequested(setCodeTask), []);
 
   // Le fil ne montre que l'état en direct : un clic dessus ouvre le travail dans le panneau.
   useEffect(() => onWorkPanelRequested(() => (window.matchMedia("(min-width: 1024px)").matches ? setPanelOpen(true) : setMobilePanel(true))), []);
@@ -298,7 +305,7 @@ export function Shell() {
             <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : route.view === 'chat' ? (
             currentChat && <>
               <GeneralChatView chat={currentChat} />
-              {panelOpen && (
+              {panelOpen && !codeTask && (
                 <aside className="hidden w-[340px] shrink-0 border-l lg:block">
                   <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
                 </aside>
@@ -307,16 +314,26 @@ export function Shell() {
           ) : current ? (
             <>
               <ChatView agent={current} />
-              {panelOpen && (
+              {panelOpen && !codeTask && (
                 <aside className="hidden w-[340px] shrink-0 border-l lg:block">
                   <AgentPanel agent={current} />
                 </aside>
               )}
             </>
           ) : null}
+          {codeTask && wideScreen && !codeExpanded && (
+            <aside className="w-[min(46vw,640px)] shrink-0 border-l">
+              <CodeWorkspace taskId={codeTask} onToggleExpand={() => setCodeExpanded(true)} onClose={() => setCodeTask(null)} />
+            </aside>
+          )}
           </Suspense>
         </div>
       </main>
+      {codeTask && (!wideScreen || codeExpanded) && (
+        <div className="fixed inset-0 z-40 bg-background" role="dialog" aria-label={t("Espace de code")}>
+          <Suspense fallback={null}><CodeWorkspace taskId={codeTask} expanded={wideScreen} onToggleExpand={wideScreen ? () => setCodeExpanded(false) : undefined} onClose={() => { setCodeTask(null); setCodeExpanded(false); }} /></Suspense>
+        </div>
+      )}
 
       {current && (
         <Sheet open={mobilePanel} onOpenChange={setMobilePanel}>

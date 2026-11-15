@@ -1,6 +1,7 @@
+import { openCodeWorkspace } from "@/lib/work-store";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeftIcon, MessagesSquareIcon } from "lucide-react";
-import type { TeamThreadDTO } from "@opendots/shared";
+import type { OpencodeExchangeDTO, TeamThreadDTO } from "@opendots/shared";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export function TeamView() {
           <p className="text-muted-foreground text-xs">{t("Ce que les compagnons se disent entre eux.")}</p>
         </div>
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
+          <OpencodeExchanges />
           {threads?.length === 0 && (
             <p className="px-2 py-6 text-center text-muted-foreground text-sm">
               {t("Aucun échange pour l’instant. Demande par exemple à un compagnon de consulter un autre.")}
@@ -126,5 +128,32 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
         <ConversationScrollButton />
       </Conversation>
     </>
+  );
+}
+
+/** Ce que les compagnons (et toi) ont dit à OpenCode, et ce qu'il a répondu : une ligne par tâche, qui ouvre sa session. */
+function OpencodeExchanges() {
+  const [entries, setEntries] = useState<OpencodeExchangeDTO[]>([]);
+  const agents = useStore((s) => s.agents);
+  const reload = useCallback(() => { api.opencodeExchanges().then(setEntries).catch(() => {}); }, []);
+  useEffect(reload, [reload]);
+  useServerEvent((e) => (e.type === "task.changed" || e.type === "opencode.changed") && reload(), [reload]);
+  const byTask = new Map<string, OpencodeExchangeDTO[]>();
+  for (const entry of entries) byTask.set(entry.taskId, [...(byTask.get(entry.taskId) ?? []), entry]);
+  if (!byTask.size) return null;
+  return (
+    <div className="mb-2 space-y-0.5" data-opencode-exchanges>
+      <p className="px-2 pt-1 pb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">OpenCode</p>
+      {[...byTask.entries()].reverse().map(([taskId, list]) => {
+        const first = list[0], last = list[list.length - 1];
+        const from = first.author === "user" ? t("Toi") : agents.find((a) => a.id === first.agentId)?.name ?? t("Un compagnon");
+        return (
+          <button key={taskId} type="button" onClick={() => openCodeWorkspace(taskId)} className="flex w-full flex-col gap-0.5 rounded-xl px-2.5 py-2 text-left hover:bg-accent/70">
+            <span className="flex items-center gap-2 text-sm"><span className="truncate font-medium">{from} ↔ OpenCode</span><span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{relativeTime(last.createdAt)}</span></span>
+            <span className="truncate text-muted-foreground text-xs">{last.author === "opencode" ? "OpenCode : " : ""}{last.text}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

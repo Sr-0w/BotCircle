@@ -115,6 +115,12 @@ function describeTool(name: string, input: any, output: any): { title: string; i
     case "mail_prepare":
       return { title: t("Prépare un e-mail"), icon: <MailIcon className="size-3.5" /> };
     case "request_secure_login": return { title: t("Demande une connexion sécurisée"), icon: <KeyRoundIcon className="size-3.5" /> };
+    case "opencode_start": return { title: i.title ? t("Confie à OpenCode : {v0}", { v0: String(i.title).slice(0, 50) }) : t("Confie du code à OpenCode"), icon: <TerminalIcon className="size-3.5" /> };
+    case "opencode_send": return { title: t("Transmet une consigne à OpenCode"), icon: <TerminalIcon className="size-3.5" /> };
+    case "opencode_status": return { title: t("Consulte l’état réel d’OpenCode"), icon: <TerminalIcon className="size-3.5" /> };
+    case "opencode_stop": return { title: t("Arrête OpenCode"), icon: <TerminalIcon className="size-3.5" /> };
+    case "opencode_changes": return { title: t("Relit les changements d’OpenCode"), icon: <TerminalIcon className="size-3.5" /> };
+    case "opencode_instances": case "opencode_projects": return { title: t("Consulte les instances OpenCode"), icon: <TerminalIcon className="size-3.5" /> };
     case "task_start": return { title: i.title ? t("Lance la tâche « {v0} »", { v0: String(i.title).slice(0, 50) }) : t("Lance une tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
     case "task_status": case "task_list": return { title: t("Consulte l’état de ses tâches"), icon: <ClipboardListIcon className="size-3.5" /> };
     case "task_send_instruction": return { title: t("Transmet une consigne à sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
@@ -267,7 +273,7 @@ function ToolCard({ part, agentId, date }: { part: ToolUIPart; agentId?: string;
   if (!out || out.ok === false) return null;
   if (isSentTeam(part)) return <SentTeamCard part={part} agentId={agentId} date={date} />;
   if (name === "request_secure_login" && out.loginId) return <SecureLoginCard loginId={out.loginId} />;
-  if ((name === "task_start" || name === "invoke_agent") && out.taskId) return <TaskCard taskId={out.taskId} showAgent={name === "invoke_agent"} />;
+  if ((name === "task_start" || name === "invoke_agent" || name === "opencode_start") && out.taskId) return <TaskCard taskId={out.taskId} showAgent={name === "invoke_agent"} />;
   if (name === "ask_user" && out.requestId) return <AskUserCard requestId={out.requestId} title={input.title} questions={input.questions ?? []} />;
   if (name === "connection_request_setup") return <ConnectionRequestCard kind={out.kind} provider={out.provider} permissions={out.permissions} reason={out.reason} agentId={agentId} />;
   if (name === 'computer_request_setup' && agentId) return <ComputerSetupCard agentId={agentId} reason={out.reason} />;

@@ -43,3 +43,16 @@ export function onWorkPanelRequested(fn: () => void) {
   window.addEventListener(PANEL_EVENT, fn);
   return () => window.removeEventListener(PANEL_EVENT, fn);
 }
+
+const CODE_EVENT = "opendots:code-workspace";
+
+/** Ouvre l'espace de code d'une tâche OpenCode : cette session-là, pas une page d'accueil. */
+export function openCodeWorkspace(taskId: string) {
+  window.dispatchEvent(new CustomEvent(CODE_EVENT, { detail: taskId }));
+}
+
+export function onCodeWorkspaceRequested(fn: (taskId: string) => void) {
+  const handler = (event: Event) => fn((event as CustomEvent<string>).detail);
+  window.addEventListener(CODE_EVENT, handler);
+  return () => window.removeEventListener(CODE_EVENT, handler);
+}

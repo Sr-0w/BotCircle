@@ -10,6 +10,7 @@ import { serve } from '@hono/node-server';
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
+  if (url.startsWith('https://code.example.test/')) return fakeOpencode(new URL(url), init);
   if (url.includes('gravatar.com/')) return new Response(null, { status: 404 });
   if (url === 'https://openrouter.ai/api/v1/models') return Response.json({ data: [{ id: 'fixture/model', name: 'Modèle de test', supported_parameters: ['tools'], architecture: { input_modalities: ['text'], output_modalities: ['text'] } }] });
   // Le modèle n'est jamais joint : les tours échouent proprement, ce que les cartes doivent montrer tel quel.
@@ -17,6 +18,30 @@ globalThis.fetch = async (input, init) => {
   return nativeFetch(input, init);
 };
 
+/** Une fausse instance `opencode serve` : mêmes chemins et mêmes formes que l'API réelle. */
+const oc = { prompts: [] as string[], busy: true, messages: [
+  { info: { id: 'm_u1', role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'a', type: 'text', text: 'Regroupe OAuth avec les fournisseurs.' }] },
+  { info: { id: 'm_a1', role: 'assistant', time: { created: Date.now() + 3_600_000 }, modelID: 'gpt-5', providerID: 'openai' }, parts: [
+    { id: 'b', type: 'text', text: 'Je regroupe les réglages des fournisseurs.' },
+    { id: 'c', type: 'tool', tool: 'edit', state: { status: 'completed', input: { file: 'settings-page.tsx' }, output: 'ok', title: 'settings-page.tsx' } },
+    { id: 'd', type: 'tool', tool: 'bash', state: { status: 'running', input: { command: 'pnpm test' }, title: 'Lance les tests' } }] }] as any[] };
+function fakeOpencode(url: URL, init?: RequestInit) {
+  const json = (value: unknown) => Response.json(value);
+  const path = url.pathname, method = init?.method ?? 'GET';
+  if ((init?.headers as Record<string, string>)?.authorization !== `Basic ${Buffer.from('opencode:smoke-secret').toString('base64')}`) return Response.json({}, { status: 401 });
+  if (path === '/global/health') return json({ healthy: true, version: '1.19.5' });
+  if (path === '/session' && method === 'POST') return json({ id: 'ses_smoke', title: 'x', directory: '/home/dev/opendots', time: { created: Date.now(), updated: Date.now() } });
+  if (path === '/session/ses_smoke') return json({ id: 'ses_smoke', title: 'Refactor des réglages', directory: '/home/dev/opendots', time: { created: Date.now(), updated: Date.now() }, summary: { additions: 12, deletions: 4, files: 1 } });
+  if (path === '/session/status') return json(oc.busy ? { ses_smoke: { type: 'busy' } } : {});
+  if (path === '/session/ses_smoke/message') return json(oc.messages);
+  if (path === '/session/ses_smoke/diff') return json([{ path: 'apps/web/src/settings-page.tsx', status: 'modified', additions: 12, deletions: 4, patch: '@@ -1,2 +1,2 @@\n-ancien\n+nouveau' }]);
+  if (path === '/session/ses_smoke/prompt_async') { const text = JSON.parse(String(init!.body)).parts[0].text; oc.prompts.push(text); oc.messages.push({ info: { id: `m_u${oc.messages.length}`, role: 'user', time: { created: Date.now() + 3_600_000 } }, parts: [{ id: 'p', type: 'text', text }] }); return new Response(null, { status: 204 }); }
+  if (path === '/session/ses_smoke/abort') { oc.busy = false; return json(true); }
+  if (path === '/permission' || path === '/question') return json([]);
+  if (path === '/file') return json([{ name: 'apps', path: 'apps', type: 'directory', ignored: false }, { name: 'README.md', path: 'README.md', type: 'file', ignored: false }]);
+  if (path === '/file/content') return json({ type: 'text', content: '# OpenDots\n' });
+  return Response.json({}, { status: 404 });
+}
 const shots = process.env.OPENDOTS_SHOTS_DIR;
 const dir = await mkdtemp(join(tmpdir(), 'opendots-ui-work-'));
 process.env.OPENDOTS_DATA_DIR = dir;
@@ -28,6 +53,7 @@ const { createAgent, mainConversationId } = await import('../src/agents/repo.ts'
 const { setSetting, setOpenRouterKey } = await import('../src/settings.ts');
 const { createTask } = await import('../src/tasks/service.ts');
 const { requestSecureLogin } = await import('../src/securelogin/service.ts');
+const { listInstances, startOpencodeTask, syncTask } = await import('../src/opencode/service.ts');
 const { saveMessage } = await import('../src/conversations/repo.ts');
 const { registerLifeHandlers } = await import('../src/life/engine.ts');
 const { startQueue, stopQueue } = await import('../src/jobs/queue.ts');
@@ -139,6 +165,61 @@ try {
   assert.equal(await loginCard.getByRole('button').count(), 0);
   assert.equal((await (await context.request.get(`${origin}/api/secure-logins/${loginId}`)).json()).status, 'cancelled');
   await page.goto(`${origin}/#/agent/${ariId}`);
+
+  // --- OpenCode (#31) : instance contrôlée, carte unique, espace de code sur la session exacte.
+  await page.goto(`${origin}/#/settings/opencode`);
+  await page.getByRole('button', { name: 'Ajouter une instance' }).click();
+  await page.getByLabel('Nom', { exact: true }).fill('PC de dev');
+  await page.getByLabel('Adresse de l’API').fill('https://code.example.test');
+  await page.getByLabel('Mot de passe', { exact: true }).fill('smoke-secret');
+  await page.getByLabel('Dossier du projet par défaut').fill('/home/dev/opendots');
+  await page.getByRole('button', { name: 'Enregistrer et contrôler' }).click();
+  const instanceCard = page.getByRole('region', { name: 'PC de dev', exact: true });
+  await instanceCard.getByText('En ligne', { exact: true }).waitFor();
+  await instanceCard.getByText(/OpenCode 1\.19\.5/).waitFor();
+  assert.equal(JSON.stringify(await (await context.request.get(`${origin}/api/opencode/instances`)).json()).includes('smoke-secret'), false);
+  await shot('9-opencode-instances');
+  let codeTaskId = '';
+  await withAccount(account, async () => {
+    const [instance] = await listInstances();
+    const task = await startOpencodeTask({ agentId: ariId, conversationId: await mainConversationId(ariId), instance, title: 'Refactor des réglages', instruction: 'Regroupe OAuth avec les fournisseurs.', original: 'range les réglages', requestedBy: 'agent' });
+    codeTaskId = task.id;
+    await saveMessage(await mainConversationId(ariId), { id: 'code-fixture', role: 'assistant', parts: [
+      { type: 'tool-opencode_start', toolCallId: 'code-call', state: 'output-available', input: { title: task.title, instruction: task.instruction }, output: { ok: true, status: 'running', taskId: task.id, title: task.title, sessionId: 'ses_smoke' } },
+      { type: 'text', text: 'J’ai confié le refactor à OpenCode ; je reste disponible.' },
+    ] as any, metadata: { agentId: ariId } }, { author: 'agent', agentId: ariId });
+    await syncTask(task);
+  });
+  await page.goto(`${origin}/#/agent/${ariId}`);
+  const codeCard = page.locator(`[data-task-card]:has([data-task-provider="opencode"])`).first();
+  await codeCard.getByText('Refactor des réglages', { exact: true }).waitFor();
+  await codeCard.getByText(/PC de dev · opendots/).waitFor();
+  await codeCard.getByText('Lance les tests', { exact: true }).waitFor(); // activité réelle lue sur la session
+  assert.equal(await codeCard.getByRole('button', { name: 'Pause' }).count(), 0);
+  await codeCard.getByRole('button', { name: 'Ouvrir l’espace de code' }).click();
+  const space = page.locator(`[data-code-workspace="${codeTaskId}"]`);
+  await space.getByText('Je regroupe les réglages des fournisseurs.').waitFor();
+  await space.locator('[data-code-tool="running"]').getByText('Lance les tests').waitFor();
+  // La conversation reste utilisable à côté de l'espace de code.
+  await page.getByRole('textbox', { name: 'Écrire à Ari…' }).waitFor();
+  await shot('10-code-workspace');
+  await space.getByRole('tab', { name: /Changements/ }).click();
+  await space.locator('[data-code-diff]').getByText('apps/web/src/settings-page.tsx').click();
+  await space.getByText('+nouveau', { exact: true }).waitFor();
+  await space.getByRole('tab', { name: 'Fichiers' }).click();
+  await space.locator('[data-code-files]').getByText('README.md').click();
+  await space.locator('[data-code-file]').getByText('# OpenDots').waitFor();
+  await space.getByRole('textbox', { name: 'Écrire directement à OpenCode…' }).fill('Garde les animations.');
+  await space.getByRole('button', { name: 'Envoyer' }).click();
+  await page.waitForFunction(() => true); await space.getByRole('tab', { name: 'Session' }).click();
+  await space.locator('[data-code-message="user"]').getByText('Garde les animations.').waitFor();
+  assert.deepEqual(oc.prompts, ['Regroupe OAuth avec les fournisseurs.', 'Garde les animations.']);
+  await space.getByRole('tab', { name: 'Échanges' }).click();
+  await space.locator('[data-exchange="user"]').getByText('Garde les animations.').waitFor(); // attribuée à l'utilisateur
+  await space.locator('[data-exchange="companion"]').getByText('Demande d’origine').waitFor();
+  await space.getByRole('button', { name: 'Arrêter' }).click();
+  await space.locator('[data-code-status="cancelled"]').waitFor();
+  await space.getByRole('button', { name: 'Fermer l’espace de code' }).click();
 
   // --- Chats (#29) : destination distincte, @mention, intervention signée, renommage, suppression.
   await page.getByRole('button', { name: 'Nouveau chat' }).click();

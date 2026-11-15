@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { CircleAlertIcon, CircleCheckIcon, CirclePauseIcon, CircleSlashIcon, DownloadIcon, ExternalLinkIcon, FileIcon, HourglassIcon, LoaderIcon, ShieldIcon } from 'lucide-react';
+import { CircleAlertIcon, CircleCheckIcon, CirclePauseIcon, CircleSlashIcon, DownloadIcon, ExternalLinkIcon, FileIcon, HourglassIcon, LoaderIcon, ShieldIcon, TerminalSquareIcon } from 'lucide-react';
 import { ACTIVE_TASK_STATUSES, type PresentedFile, type TaskDTO, type TaskStatus } from '@opendots/shared';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { openDialog } from '@/lib/dialogs';
+import { openCodeWorkspace } from '@/lib/work-store';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
@@ -91,6 +92,7 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
     : task.blocker ?? task.currentActionSummary ?? task.phase;
   return (
     <div data-task-card={task.status} className={cn('flex flex-col gap-2 rounded-2xl border bg-card px-3.5 py-3 text-left', compact ? 'w-full' : 'w-[min(100%,26rem)]')}>
+      {task.provider === 'opencode' && <div className="flex items-center gap-1.5 text-muted-foreground text-xs" data-task-provider="opencode"><TerminalSquareIcon className="size-3.5" /> <span className="font-medium text-foreground">OpenCode</span>{task.external && <span className="min-w-0 truncate">· {task.external.instanceName}{task.external.directory && ` · ${task.external.directory.split('/').filter(Boolean).pop()}`}</span>}{task.external?.unreachable && <span className="shrink-0 rounded border px-1 text-[10px]">{t('état inconnu')}</span>}</div>}
       {showAgent && agent && <div className="flex items-center gap-1.5 text-muted-foreground text-xs"><DotAvatar color={agent.color} size={14} /> <span className="font-medium text-foreground">{agent.name}</span> · {t('intervention')}</div>}
       <div className="flex items-start gap-2.5">
         <TaskStatusIcon status={task.status} className="mt-0.5" />
@@ -104,10 +106,11 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
       </div>
       {line && <p className={cn('line-clamp-2 text-xs', task.status === 'failed' || task.requiresUserInput ? 'text-destructive' : 'text-muted-foreground')}>{line}</p>}
       <div className="flex flex-wrap gap-1.5">
+        {task.provider === 'opencode' && <Button size="sm" className="h-7 rounded-full text-xs" onClick={() => openCodeWorkspace(task.id)}>{t('Ouvrir l’espace de code')}</Button>}
         <Button size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => openDialog({ kind: 'task', taskId: task.id })}>{t('Détails')}</Button>
-        {(task.status === 'running' || task.status === 'queued') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'pause')}>{t('Pause')}</Button>}
-        {(task.status === 'paused' || task.status === 'waiting_for_user') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'resume')}>{t('Reprendre')}</Button>}
-        {active && <Button size="sm" variant="ghost" className="h-7 rounded-full text-destructive text-xs" onClick={() => void taskAction(task, 'cancel')}>{t('Annuler')}</Button>}
+        {task.provider !== 'opencode' && (task.status === 'running' || task.status === 'queued') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'pause')}>{t('Pause')}</Button>}
+        {task.provider !== 'opencode' && (task.status === 'paused' || task.status === 'waiting_for_user') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'resume')}>{t('Reprendre')}</Button>}
+        {active && <Button size="sm" variant="ghost" className="h-7 rounded-full text-destructive text-xs" onClick={() => void taskAction(task, 'cancel')}>{t(task.provider === 'opencode' ? 'Arrêter' : 'Annuler')}</Button>}
       </div>
     </div>
   );
