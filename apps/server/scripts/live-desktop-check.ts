@@ -28,7 +28,8 @@ const { setSetting, setOpenRouterKey, BUILTIN_COMPUTER_IMAGE } = await import('.
 const { createAgent, mainConversationId } = await import('../src/agents/repo.ts');
 const { runTurn } = await import('../src/agents/turn.ts');
 const { loadMessages, messageText } = await import('../src/conversations/repo.ts');
-const { humanControl, readScreenshot, screenshot, stopAllDesktops } = await import('../src/computer/desktop.ts');
+const { humanControl, screenshot, stopAllDesktops } = await import('../src/computer/desktop.ts');
+const { readAttachment } = await import('../src/attachments/service.ts');
 const { withDesktopAgent } = await import('../src/computer/session.ts');
 const { pendingSecureLogin, resolveSecureLogin } = await import('../src/securelogin/service.ts');
 
@@ -40,7 +41,9 @@ await setSetting('engine.turnStepLimit', 40);
 await setSetting('shell.config', { mode: 'docker', approval: 'auto', image: BUILTIN_COMPUTER_IMAGE, network: true, sudo: false });
 
 const results: { name: string; ok: boolean; note: string }[] = [];
+const only = process.env.LIVE_ONLY;
 async function check(name: string, body: () => Promise<string>) {
+  if (only && !name.startsWith(only)) return;
   const started = Date.now();
   try { const note = await body(); results.push({ name, ok: true, note }); console.log(`✓ ${name} (${Math.round((Date.now() - started) / 1000)} s) — ${note}`); }
   catch (error) { results.push({ name, ok: false, note: (error as Error).message }); console.log(`✗ ${name} — ${(error as Error).message}`); }
@@ -62,11 +65,13 @@ try {
     const parts = await toolParts(ari.conv);
     const shared = parts.find((p) => p.type === 'tool-share_screenshot' && p.output?.status === 'attached');
     assert.ok(shared, `aucune capture jointe (outils : ${parts.map((p) => `${p.type.slice(5)}:${p.output?.status ?? p.state}`).join(', ')}) ; réponse : ${turn.text.slice(0, 160)}`);
-    const id = /\/screenshots\/([a-f0-9]{32})/.exec(shared.output.url)?.[1];
-    const png = id ? await withDesktopAgent(ari.id, () => readScreenshot(id)) : null;
-    assert.ok(png && png.subarray(0, 4).toString('hex') === '89504e47', 'la capture jointe n’est pas récupérable');
+    // A shared capture is copied into the account's attachments: that copy is what the conversation shows.
+    const id = /\/api\/attachments\/([^/?]+)/.exec(shared.output.url)?.[1];
+    const stored = id ? await readAttachment(id) : null;
+    const png = stored?.bytes ?? null;
+    assert.ok(png && png.length > 1000 && ['89504e47', 'ffd8ffe0', 'ffd8ffe1', 'ffd8ffdb'].includes(png.subarray(0, 4).toString('hex')), `la capture jointe n’est pas récupérable (${shared.output.url})`);
     const claimsWithout = parts.filter((p) => p.type === 'tool-share_screenshot' && p.output?.status !== 'attached').length;
-    return `capture jointe (${png!.length} octets PNG, URL ${shared.output.url.split('?')[0]}) ; échecs de partage : ${claimsWithout} ; réponse : « ${turn.text.replace(/\s+/g, ' ').slice(0, 100)} »`;
+    return `capture jointe (${png!.length} octets, ${shared.output.mediaType}, URL ${shared.output.url.split('?')[0]}) ; échecs de partage : ${claimsWithout} ; réponse : « ${turn.text.replace(/\s+/g, ' ').slice(0, 100)} »`;
   });
 
   await check('#23 s’arrête sur une page de connexion, coupe ses outils, et ne reçoit qu’un statut', async () => {
