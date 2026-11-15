@@ -126,6 +126,7 @@ class ScreensTest {
                     path == "/approvals" -> json(approvals)
                     path == "/activities" -> json(activities)
                     path == "/agents/a1/messages" -> json(history)
+                    path == "/agents/a1/clear" -> json("""{"conversationId":"c1b","archivedId":"c1"}""")
                     path == "/agents/a1/stream" -> MockResponse.Builder().code(204).build()
                     path == "/agents/a1/chat" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body(
                         listOf(
@@ -266,6 +267,25 @@ class ScreensTest {
         compose.onNodeWithText("Allow").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/approvals/ap1" } }
         assertEquals("""{"decision":"approve"}""", posts.first { it.first == "/approvals/ap1" }.second)
+    }
+
+    @Test fun slashClearAsksFirstThenArchivesTheThread() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Write to Ari…").performTextInput("/clear")
+        compose.onNodeWithContentDescription("Send").performClick()
+        waitFor("Reset Ari?")
+        waitFor("Long-term memory and connections kept")
+        compose.onNodeWithText("Cancel").performClick()
+        compose.waitForIdle()
+        assertTrue(posts.none { it.first == "/agents/a1/clear" || it.first == "/agents/a1/chat" })
+        compose.onNodeWithContentDescription("Write to Ari…").performTextInput("/clear")
+        compose.onNodeWithContentDescription("Send").performClick()
+        waitFor("Reset Ari?")
+        compose.onNodeWithText("Reset").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/agents/a1/clear" } }
+        assertEquals("""{"conversationId":"c1"}""", posts.first { it.first == "/agents/a1/clear" }.second)
+        assertTrue(posts.none { it.first == "/agents/a1/chat" })
     }
 
     @Test fun workStaysOutOfTheThreadAndOpensInItsPanel() {

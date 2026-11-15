@@ -299,6 +299,8 @@ sealed interface ServerEvent {
     data object SettingsChanged : ServerEvent
     data class TaskChanged(val task: BgTask) : ServerEvent
     data class ChatChanged(val chatId: String, val deleted: Boolean) : ServerEvent
+    /** `/clear`: the companion's main thread was archived and replaced by an empty one. */
+    data class ConversationReset(val agentId: String, val conversationId: String, val archivedId: String) : ServerEvent
     data class ArtifactChanged(val artifactId: String) : ServerEvent
     data class SecureLoginChanged(val login: SecureLogin) : ServerEvent
     data class Other(val type: String) : ServerEvent

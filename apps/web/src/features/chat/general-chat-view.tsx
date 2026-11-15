@@ -7,13 +7,14 @@ import type { ChatDTO } from '@opendots/shared';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { api, type ODMessage } from '@/lib/api';
-import { useServerEvent, useStore } from '@/lib/store';
+import { setStoreChats, useServerEvent, useStore } from '@/lib/store';
 import { openWorkPanel, publishWork } from '@/lib/work-store';
 import { t } from '@/lib/i18n';
 import { ChatActionsContext } from './cards';
 import { Composer, isChatImage } from './composer';
 import { liveStep, MessageView } from './message-parts';
 import { ChatControls } from './chat-controls';
+import { ClearDialog } from './clear-dialog';
 import { ThinkingOrb, type OrbState } from '@/components/thinking-orb';
 
 /** The orb follows what the request is really doing, read from the streamed parts, never from the text. */
@@ -70,6 +71,8 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
   }, [info.id, resync]);
 
   const busy = status === 'submitted' || status === 'streaming';
+  const [clearing, setClearing] = useState(false);
+  const allChats = useStore((s) => s.chats);
   const last = messages[messages.length - 1];
   useEffect(() => { publishWork(info.id, messages, busy && last?.role === 'assistant' ? last.id : null); }, [info.id, messages, busy, last]);
   const step = busy ? liveStep(last) : null;
@@ -115,6 +118,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             autoFocus
             mentions={mentions}
             tools={<ChatControls chat={info} />}
+            onCommand={(text) => { if (text.toLowerCase() !== '/clear') return false; setClearing(true); return true; }}
             placeholder={t('Écrire un message, @ pour un compagnon…')}
             onSubmit={async (text, attachments) => {
               if (busy) await chat.stop();
@@ -133,6 +137,13 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             onStop={() => { void api.stopChat(info.id); chat.stop(); }}
           />
         </div></FloatingComposer></div>
+        {clearing && <ClearDialog chat name={info.title} busy={busy} onClose={() => setClearing(false)}
+          onConfirm={async () => {
+            const fresh = await api.createChat({ model: info.model });
+            const updated = info.webSearch ? fresh : await api.updateChat(fresh.id, { webSearch: false });
+            setStoreChats([updated, ...allChats.filter((c) => c.id !== updated.id)]);
+            window.location.hash = `#/chat/${updated.id}`;
+          }} />}
       </div>
     </ChatActionsContext.Provider>
   );

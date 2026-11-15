@@ -416,6 +416,27 @@ try {
   await page.getByRole('button', { name: 'Supprimer ce chat' }).click();
   await page.waitForURL(/#\/agent\//);
   assert.equal(await page.getByRole('navigation', { name: 'Chats' }).getByText('Réunion de vendredi', { exact: true }).count(), 0);
+  // #46 : /clear demande d'abord ; l'ancien fil est archivé et reste lisible.
+  await page.goto(`${origin}/#/agent/${ariId}`);
+  const thread = page.locator('[id^="message-"]');
+  await thread.first().waitFor();
+  const before = await thread.count();
+  const clearBox = page.getByRole('textbox', { name: 'Écrire à Ari…' });
+  await clearBox.fill('/clear'); await clearBox.press('Enter');
+  const clearDialog = page.getByRole('dialog', { name: 'Réinitialiser Ari ?' });
+  await clearDialog.getByText('Mémoire persistante et connexions conservées').waitFor();
+  await clearDialog.getByRole('button', { name: 'Annuler' }).click();
+  await clearDialog.waitFor({ state: 'detached' });
+  assert.equal(await thread.count(), before);
+  await clearBox.fill('/clear'); await clearBox.press('Enter');
+  await clearDialog.getByRole('button', { name: 'Réinitialiser' }).click();
+  await clearDialog.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.querySelectorAll('[id^="message-"]').length === 0);
+  await page.getByRole('tab', { name: 'Journal' }).click();
+  await page.locator('[data-testid="archives"]').getByRole('button', { name: /Fil archivé/ }).first().click();
+  await page.locator('[data-testid="archive-dialog"]').getByText('Voici les notes.').first().waitFor();
+  await page.waitForTimeout(400); await shot('clear-archive');
+  await page.keyboard.press('Escape');
   assert.deepEqual(errors, []);
   console.log('Chromium : fichier joint, carte, accès et historique ; carte de tâche en direct et détails ; chat, @mention, intervention, renommage et suppression vérifiés.');
 } catch (error) {

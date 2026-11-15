@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
+import app.dot.design.components.DotDialog
 import app.dot.design.components.DotBottomSheet
 import app.dot.design.components.DotCapsuleButton
 import app.dot.design.components.DotFloatingCapsule
@@ -173,6 +174,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
     var workSheet by remember(agent.id) { mutableStateOf(false) }
     var editing by remember(agent.id) { mutableStateOf<Pair<String, String>?>(null) }
+    var clearing by remember(agent.id) { mutableStateOf(false) }
     var taskSheet by remember(agent.id) { mutableStateOf<String?>(null) }
     var accessSheet by remember(agent.id) { mutableStateOf<String?>(null) }
     val fileActions = rememberFileActions(app)
@@ -325,6 +327,13 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
 
         if (workSheet) WorkSheet(agent, chat, env) { workSheet = false }
+        if (clearing) ClearDialog(
+            name = agentDisplayName(agent), general = general != null, busy = chat.busy,
+            onDismiss = { clearing = false },
+        ) {
+            clearing = false
+            if (general != null) app.restartChat(general) {} else session.clear()
+        }
         editing?.let { (id, original) -> EditMessageSheet(original, onDismiss = { editing = null }) { text -> editing = null; session.edit(id, text) } }
         taskSheet?.let { id -> TaskSheet(app, ui, id) { taskSheet = null } }
         accessSheet?.let { id -> ArtifactSheet(app, ui, id) { accessSheet = null } }
@@ -353,6 +362,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 canSend = ready && (draft.isNotBlank() || images.any { it.attachment != null }),
                 onStop = session::stop,
                 onSend = {
+                    // `/clear` typed alone is a command, not a message: it asks before starting over.
+                    if (draft.trim() == "/clear" && images.isEmpty()) { draft = ""; clearing = true; return@DotComposer }
                     session.send(draft, images.mapNotNull { it.attachment }, reply)
                     draft = ""; reply = null; images.clear()
                 },
@@ -606,6 +617,30 @@ private fun ChatControls(app: AppState, chat: GeneralChat) {
 private fun effortLabel(value: String?) = when (value) { "low" -> R.string.effort_low; "medium" -> R.string.effort_medium; "high" -> R.string.effort_high; else -> R.string.effort_auto }
 
 /** Edits one of the user's messages: what followed is set aside (kept), and an answer restarts from it. */
+/** Confirms `/clear`: what starts over, and everything that stays. */
+@Composable
+private fun ClearDialog(name: String, general: Boolean, busy: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val kept = if (general) listOf(R.string.clear_kept_chat_settings, R.string.clear_kept_chat_running, R.string.clear_kept_chat_list)
+    else listOf(R.string.clear_kept_profile, R.string.clear_kept_memory, R.string.clear_kept_tasks, R.string.clear_kept_archive)
+    DotDialog(
+        title = if (general) stringResource(R.string.clear_title_chat) else stringResource(R.string.clear_title, name),
+        message = if (general) stringResource(R.string.clear_body_chat) else stringResource(R.string.clear_body, name),
+        onDismiss = onDismiss,
+        confirmLabel = if (general) stringResource(R.string.new_chat) else stringResource(R.string.clear_confirm),
+        onConfirm = { if (!busy) onConfirm() },
+        dismissLabel = stringResource(R.string.cancel),
+    ) {
+        kept.forEach { id ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                Icon(Icons.Outlined.Check, null, tint = Dot.colors.textSecondary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(DotSpacing.s))
+                Text(stringResource(id), style = Dot.type.callout, color = Dot.colors.textPrimary)
+            }
+        }
+        if (busy) Text(stringResource(R.string.clear_busy), style = Dot.type.caption, color = Dot.colors.danger, modifier = Modifier.padding(top = DotSpacing.s))
+    }
+}
+
 @Composable
 private fun EditMessageSheet(original: String, onDismiss: () -> Unit, onSend: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf(original) }

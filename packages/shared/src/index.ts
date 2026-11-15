@@ -285,6 +285,8 @@ export type ServerEvent =
   | { type: 'draft.changed'; draft: MailDraftDTO }
   | { type: 'task.changed'; task: TaskDTO }
   | { type: 'chat.changed'; chatId: string; deleted?: boolean }
+  /** /clear: a companion's thread was set aside; the current one is [conversationId]. */
+  | { type: 'conversation.reset'; agentId: string; conversationId: string; archivedId: string }
   | { type: 'artifact.changed'; artifactId: string }
   | { type: 'secure_login.changed'; login: SecureLoginDTO }
   | { type: 'opencode.changed' };

@@ -329,6 +329,10 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun chats(query: String? = null): List<GeneralChat> =
         get("/chats" + (query?.takeIf { it.isNotBlank() }?.let { "?q=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""))
     suspend fun createChat(): GeneralChat = OdJson.decodeFromJsonElement(json("POST", "/chats", buildJsonObject { }))
+    /** `/clear` on a companion: archives its main thread (kept, readable) and opens an empty one. */
+    suspend fun clearConversation(agentId: String, conversationId: String) {
+        json("POST", "/agents/$agentId/clear", buildJsonObject { put("conversationId", conversationId) })
+    }
     suspend fun updateChat(id: String, patch: JsonObject): GeneralChat = OdJson.decodeFromJsonElement(json("PATCH", "/chats/$id", patch))
     suspend fun deleteChat(id: String) { json("DELETE", "/chats/$id") }
 

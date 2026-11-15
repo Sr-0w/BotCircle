@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentModelControl } from './chat-controls';
+import { ClearDialog } from './clear-dialog';
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AlertCircleIcon } from "lucide-react";
@@ -87,6 +88,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
       if (e.type === "message.reaction" && e.conversationId === agent.mainConversationId) {
         setMessages((current) => current.map((message) => message.id === e.messageId ? { ...message, metadata: { ...message.metadata, reactions: e.reactions } } : message));
       }
+      if (e.type === "conversation.reset" && e.agentId === agent.id) setMessages([]);
       if (e.type === "turn.finished" && e.conversationId === agent.mainConversationId) {
         window.setTimeout(() => void resync().catch(() => {}), 300);
       }
@@ -100,6 +102,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
   }, [agent.id, status, messages.length]);
 
   const [reply, setReply] = useState<MessageReplyRef | null>(null);
+  const [clearing, setClearing] = useState(false);
   const busy = status === "submitted" || status === "streaming";
   const actions = useMemo(
     () => ({
@@ -174,6 +177,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           reply={reply}
           onClearReply={() => setReply(null)}
           tools={<AgentModelControl agent={agent} />}
+          onCommand={(text) => { if (text.toLowerCase() !== '/clear') return false; setClearing(true); return true; }}
           placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
           onSubmit={async (text, attachments) => {
             if (busy) await chat.stop();
@@ -198,6 +202,8 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           }}
         />
       </div></FloatingComposer></div>
+      {clearing && <ClearDialog name={agent.name} busy={busy} onClose={() => setClearing(false)}
+        onConfirm={async () => { await api.clearConversation(agent.id, agent.mainConversationId); setMessages([]); setReply(null); }} />}
     </div>
     </ChatActionsContext.Provider>
   );

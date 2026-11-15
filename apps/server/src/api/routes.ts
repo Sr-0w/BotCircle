@@ -17,10 +17,11 @@ import { onSessionRevoked, sessionAccount } from '../auth/store.ts';
 import { streamSSE } from 'hono/streaming';
 import { createUIMessageStreamResponse } from 'ai';
 import { z } from 'zod';
+import { publish } from '../bus.ts';
 import { availableModels } from '../models/available.ts';
 import type { BootstrapDTO, ModelConfig } from '@opendots/shared';
 import { subscribe } from '../bus.ts';
-import { getAgent, listAgentRows, listAgents, mainConversationId, toAgentDTO, updateAgent, createAgent } from '../agents/repo.ts';
+import { archivedConversations, createAgent, getAgent, listAgentRows, listAgents, mainConversationId, resetMainConversation, toAgentDTO, updateAgent } from '../agents/repo.ts';
 import { runTurn, stopAgent } from '../agents/turn.ts';
 import { getActiveStream } from '../agents/streams.ts';
 import { getConversation, listTeamThreads, pairConversationId, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
@@ -402,6 +403,25 @@ export function createApi() {
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Réaction invalide' }, 400);
     }
+  });
+
+  // /clear: only from the user's own confirmation (this route), never from text in a message.
+  api.post('/agents/:id/clear', async (c) => {
+    const agent = await getAgent(c.req.param('id'));
+    if (!agent) return c.json({ error: 'Introuvable' }, 404);
+    const { conversationId } = z.object({ conversationId: z.string().min(1) }).strict().parse(await c.req.json());
+    if (getActiveStream(conversationId)) return c.json({ error: 'Une réponse est en cours : arrête-la ou attends la fin avant de réinitialiser.', status: 'busy' }, 409);
+    const result = await resetMainConversation(agent.id, conversationId);
+    if (result.archivedId) {
+      await log(agent.id, 'conversation.reset', `Conversation réinitialisée par l’utilisateur (fil ${result.archivedId} archivé)`, { archived: result.archivedId, conversationId: result.conversationId });
+      publish({ type: 'conversation.reset', agentId: agent.id, conversationId: result.conversationId, archivedId: result.archivedId });
+    }
+    return c.json(result);
+  });
+  api.get('/agents/:id/archives', async (c) => {
+    if (!await getAgent(c.req.param('id'))) return c.json({ error: 'Introuvable' }, 404);
+    const rows = await archivedConversations(c.req.param('id'));
+    return c.json(await Promise.all(rows.map(async (r) => ({ id: r.id, createdAt: r.createdAt.toISOString(), archivedAt: r.archivedAt.toISOString(), messageCount: (await loadMessages(r.id, { limit: 500 })).messages.length }))));
   });
 
   api.post('/agents/:id/stop', async (c) => {

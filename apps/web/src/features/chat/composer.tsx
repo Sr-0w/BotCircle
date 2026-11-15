@@ -19,11 +19,13 @@ export type MentionTarget = { id: string; name: string; color?: string; descript
  * File picker, drag-and-drop and paste share one draft. Images keep their preview; any other file is listed
  * with its name and size and sent unchanged. `mentions` enables @companion completion.
  */
-export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools }: {
+export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand }: {
   onSubmit: (text: string, files: File[]) => void | Promise<void>;
   onStop: () => void; busy: boolean; placeholder: string; autoFocus?: boolean;
   /** The conversation's own controls (model, effort, web…), under the text. */
   tools?: ReactNode;
+  /** Handles a typed command (`/clear`…); returns true when it was one. */
+  onCommand?: (text: string) => boolean;
   reply?: { preview: string } | null;
   onClearReply?: () => void;
   mentions?: MentionTarget[];
@@ -52,6 +54,8 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
   async function submit() {
     const text = value.trim();
     if ((!text && !draft.current.length) || submitting.current) return;
+    // A command typed by the user (e.g. /clear) only opens its own confirmation; it is never sent as a message.
+    if (!draft.current.length && onCommand?.(text)) { setValue(''); return; }
     submitting.current = true; setUploading(true); setError('');
     try {
       await onSubmit(text, draft.current.map((item) => item.file));

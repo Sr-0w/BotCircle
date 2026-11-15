@@ -85,6 +85,10 @@ function handle(e: ServerEvent) {
       if (e.agent.archived) set((s) => ({ agents: s.agents.filter((a) => a.id !== e.agent.id) }));
       else upsertAgent(e.agent);
       break;
+    case "conversation.reset":
+      // /clear: the companion's current thread changed.
+      set((s) => ({ agents: s.agents.map((a) => (a.id === e.agentId ? { ...a, mainConversationId: e.conversationId } : a)) }));
+      break;
     case "agent.state":
       set((s) => ({ agents: s.agents.map((a) => (a.id === e.agentId ? { ...a, state: e.state, stateDetail: e.detail } : a)) }));
       break;

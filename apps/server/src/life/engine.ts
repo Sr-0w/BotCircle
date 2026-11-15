@@ -1,3 +1,4 @@
+import { getConversation } from '../conversations/repo.ts';
 import { accountKey } from '../auth/context.ts';
 import { and, eq, isNotNull, lte } from 'drizzle-orm';
 import type { MessageMetadata } from '@opendots/shared';
@@ -49,7 +50,10 @@ export function registerLifeHandlers() {
       await enqueue('agent.wake', p, { agentId: p.agentId, runAt: new Date(Date.now() + 60_000) });
       return;
     }
-    const conversationId = p.conversationId ?? (await mainConversationId(p.agentId));
+    // A thread set aside by /clear does not come back to life: the result arrives in the current thread, as new
+    // information, without the old messages.
+    const target = p.conversationId ? await getConversation(p.conversationId) : null;
+    const conversationId = target && target.kind !== 'archive' ? target.id : await mainConversationId(p.agentId);
     const { done } = runTurn(p.agentId, conversationId, { kind: 'event', event: p.event, text: p.text, depth: p.depth });
     const result = await done;
     if (p.event.activityId) await recordRun(p.event.activityId, result.error ? 'error' : result.silent ? 'silent' : 'reported', result.error ?? result.text);

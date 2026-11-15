@@ -56,6 +56,24 @@ export async function mainConversationId(agentId: string): Promise<string> {
   return (await mainConversationId(agentId)) ?? id;
 }
 
+/**
+ * /clear: the companion's current thread is set aside (kept, readable, never put back in context) and a blank one
+ * starts. Identity, memory, connections, permissions and running tasks are untouched. Idempotent: when
+ * [expected] is no longer the current thread (double tap, retry), nothing more happens.
+ */
+export async function resetMainConversation(agentId: string, expected: string): Promise<{ conversationId: string; archivedId: string | null }> {
+  const current = await mainConversationId(agentId);
+  if (current !== expected) return { conversationId: current, archivedId: null };
+  await db().update(schema.conversations).set({ kind: 'archive', updatedAt: new Date() }).where(and(eq(schema.conversations.id, current), eq(schema.conversations.kind, 'main')));
+  return { conversationId: await mainConversationId(agentId), archivedId: current };
+}
+
+/** Threads set aside by /clear, newest first. */
+export async function archivedConversations(agentId: string) {
+  return db().select({ id: schema.conversations.id, createdAt: schema.conversations.createdAt, archivedAt: schema.conversations.updatedAt })
+    .from(schema.conversations).where(and(eq(schema.conversations.kind, 'archive'), eq(schema.conversations.agentId, agentId))).orderBy(desc(schema.conversations.updatedAt));
+}
+
 export async function createAgent(input: {
   name?: string;
   named?: boolean;

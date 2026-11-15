@@ -84,3 +84,47 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
     </Dialog>
   );
 }
+
+/** Ancien fil d’un compagnon, archivé par /clear — lecture seule. */
+export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, onClose }: { agentId: string; conversationId: string; archivedAt: string; onClose: () => void }) {
+  const agent = useStore((s) => s.agents.find((a) => a.id === agentId));
+  const [messages, setMessages] = useState<ODMessage[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api.conversation(conversationId).then((r) => setMessages(r.messages)).catch((e) => setError(e.message));
+  }, [conversationId]);
+  const items = (messages ?? [])
+    .map((m) => ({ m, text: m.parts.map((p) => (p.type === "text" && !SILENCE.test(p.text) ? p.text : "")).join("\n").trim() }))
+    .filter((x) => x.text);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex h-[85vh] max-w-3xl flex-col gap-0 p-0" data-testid="archive-dialog">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            {agent && <DotAvatar color={agent.color} size={20} />}
+            <span>{t("Ancien fil")}</span>
+          </DialogTitle>
+          <DialogDescription>{t("Archivé le {v0} — lecture seule", { v0: formatDateTime(archivedAt) })}</DialogDescription>
+        </DialogHeader>
+        {error ? (
+          <div className="p-6 text-destructive text-sm">{error}</div>
+        ) : !messages ? (
+          <div className="flex flex-1 items-center justify-center text-muted-foreground"><LoaderIcon className="size-5 animate-spin" /></div>
+        ) : !items.length ? (
+          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">{t("Aucun message")}</div>
+        ) : (
+          <Conversation className="min-h-0 flex-1">
+            <ConversationContent className="mx-auto w-full gap-6 px-4 py-6 sm:px-6">
+              {items.map(({ m, text }) => (
+                <Message key={m.id} from={m.role === "user" ? "user" : "assistant"} className={cn(m.role !== "user" && "max-w-full")}>
+                  <MessageContent><MessageResponse>{text}</MessageResponse></MessageContent>
+                </Message>
+              ))}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

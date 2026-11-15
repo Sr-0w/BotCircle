@@ -102,6 +102,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
   );
   const journal = useReload<JournalEntryDTO[]>(() => api.journal(agent.id), (e) => e.type === "journal.created", [agent.id]);
 
+  const archives = useReload(() => api.archives(agent.id), (e) => e.type === "conversation.reset", [agent.id]);
   const [tab, setTab] = useState("work");
   const activeTasks = useStore((s) => s.tasks.filter((task) => task.agentId === agent.id && ACTIVE_TASK_STATUSES.includes(task.status)).length);
   useEffect(() => onWorkPanelRequested(() => setTab("work")), []);
@@ -173,6 +174,17 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
             </li>
           ))}
         </ol>
+        {!!archives?.length && (
+          <div className="mt-5 space-y-1" data-testid="archives">
+            <p className="px-1 font-medium text-muted-foreground text-xs">{t("Anciens fils")}</p>
+            {archives.map((a) => (
+              <button key={a.id} className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent/60" onClick={() => openDialog({ kind: "archive", agentId: agent.id, conversationId: a.id, archivedAt: a.archivedAt })}>
+                <span>{t("Fil archivé")}</span>
+                <span className="text-muted-foreground text-xs tabular-nums">{relativeTime(a.archivedAt)}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </TabsContent>
 
       <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-3">

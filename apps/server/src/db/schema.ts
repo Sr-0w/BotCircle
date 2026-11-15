@@ -56,7 +56,8 @@ export const conversations = pgTable(
   {
     id: text('id').primaryKey(),
     /** main : fil d'un compagnon ; pair : fil entre deux compagnons ; chat : chat général sans compagnon ; task : journal de travail d'une tâche. */
-    kind: text('kind').$type<'main' | 'pair' | 'chat' | 'task'>().notNull(),
+    /** archive : ancien fil principal d'un compagnon, mis de côté par /clear (conservé, consultable). */
+    kind: text('kind').$type<'main' | 'pair' | 'chat' | 'task' | 'archive'>().notNull(),
     /** Compagnon propriétaire pour une conversation principale. */
     agentId: text('agent_id'),
     /** Participants d'une conversation entre compagnons (triés). */

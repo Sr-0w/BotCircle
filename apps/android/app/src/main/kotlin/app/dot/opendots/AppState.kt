@@ -31,6 +31,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import app.dot.opendots.data.ModelConfig
+import app.dot.opendots.data.OdJson
 import java.util.TimeZone
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -243,6 +247,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
             is ServerEvent.ActivityChanged -> if (_state.value.activities != null) loadActivities()
             is ServerEvent.TaskChanged -> _state.update { it.copy(tasks = it.tasks + (event.task.id to event.task.copy(events = it.tasks[event.task.id]?.events.orEmpty()))) }
             is ServerEvent.SecureLoginChanged -> _state.update { it.copy(secureLogins = it.secureLogins + (event.login.id to event.login)) }
+            is ServerEvent.ConversationReset -> _state.update { s -> s.copy(agents = s.agents.map { if (it.id == event.agentId) it.copy(mainConversationId = event.conversationId) else it }) }
             is ServerEvent.ChatChanged -> {
                 if (event.deleted) _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == event.chatId }, currentChatId = s.currentChatId.takeIf { it != event.chatId }) }
                 viewModelScope.launch { runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } } }
@@ -317,6 +322,18 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     fun createChat(onCreated: () -> Unit) = act {
         val chat = client.createChat()
+        _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
+        onCreated()
+    }
+
+    /** `/clear` in a general chat: a fresh chat with the same model and web search; the old one stays in the list. */
+    fun restartChat(from: GeneralChat, onCreated: () -> Unit) = act {
+        var chat = client.createChat()
+        val patch = buildJsonObject {
+            from.model?.let { put("model", OdJson.encodeToJsonElement(ModelConfig.serializer(), it)) }
+            if (!from.webSearch) put("webSearch", false)
+        }
+        if (patch.isNotEmpty()) chat = client.updateChat(chat.id, patch)
         _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
         onCreated()
     }

@@ -113,6 +113,28 @@ class ChatSession(
         follow(resume = false) { client.chat(target, id, text.trim(), files, replyTo, answer) }
     }
 
+    /**
+     * `/clear` on a companion: the server archives the thread (history, memory, tasks are kept) and starts an empty one.
+     * Refused while a turn runs.
+     */
+    fun clear(onDone: () -> Unit = {}) {
+        val target = target as? ChatTarget.Companion ?: return
+        val conversation = conversationId ?: return
+        if (_state.value.busy) return
+        scope.launch {
+            try {
+                client.clearConversation(target.id, conversation)
+                olderLoaded = false
+                _state.update { it.copy(messages = emptyList(), cursor = null, error = null, notSent = false) }
+                resync()
+                onDone()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                fail(e)
+            }
+        }
+    }
+
     /** General chats: a new answer to the latest message. The replaced answer is kept in the new one's versions. */
     fun regenerate() {
         val lastUser = _state.value.messages.indexOfLast { it.isUser }
@@ -176,6 +198,12 @@ class ChatSession(
             is ServerEvent.MessageReaction -> if (event.conversationId == conversation) setReactions(event.messageId, event.reactions)
             is ServerEvent.TurnFinished -> if (event.conversationId == conversation) scope.launch { delay(300); resync(); markRead() }
             // A companion called into a general chat answers outside the stream: re-read when the chat changes.
+            // Cleared elsewhere (another device, the web): the thread now starts empty.
+            is ServerEvent.ConversationReset -> if (target is ChatTarget.Companion && event.agentId == target.id && event.archivedId == conversation) scope.launch {
+                olderLoaded = false
+                _state.update { it.copy(messages = emptyList(), cursor = null) }
+                resync()
+            }
             is ServerEvent.ChatChanged -> if (target is ChatTarget.General && event.chatId == target.id && !event.deleted) scope.launch { delay(200); resync() }
             is ServerEvent.TaskChanged -> if (event.task.conversationId == conversation && !event.task.active || event.task.conversationId == conversation && event.task.status == "waiting_for_user") scope.launch { delay(300); resync() }
             else -> Unit

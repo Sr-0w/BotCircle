@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { closeDialog, useDialog } from "@/lib/dialogs";
 import { toast } from "sonner";
 import { ActivityDialog, Field } from "./activity-dialog";
-import { TeamThreadDialog } from "./team-thread-dialog";
+import { ArchiveThreadDialog, TeamThreadDialog } from "./team-thread-dialog";
 import { ArtifactDialog, TaskDialog } from "./work-dialogs";
 import { McpDialog, MailDialog, PluginDialog } from "./connector-dialogs";
 const FilePreviewDialog = lazy(() => import("../files/file-preview").then((m) => ({ default: m.FilePreviewDialog })));
@@ -36,6 +36,8 @@ export function DialogHost() {
       return <DraftDialog draftId={d.draftId} onClose={closeDialog} />;
     case "team":
       return <TeamThreadDialog agentA={d.agentA} agentB={d.agentB} onClose={closeDialog} />;
+    case "archive":
+      return <ArchiveThreadDialog agentId={d.agentId} conversationId={d.conversationId} archivedAt={d.archivedAt} onClose={closeDialog} />;
     case "task":
       return <TaskDialog taskId={d.taskId} onClose={closeDialog} />;
     case "artifact":
