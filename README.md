@@ -1,8 +1,10 @@
-# OpenDots
+# BotCircle
+
+Previously OpenDots. Same application, data and history; see [migration notes](docs/renaming.md).
 
 **Autonomous, collaborative AI companions that you set up just by talking to them.**
 
-OpenDots gives you a small team of persistent digital companions. Each one has a name, a personality, one long-running conversation, a long-term memory, tools, and its own responsibilities. They keep working when the window is closed. They wake up on a schedule, watch pages, react to emails and webhooks, and talk to each other. They come back to you only when there's something worth saying or something that needs your approval.
+BotCircle gives you a small team of persistent digital companions. Each one has a name, a personality, one long-running conversation, a long-term memory, tools, and its own responsibilities. They keep working when the window is closed. They wake up on a schedule, watch pages, react to emails and webhooks, and talk to each other. They come back to you only when there's something worth saying or something that needs your approval.
 
 There are no forms to fill in and no workflow builder. You open the app, add an OpenRouter key, pick a model, and say hi.
 
@@ -141,7 +143,7 @@ default model. Each account has its own companions, conversations, connectors,
 settings and encrypted keys. A deployment-wide OpenRouter key is never shared with
 signed-in users.
 
-No database installation is needed: OpenDots uses one PGlite database per account
+No database installation is needed: BotCircle uses one PGlite database per account
 under `./data/users` and a separate account registry. The built-in connector catalog
 includes **Google Drive, Google Calendar, Gmail, Outlook, GitHub and IMAP/SMTP**.
 The operator registers OAuth applications once; users then connect through the

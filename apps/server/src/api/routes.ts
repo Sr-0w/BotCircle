@@ -90,7 +90,7 @@ export function createApi() {
     return c.json({ error: err instanceof z.ZodError ? 'Requête invalide' : errorMessage(err) }, status);
   });
 
-  // Les requêtes de modification doivent provenir du client OpenDots (en-tête
+  // Les requêtes de modification doivent provenir du client BotCircle (en-tête
   // personnalisé => pré-vérification CORS obligatoire pour un site tiers).
   api.use('*', async (c, next) => {
     const token = process.env.OPENDOTS_TOKEN;

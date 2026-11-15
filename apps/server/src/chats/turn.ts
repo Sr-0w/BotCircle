@@ -125,7 +125,7 @@ function assistantTools(chatId: string, attached: () => string[]): ToolSet {
 
 function systemPrompt(agents: AgentRow[], tz: string) {
   return [
-    `You are the general assistant of OpenDots, in a standalone chat that belongs to no companion. Answer in the user's language, directly and concisely. You have no persistent identity, memory, computer or connected accounts of your own.`,
+    `You are the general assistant of BotCircle, in a standalone chat that belongs to no companion. Answer in the user's language, directly and concisely. You have no persistent identity, memory, computer or connected accounts of your own.`,
     `Today is ${new Date().toLocaleString('fr-FR', { timeZone: tz, dateStyle: 'full', timeStyle: 'short' })} (${tz}).`,
     agents.length
       ? `The user also has companions, persistent agents with their own tools, computer, connections and memory: ${agents.map((a) => `${a.name}${a.description ? ` (${truncate(a.description, 80)})` : ''}`).join('; ')}. ` +

@@ -394,7 +394,7 @@ export const tasks = pgTable(
     artifacts: jsonb('artifacts').$type<string[]>().notNull().default([]),
     /** Consignes ajoutées pendant l'exécution, appliquées à l'étape suivante. */
     pendingInstructions: jsonb('pending_instructions').$type<string[]>().notNull().default([]),
-    /** Qui exécute : un worker OpenDots (`worker`) ou une session OpenCode distante (`opencode`). */
+    /** Qui exécute : un worker BotCircle (`worker`) ou une session OpenCode distante (`opencode`). */
     provider: text('provider').$type<TaskProviderName>().notNull().default('worker'),
     /** Pour une exécution externe : l'instance, la session et le dossier exacts. */
     external: jsonb('external').$type<TaskExternalRef | null>(),

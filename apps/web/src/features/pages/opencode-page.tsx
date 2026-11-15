@@ -15,7 +15,7 @@ type Draft = { id?: string; name: string; baseUrl: string; username: string; pas
 const EMPTY: Draft = { name: '', baseUrl: '', username: 'opencode', password: '', defaultDirectory: '' };
 
 /**
- * Les instances OpenCode du compte : des machines de développement où tourne `opencode serve`. OpenDots s'y connecte
+ * Les instances OpenCode du compte : des machines de développement où tourne `opencode serve`. BotCircle s'y connecte
  * par l'API d'OpenCode ; l'adresse et le mot de passe se saisissent ici, jamais dans une conversation.
  */
 export function OpencodePage() {
@@ -77,11 +77,11 @@ export function OpencodePage() {
           </form>
         ) : <Button variant="secondary" onClick={() => setDraft(EMPTY)}><PlusIcon /> {t('Ajouter une instance')}</Button>}
         <details className="rounded-2xl border p-4 text-sm">
-          <summary className="cursor-pointer font-medium">{t('Comment exposer OpenCode à OpenDots')}</summary>
+          <summary className="cursor-pointer font-medium">{t('Comment exposer OpenCode à BotCircle')}</summary>
           <div className="mt-2 space-y-2 text-muted-foreground text-xs">
             <p>{t('Sur la machine de développement, lance OpenCode en serveur, protégé par un mot de passe :')}</p>
             <pre className="overflow-x-auto rounded-lg bg-muted p-2 font-mono">OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0 --port 4096</pre>
-            <p>{t('Le serveur OpenDots doit pouvoir joindre cette adresse. OpenCode ne traverse pas seul un NAT : utilise un réseau privé (Tailscale, WireGuard), un tunnel SSH ou un reverse proxy HTTPS. N’expose jamais ce port sans mot de passe.')}</p>
+            <p>{t('Le serveur BotCircle doit pouvoir joindre cette adresse. OpenCode ne traverse pas seul un NAT : utilise un réseau privé (Tailscale, WireGuard), un tunnel SSH ou un reverse proxy HTTPS. N’expose jamais ce port sans mot de passe.')}</p>
             <p>{t('Ensuite, autorise un compagnon dans son profil : « Déléguer du code à OpenCode ».')}</p>
           </div>
         </details>

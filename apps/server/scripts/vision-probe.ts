@@ -1,4 +1,4 @@
-/** Optional paid provider check. Never reads keys stored in an OpenDots account. */
+/** Optional paid provider check. Never reads keys stored in an BotCircle account. */
 import { randomInt } from 'node:crypto';
 import sharp from 'sharp';
 import { setupNetwork } from '../src/net.ts';

@@ -15,7 +15,7 @@ import { getTask, sendInstruction } from '../tasks/service.ts';
  * statut. La frontière est tenue par le serveur, pas par une consigne au modèle :
  *  - le bureau passe sous contrôle humain (captures, clics, clavier, inspection du DOM refusés) ;
  *  - les autres outils qui touchent l'ordinateur (shell, fichiers de l'espace de travail) sont retirés du tour ;
- *  - aucune valeur saisie ne transite par OpenDots : rien à journaliser, rien à stocker.
+ *  - aucune valeur saisie ne transite par BotCircle : rien à journaliser, rien à stocker.
  */
 
 export type SecureLoginRow = typeof schema.secureLogins.$inferSelect;

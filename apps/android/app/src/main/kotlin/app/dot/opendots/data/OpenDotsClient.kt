@@ -47,7 +47,7 @@ fun normalizeServerUrl(input: String): HttpUrl? {
 }
 
 /**
- * The OpenDots engine, as seen from a native client. It speaks the same HTTP API as the web app (`/api/...`): a session
+ * The BotCircle engine, as seen from a native client. It speaks the same HTTP API as the web app (`/api/...`): a session
  * cookie for identity, the `x-opendots-client` header on every call, server-sent events for realtime, and the AI SDK
  * UI-message stream for a companion's turn.
  */
@@ -112,7 +112,7 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
 
     // --- Server & account ------------------------------------------------------------
 
-    /** Checks that [candidate] really is an OpenDots engine, then adopts it. */
+    /** Checks that [candidate] really is an BotCircle engine, then adopts it. */
     suspend fun connect(candidate: HttpUrl): MeResponse {
         val previous = store.serverUrl
         if (previous != candidate.toString()) store.sessionCookie = null

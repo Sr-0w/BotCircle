@@ -233,7 +233,7 @@ data class MessageMeta(
     val taskId: String? = null,
 )
 
-/** One part of a message, mirroring the AI SDK's UI message parts that OpenDots stores. */
+/** One part of a message, mirroring the AI SDK's UI message parts that BotCircle stores. */
 @Immutable
 sealed interface Part {
     data class Text(val text: String) : Part

@@ -27,7 +27,7 @@ conversation images are not automatically deleted. This initial version does not
 include a media-library deletion screen. An upload completed before a later chat
 request fails may also occupy quota.
 
-When generating a reply, OpenDots loads verified image bytes from the account's
+When generating a reply, BotCircle loads verified image bytes from the account's
 own storage and sends them inline to the model. Private URLs, session cookies and
 server filesystem paths are not sent as image-fetch credentials. At most the
 **12 most recent context images** are included; older images get an explicit text

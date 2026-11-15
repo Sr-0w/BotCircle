@@ -11,7 +11,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Where the app remembers which OpenDots server it talks to and its session cookie. The cookie is encrypted with an
+ * Where the app remembers which BotCircle server it talks to and its session cookie. The cookie is encrypted with an
  * AES-GCM key that never leaves the Android Keystore; if the Keystore is unavailable the session simply is not
  * persisted (the user signs in again), it is never written in clear.
  */

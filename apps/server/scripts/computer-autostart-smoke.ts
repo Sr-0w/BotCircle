@@ -77,7 +77,7 @@ try {
   assert.notEqual((await asA(computerState))!.id,(await asB(computerState))!.id);
   await Promise.all([registerComputerAutostart(a),registerComputerAutostart(a)]);
   assert.equal((await asA(() => desktopExec(['sh','-c','pgrep -u "$(id -u)" -x Xvfb | wc -l']))).toString().trim(),'1');
-  console.log('PASS autorisation retirée et arrêt explicite respectés, redémarrage OpenDots rallume le conteneur et les bureaux éligibles, comptes isolés et démarrage idempotent.');
+  console.log('PASS autorisation retirée et arrêt explicite respectés, redémarrage BotCircle rallume le conteneur et les bureaux éligibles, comptes isolés et démarrage idempotent.');
 } catch (error) {
   console.error(error); process.exitCode = 1;
 } finally {

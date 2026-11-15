@@ -1,6 +1,6 @@
 # Accounts and built-in connectors
 
-OpenDots now requires an account before any private API, event stream or model
+BotCircle now requires an account before any private API, event stream or model
 configuration can be accessed. Sign up with an email address and a password of at
 least 12 characters. Each account then supplies its **own OpenRouter key** in the
 onboarding screen. The deployment's `OPENROUTER_API_KEY` is never inherited by
@@ -15,7 +15,7 @@ permission review. Advanced custom connections/plugins are grouped separately.
 Service logos are bundled locally; source/license notices are in
 `apps/web/public/brands/NOTICE.md`.
 
-After sign-in, OpenDots optionally obtains the account email's public Gravatar
+After sign-in, BotCircle optionally obtains the account email's public Gravatar
 name and photo using a normalized email hash. This lookup never blocks login;
 missing/private profiles or network errors retain the local initials/email.
 Names and images are cached in server memory (bounded to 128 profiles). The
@@ -87,7 +87,7 @@ an approval request. No provider mutation occurs before approval. Permissions,
 account ownership and enabled state are checked again when approval executes.
 Changing the generic connector `approval` field cannot bypass this rule.
 
-OAuth scopes can be broader than the operations exposed by OpenDots (GitHub's
+OAuth scopes can be broader than the operations exposed by BotCircle (GitHub's
 `repo`, Microsoft's `Mail.ReadWrite`, for example). The consent screen explains
 this. Google Docs export is supported; binary PDFs/images are metadata-only.
 Search/list operations return bounded pages, not a complete mailbox or repository
@@ -105,12 +105,12 @@ application registered with each provider. This registration belongs to the
 connector subscription is required; provider account and organization policies
 still apply.
 
-1. Sign up your operator account, then **stop the OpenDots server**. PGlite must not
+1. Sign up your operator account, then **stop the BotCircle server**. PGlite must not
    be opened by two Node processes at once.
 2. Run `pnpm auth:admin operator@example.com` with the same `OPENDOTS_DATA_DIR` and
    encryption-key environment as the server. There is no automatic first-user
    administrator privilege on a public deployment.
-3. Restart OpenDots and sign in. In **Connectors → Applications OAuth du
+3. Restart BotCircle and sign in. In **Connectors → Applications OAuth du
    déploiement**, configure the application's Client ID and secret. Secrets are
    encrypted on the server. These settings are hidden from ordinary accounts.
 4. Alternatively inject the environment variables in `.env.example`; environment
@@ -148,7 +148,7 @@ localhost and 127.0.0.1 have different cookies.
 Every write operation (`github_repo_create`, `github_branch_create`,
 `github_pr_create`, `github_pr_merge`, `github_push`) is a prepared action that
 runs only after human approval. The **code** permission must be selected in
-OpenDots; selecting private-repository access alone does not enable these actions.
+BotCircle; selecting private-repository access alone does not enable these actions.
 Companions make commits with their normal shell in their isolated computer.
 Push and merge approvals display and retain the exact commit SHA:
 
@@ -178,7 +178,7 @@ the provider in a popup. Authorization uses one-time state, PKCE S256 and a
 browser-bound cookie. Expired access tokens refresh automatically where the
 provider issues refresh tokens. Reconnect preserves identity and replaces grants;
 disconnect deletes local tokens. To withdraw provider consent as well, remove
-OpenDots in the provider's authorized-applications settings (Google revocation
+BotCircle in the provider's authorized-applications settings (Google revocation
 can affect several connections to the same Google account). Microsoft has no
 per-token revocation endpoint in this implementation.
 

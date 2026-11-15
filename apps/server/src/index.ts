@@ -21,14 +21,14 @@ void ensureLocalSearch().then(() => console.log('SearXNG local est prêt.')).cat
 const app = createApplication();
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
-  console.log(`OpenDots est prêt sur http://${info.address}:${info.port}`);
+  console.log(`BotCircle est prêt sur http://${info.address}:${info.port}`);
   console.log('Les API privées nécessitent une session utilisateur.');
 });
 const closeDesktopSockets = attachDesktopWebSocket(server as import("node:http").Server);
 async function shutdown() {
   closeCodexClients();
   closeDesktopSockets();
-  console.log('Arrêt d’OpenDots…');
+  console.log('Arrêt d’BotCircle…');
   server.close();
   await stopAccountRuntimes();
   await closeAllMcpClients();

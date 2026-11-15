@@ -113,7 +113,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
             <span key={c} className={`size-2.5 rounded-full ${c}`} />
           ))}
         </div>
-        <span className="font-semibold tracking-tight">{t("OpenDots")}</span>
+        <span className="font-semibold tracking-tight">{t("BotCircle")}</span>
         {!connected && (
           <Tooltip>
             <TooltipTrigger asChild>

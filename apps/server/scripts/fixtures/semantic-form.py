@@ -6,7 +6,7 @@ from pathlib import Path
 import json
 
 GLib.set_prgname('opendots-semantic-fixture')
-window = Gtk.Window(title='OpenDots semantic fixture')
+window = Gtk.Window(title='BotCircle semantic fixture')
 window.set_default_size(550, 260)
 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
 window.add(box)

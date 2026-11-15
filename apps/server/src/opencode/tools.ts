@@ -41,7 +41,7 @@ export function opencodeTools(ctx: ToolContext): ToolSet {
       },
     }),
     opencode_projects: tool({
-      description: "Projets connus d'une instance OpenCode et, pour un dossier, ses sessions récentes (y compris celles créées hors d'OpenDots). Sert à choisir le bon projet ou à retrouver une session à poursuivre.",
+      description: "Projets connus d'une instance OpenCode et, pour un dossier, ses sessions récentes (y compris celles créées hors d'BotCircle). Sert à choisir le bon projet ou à retrouver une session à poursuivre.",
       inputSchema: z.object({ instance: z.string().optional().describe('Nom de l’instance ; inutile s’il n’y en a qu’une'), directory: z.string().optional().describe('Dossier du projet dont lister les sessions') }).strict(),
       execute: async ({ instance, directory }) => {
         try {

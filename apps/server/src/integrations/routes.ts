@@ -42,11 +42,11 @@ export function integrationRoutes() {
         if (agent && !agent.archived) await enqueue('agent.wake', { agentId: agent.id, event: { type: 'system', title: 'Nouvelle connexion' }, text: `${result.connector.name} est connecté. Reprends la tâche qui nécessitait cette connexion. Les écritures attendent toujours la validation de l’utilisateur.`, depth: 0 }, { agentId: agent.id });
       }
       // No token, code, account contents or state are exposed to window.opener.
-      return c.html(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>OpenDots — connexion établie</title><body><p>Connexion établie. Tu peux fermer cet onglet.</p><script>if(window.opener){window.opener.postMessage({type:'opendots:oauth',ok:true},${JSON.stringify(result.origin)});window.close()}</script></body></html>`);
+      return c.html(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>BotCircle — connexion établie</title><body><p>Connexion établie. Tu peux fermer cet onglet.</p><script>if(window.opener){window.opener.postMessage({type:'opendots:oauth',ok:true},${JSON.stringify(result.origin)});window.close()}</script></body></html>`);
     } catch (error) {
       deleteCookie(c, cookieName, { path: '/api/integrations/oauth/callback' });
-      const message = error instanceof ConnectorError ? error.message : 'Connexion impossible. Recommence depuis OpenDots.';
-      return c.html(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>OpenDots — connexion refusée</title><body><p>${escape(message)}</p><p>Tu peux fermer cet onglet et recommencer depuis OpenDots.</p></body></html>`, 400);
+      const message = error instanceof ConnectorError ? error.message : 'Connexion impossible. Recommence depuis BotCircle.';
+      return c.html(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>BotCircle — connexion refusée</title><body><p>${escape(message)}</p><p>Tu peux fermer cet onglet et recommencer depuis BotCircle.</p></body></html>`, 400);
     }
   });
   app.post('/:id/disconnect', async (c) => {

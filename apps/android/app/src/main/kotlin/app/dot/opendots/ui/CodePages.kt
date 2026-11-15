@@ -364,7 +364,7 @@ private fun CodeQuestionCard(request: CodeQuestion, onAnswer: (List<List<String>
     }
 }
 
-/** The project's files, read on the development machine on demand: nothing is copied to OpenDots. */
+/** The project's files, read on the development machine on demand: nothing is copied to BotCircle. */
 @Composable
 private fun CodeFiles(app: AppState, taskId: String) {
     val c = Dot.colors

@@ -91,10 +91,10 @@ class ProtocolTest {
     }
 
     @Test fun approvalSummariesAreSplitIntoTitleAndDetails() {
-        val s = app.dot.opendots.ui.splitApprovalSummary("GitHub — robin@example.com · Pousser une branche · commit 100f9b4271509a9a826ac4de535d182960079cd2 · {\"repo\":\"Sr-0w/OpenDots\",\"set_upstream\":true}")
+        val s = app.dot.opendots.ui.splitApprovalSummary("GitHub — robin@example.com · Pousser une branche · commit 100f9b4271509a9a826ac4de535d182960079cd2 · {\"repo\":\"Sr-0w/BotCircle\",\"set_upstream\":true}")
         assertEquals("GitHub — robin@example.com", s.context)
         assertEquals("Pousser une branche", s.title)
-        assertEquals(listOf("commit" to "100f9b427150", "repo" to "Sr-0w/OpenDots", "set_upstream" to "true"), s.details)
+        assertEquals(listOf("commit" to "100f9b427150", "repo" to "Sr-0w/BotCircle", "set_upstream" to "true"), s.details)
         assertEquals("Send it", app.dot.opendots.ui.splitApprovalSummary("Send it").title)
         assertEquals("Validation : GitHub", app.dot.opendots.ui.shortEventTitle("Validation : GitHub · {\"a\":1}"))
     }

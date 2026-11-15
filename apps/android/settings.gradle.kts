@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "OpenDots"
+rootProject.name = "BotCircle"
 include(":app", ":designsystem")

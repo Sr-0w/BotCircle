@@ -29,7 +29,7 @@ fun parseAgentColor(hex: String): Color =
     runCatching { Color(android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")) }.getOrDefault(Color(0xFF888888))
 
 /**
- * A companion's face: the OpenDots "dot" - a softly shaded sphere in the companion's own colour with two eyes. This is
+ * A companion's face: the BotCircle "dot" - a softly shaded sphere in the companion's own colour with two eyes. This is
  * the one place a companion's colour appears; it never tints the conversation. While the companion works the eyes blink
  * slowly (still when system animations are off); an error shows a small danger mark.
  */

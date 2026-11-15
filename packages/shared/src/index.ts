@@ -1,4 +1,4 @@
-// Contrats partagés entre le backend et le frontend d'OpenDots.
+// Contrats partagés entre le backend et le frontend d'BotCircle.
 
 export type AgentState =
   | 'available'

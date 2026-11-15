@@ -14,7 +14,7 @@ import { errorMessage, newId, truncate } from '../util.ts';
 import { OpencodeClient, OpencodeHttpError, OpencodeUnreachable, type RawMessage, type RawPart, type RawSession } from './client.ts';
 
 /*
- * OpenCode dans OpenDots. OpenCode fait le code sur sa machine ; OpenDots tient l'accès, la propriété de la
+ * OpenCode dans BotCircle. OpenCode fait le code sur sa machine ; BotCircle tient l'accès, la propriété de la
  * tâche, la communication et l'affichage. Une délégation est une tâche du registre commun (#24) dont le
  * fournisseur est `opencode` : même carte, même liste, mêmes règles (« une carte, pas de bulles »), mais l'état
  * vient de la session distante, relu à chaque battement. Rien n'est affirmé qui n'ait été observé :

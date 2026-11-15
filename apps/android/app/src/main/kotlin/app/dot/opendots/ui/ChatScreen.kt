@@ -187,7 +187,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         MessageEnv(
             agents = ui.agents, approvals = ui.approvals, requests = ui.requests, drafts = ui.drafts, busy = chat.busy,
             resolveUrl = app.client::resolve,
-            onCopy = { text -> scope.launch { clipboard.setClipEntry(ClipData.newPlainText("OpenDots", text).toClipEntry()); if (android.os.Build.VERSION.SDK_INT < 33) app.notify(copied) } },
+            onCopy = { text -> scope.launch { clipboard.setClipEntry(ClipData.newPlainText("BotCircle", text).toClipEntry()); if (android.os.Build.VERSION.SDK_INT < 33) app.notify(copied) } },
             onReply = { reply = it },
             onReact = session::react,
             onDecide = { id, approve -> app.decide(id, approve) },

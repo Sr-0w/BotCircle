@@ -134,7 +134,7 @@ export class OAuthManager {
 
   async revoke(row: ConnectorRow): Promise<string | null> {
     const provider = integrationSpec(row.config.provider).oauth, secret = readSecrets(row);
-    if (provider === 'microsoft') return 'Connexion supprimée dans OpenDots. Pour retirer aussi le consentement Microsoft, ouvre les applications autorisées de ton compte Microsoft.';
+    if (provider === 'microsoft') return 'Connexion supprimée dans BotCircle. Pour retirer aussi le consentement Microsoft, ouvre les applications autorisées de ton compte Microsoft.';
     try {
       let response: Response;
       if (provider === 'google') response = await this.transport('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: secret.refresh_token ?? secret.access_token }), signal: AbortSignal.timeout(10_000), redirect: 'error' });

@@ -33,7 +33,7 @@ import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Drives the real app (AppState, OpenDotsClient, every screen) against a fake OpenDots engine that speaks the real HTTP
+ * Drives the real app (AppState, OpenDotsClient, every screen) against a fake BotCircle engine that speaks the real HTTP
  * API, and writes a PNG of each screen to app/build/shots for a visual check. Blur itself needs a device (RenderEffect
  * is not rendered here); everything else - layout, themes, protocol - is exercised for real.
  */
@@ -66,7 +66,7 @@ class ScreensTest {
         {"type":"text","text":"**12,418 lines** across `163` files.\n\n| Package | Lines |\n|---|---|\n| server | 7,902 |\n| web | 4,516 |\n\n```bash\nfind . -name '*.ts' | xargs wc -l\n```\n\nI drafted the reply to Claire:"},
         {"type":"tool-mail_send","toolCallId":"t4","state":"output-available","input":{},"output":{"ok":true,"status":"pending_approval","approvalId":"ap1","summary":"Send an email to claire@example.com"}}]}
     ]}"""
-    private val approvals = """[{"id":"ap1","agentId":"a1","conversationId":"c1","action":"mail.send","summary":"GitHub — robin@example.com · Pousser (git push) une branche depuis l'ordinateur du compagnon · commit 100f9b4271509a9a826ac4de535d182960079cd2 · {\"repo\":\"Sr-0w/OpenDots\",\"branch\":\"fix/team-tools\",\"set_upstream\":true}","status":"pending","createdAt":"2026-11-13T09:00:00Z"}]"""
+    private val approvals = """[{"id":"ap1","agentId":"a1","conversationId":"c1","action":"mail.send","summary":"GitHub — robin@example.com · Pousser (git push) une branche depuis l'ordinateur du compagnon · commit 100f9b4271509a9a826ac4de535d182960079cd2 · {\"repo\":\"Sr-0w/BotCircle\",\"branch\":\"fix/team-tools\",\"set_upstream\":true}","status":"pending","createdAt":"2026-11-13T09:00:00Z"}]"""
     private val activities = """[
       {"id":"act1","agentId":"a1","title":"Weekly recap","kind":"schedule","schedule":{"type":"cron","expr":"0 17 * * 5"},"enabled":true,"nextRunAt":"2026-11-13T17:00:00Z"},
       {"id":"act2","agentId":"a2","title":"Watch: monitor price","kind":"watch","watch":{"url":"https://shop.example.com/monitor","mode":"contains"},"enabled":false}]"""
@@ -395,7 +395,7 @@ class ScreensTest {
 
     @Test fun firstLaunchAsksForTheServer() {
         launch(ThemeMode.OLED, cookie = null, server = false)
-        waitFor("Connect to OpenDots")
+        waitFor("Connect to BotCircle")
         shoot("server-oled")
     }
 

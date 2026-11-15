@@ -1,11 +1,11 @@
-# OpenCode in OpenDots
+# OpenCode in BotCircle
 
-OpenCode does the coding on your development machine. OpenDots orchestrates: who may delegate, which machine and
+OpenCode does the coding on your development machine. BotCircle orchestrates: who may delegate, which machine and
 session a task belongs to, what was said, and what you see.
 
 ## How it connects (and why)
 
-OpenDots talks to the HTTP API of `opencode serve` — the same API the OpenCode TUI and web client use, described by
+BotCircle talks to the HTTP API of `opencode serve` — the same API the OpenCode TUI and web client use, described by
 its OpenAPI spec (checked against the published SDK `@opencode-ai/sdk` 1.19, API v2). Authentication is HTTP Basic
 (`OPENCODE_SERVER_PASSWORD`, username `opencode` by default).
 
@@ -13,12 +13,12 @@ Options considered:
 
 | Option | Verdict |
 |---|---|
-| **Call the OpenCode HTTP API from the OpenDots server** | Chosen. Upstream-supported, versioned by an OpenAPI spec, covers sessions, prompts, status, permissions, diffs and files. No extra component to install or keep in sync. |
+| **Call the OpenCode HTTP API from the BotCircle server** | Chosen. Upstream-supported, versioned by an OpenAPI spec, covers sessions, prompts, status, permissions, diffs and files. No extra component to install or keep in sync. |
 | Fork / embed OpenCode Web | Not done. It is a separate SolidJS app with its own design system and state; re-skinning it to Quiet UI and keeping it merged with upstream would cost more than rendering the API natively, and it would not exist on Android. |
-| An OpenDots daemon on the development machine | Not needed: everything required is in the upstream API. It would only help with NAT traversal, which a private network already solves. |
+| An BotCircle daemon on the development machine | Not needed: everything required is in the upstream API. It would only help with NAT traversal, which a private network already solves. |
 
 What upstream does **not** provide: reaching a machine behind NAT. `opencode serve` listens on an address; something
-must make that address reachable from the OpenDots server — a private network (Tailscale, WireGuard), an SSH tunnel
+must make that address reachable from the BotCircle server — a private network (Tailscale, WireGuard), an SSH tunnel
 or an HTTPS reverse proxy. Never expose the port without a password.
 
 ```bash
@@ -66,9 +66,9 @@ Opening a card opens that session: beside the chat on desktop (expandable), full
 - Compared with OpenCode's own UI: no terminal (PTY), no model / agent switch per session, no session fork, revert
   or share, no slash commands, no LSP or MCP panels. Those endpoints exist upstream and are not wired here.
 - No push of events: state is polled, so the card can lag by a few seconds.
-- Files produced on the development machine are not turned into OpenDots attachments; they stay there and are read
+- Files produced on the development machine are not turned into BotCircle attachments; they stay there and are read
   through the workspace.
-- Starting a task from the UI without a companion, and browsing sessions created outside OpenDots from the UI, are
+- Starting a task from the UI without a companion, and browsing sessions created outside BotCircle from the UI, are
   not offered (a companion can list and resume such sessions with `opencode_projects` and `session_id`).
 - It has been exercised against a fake server that speaks the documented API and with a real model driving the
   companion — not yet against a real OpenCode instance.

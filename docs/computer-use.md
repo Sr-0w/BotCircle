@@ -182,7 +182,7 @@ sending/publishing because they expose specific permissions and operations.
 Click **Take control / Prendre la main** to interact directly through noVNC.
 Model screenshots and input actions are then suspended. Enter credentials directly
 here rather than in chat. This suspension is stored with the account: closing the
-page, losing the connection or restarting OpenDots does not silently resume model
+page, losing the connection or restarting BotCircle does not silently resume model
 captures. Explicitly hand control back, allow models on reopening the page, or stop
 the desktop. Earlier images already sent to a provider cannot be withdrawn.
 
@@ -205,7 +205,7 @@ instead of asking for credentials. The server then:
 
 While a request is pending, control cannot be handed back from the computer page: only the card ends it.
 
-Limits to know: this is the takeover flow, not a credential-injection form — OpenDots never holds the password, which
+Limits to know: this is the takeover flow, not a credential-injection form — BotCircle never holds the password, which
 also means it cannot autofill it. And once signed in, the session lives in the companion's browser profile: a
 companion with shell access to its own computer could read its own cookies. Do not sign a companion into an account
 you would not let it act on.
@@ -220,7 +220,7 @@ Keep the account's computer network enabled to use the desktop. Turning computer
 mode stops the desktop. Re-enable it explicitly when needed.
 
 VNC stays on the container loopback with a private password per bot. No VNC port
-is published on the host. OpenDots relays it with `docker exec`/socat through
+is published on the host. BotCircle relays it with `docker exec`/socat through
 `/api/computer/vnc?agentId=…`, requiring the signed-in session, bot ownership and
 exact browser Origin. Logout/session expiry terminates established WebSockets. No VNC port or
 additional public hostname is needed. Do not expose Docker or VNC directly.
@@ -319,7 +319,7 @@ recognition with one provider and no fallback.
 
 ### Automatic desktop startup
 
-OpenDots restores all authorized, enabled bot desktops in the background when
+BotCircle restores all authorized, enabled bot desktops in the background when
 an account runtime starts. It also watches Docker container-start events and
 restarts those desktops after their private containers are restarted externally.
 After a Docker daemon interruption, the watcher reconnects and reconciles
@@ -500,7 +500,7 @@ Validated on 2026-11-12 with the rebuilt computer image:
   the displayed prefix is rejected before clicking.
 - Small-page click/title verification, Wikipedia IPv6 detail and link navigation,
   browser PID reuse, distinct bot UIDs/homes and cross-bot tab rejection.
-- Real existing OpenDots/Codex conversation: five successful OpenDots tool calls
+- Real existing BotCircle/Codex conversation: five successful BotCircle tool calls
   (open IPv6, inspect 400 nodes, inspect IPv4 target, click, inspect IPv4 URL).
   Its persistent profile runs the content-addressed worker, verified via CDP.
 - Docker autostart regression, semantic/controller unit tests, Codex adapter tests
@@ -522,14 +522,14 @@ outside the computer. The shared directory is intentionally visible to teammates
 Container lifecycle locks, idle suspension and leases are per companion.
 
 Migration retains home paths, stable UID/display allocation and Chromium profiles.
-Before starting a private computer, OpenDots stops the former account-wide
+Before starting a private computer, BotCircle stops the former account-wide
 container to avoid two Chromium processes writing the same profile. Its old
 writable layer is retained for rollback. System installations persist through
 container/app restarts; resetting/recreating the computer or changing its image
 replaces that system layer, while the mounted home survives.
 
 Codex's native `read-only` sandbox protects the application host. It does not
-restrict `shell_exec` on the separate OpenDots PC. Instructions explicitly require
+restrict `shell_exec` on the separate BotCircle PC. Instructions explicitly require
 checking actual tool results instead of inferring a read-only PC from that flag.
 Native Codex tools remain disabled.
 
@@ -537,5 +537,5 @@ Validation: `scripts/computer-root-smoke.ts` installs and executes a real `.deb`
 checks system writes and persistence across Docker restart, and verifies that
 another bot with root cannot see the package or private files. Existing desktop
 startup, Git credential broker and browser inspection regression checks also run.
-A real OpenDots/Codex conversation installed `tree` through apt and verified
+A real BotCircle/Codex conversation installed `tree` through apt and verified
 `tree v2.1.0`, with `sudo -n id -u` returning `0`.

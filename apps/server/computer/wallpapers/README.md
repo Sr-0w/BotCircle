@@ -1,6 +1,6 @@
 # Desktop wallpaper assets
 
-The five original JPEG files were supplied by the project owner for OpenDots.
+The five original JPEG files were supplied by the project owner for BotCircle.
 They are copied unchanged. `../wallpaper.py` blends adjacent frames locally over
 the account's day: night → dawn → morning → day → dusk → night.
 There is no wallpaper service, download or model call.

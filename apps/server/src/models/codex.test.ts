@@ -55,7 +55,7 @@ describe('Codex adapter', () => {
     expect(JSON.stringify(prompts[1])).toContain('verified');
   });
 
-  it('returns dynamic calls to OpenDots rather than executing them in Codex', async () => {
+  it('returns dynamic calls to BotCircle rather than executing them in Codex', async () => {
     const { model, rpc, calls } = fake({ method: 'item/tool/call', id: 5, params: { callId: 'call-1', tool: 'computer_action', arguments: { action: 'click', x: 12, y: 15 } } });
     const { stream } = await model.doStream({ prompt: [{ role: 'user', content: [{ type: 'text', text: 'Click' }] }], tools: [{ type: 'function', name: 'computer_action', inputSchema: { type: 'object' } }] });
     const parts = await read(stream);
@@ -64,7 +64,7 @@ describe('Codex adapter', () => {
     expect(calls[0].params.baseInstructions).toContain('one short user-visible sentence');
     expect(calls[0].params.dynamicTools[0].name).toBe('computer_action');
     expect(calls[0].params.sandbox).toBe('read-only'); expect(rpc.closed).toBe(true);
-    expect(calls[0].params.baseInstructions).toContain('not to the separate computer reached through OpenDots dynamic tools');
+    expect(calls[0].params.baseInstructions).toContain('not to the separate computer reached through BotCircle dynamic tools');
     expect(calls[0].params.baseInstructions).toContain('Use shell_exec to check its actual permissions');
   });
   it('forwards images and disables tools for the final synthesis', async () => {
@@ -98,7 +98,7 @@ describe('Codex adapter', () => {
     const parts = await read((await model.doStream({ prompt: [], tools: [] })).stream);
     expect(parts.filter(p => p.type === 'text-delta').map(p => p.delta).join('')).toBe('Je vais cliquer.');
   });
-  it('puts OpenDots system instructions in the serialized Codex transcript', async () => {
+  it('puts BotCircle system instructions in the serialized Codex transcript', async () => {
     const { model, calls } = fake({ method: 'turn/completed', params: { turn: {} } });
     const result = streamText({ model, instructions: 'PROGRESS-SENTENCE-RULE', prompt: 'Bonjour', maxRetries: 0 });
     for await (const _ of result.stream) { /* consume */ }

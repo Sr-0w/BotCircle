@@ -88,7 +88,7 @@ export async function revokeSession(token: string) {
 }
 export async function promoteAdmin(rawEmail: string) {
   const { rows } = await (await authStore()).query('UPDATE users SET role=$1 WHERE email=$2 RETURNING id', ['admin', emailAddress(rawEmail)]);
-  if (!rows.length) throw new AuthError('Inscris d’abord ce compte dans OpenDots.');
+  if (!rows.length) throw new AuthError('Inscris d’abord ce compte dans BotCircle.');
 }
 export async function closeAuthStore() {
   if (opening) await (await opening).close();

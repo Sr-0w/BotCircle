@@ -69,11 +69,11 @@ try {
   await asA(async () => { await startDesktop(); });
   assert.equal((await asA(desktopStatus)).running, true);
   assert.equal((await asA(() => desktopExec(['sh', '-c', 'pgrep -u "$(id -u)" -x chromium || true']))).toString().trim(), '');
-  await asA(() => desktopExec(['sh', '-c', `xterm -title OpenDots-terminal -e sh -c 'for name in terminal-paste terminal-abort terminal-takeover; do IFS= read -r line; printf "%s" "$line" > "$HOME/$name.txt"; done; sleep 30' >/tmp/xterm-launch.log 2>&1 &`]));
-  await until(() => asA(async () => (await desktopExec(['sh', '-c', 'xdotool search --onlyvisible --name OpenDots-terminal || true'])).toString()), value => value.trim().length > 0);
-  await asA(() => desktopExec(['xdotool', 'search', '--onlyvisible', '--name', '^OpenDots-terminal$', 'windowactivate', '--sync']));
+  await asA(() => desktopExec(['sh', '-c', `xterm -title BotCircle-terminal -e sh -c 'for name in terminal-paste terminal-abort terminal-takeover; do IFS= read -r line; printf "%s" "$line" > "$HOME/$name.txt"; done; sleep 30' >/tmp/xterm-launch.log 2>&1 &`]));
+  await until(() => asA(async () => (await desktopExec(['sh', '-c', 'xdotool search --onlyvisible --name BotCircle-terminal || true'])).toString()), value => value.trim().length > 0);
+  await asA(() => desktopExec(['xdotool', 'search', '--onlyvisible', '--name', '^BotCircle-terminal$', 'windowactivate', '--sync']));
   const terminalFocus = await asA(screenshot);
-  assert.equal(terminalFocus.focusedWindow?.title, 'OpenDots-terminal');
+  assert.equal(terminalFocus.focusedWindow?.title, 'BotCircle-terminal');
   assert(terminalFocus.focusedWindow?.wmClass?.includes('XTerm'));
   assert(terminalFocus.focusedWindow!.geometry.width > 0 && terminalFocus.focusedWindow!.geometry.height > 0);
   // An unchanged clipboard proves type used native keys instead of pasting.
@@ -300,11 +300,11 @@ print(json.dumps(m.cdp(${opened.tabId},'Page.getLayoutMetrics')['cssLayoutViewpo
   console.log('PASS #10 : lien multiligne/descendant après défilement X/Y, vrai pointeur et clic Chromium ; vraie surcouche toujours refusée.');
   // Load a controlled offline page. Its title records real browser events.
   await asA(() => desktopExec(['python3', '-c', `from pathlib import Path
-Path('/workspaces/${botA.id}/fixture.html').write_text('''<!doctype html><meta charset="utf-8"><title>OpenDots GUI fixture</title><style>body{height:3000px;background:#fafafa;font:20px sans-serif}textarea{position:fixed;left:40px;top:40px;width:600px;height:100px}button{position:fixed;left:40px;top:240px;width:300px;height:80px;background:rgb(11,203,79);border:0}</style><textarea autofocus oninput="document.title='Typed:'+this.value"></textarea><button onclick="document.title='Clicked'">Vérifier le clic</button><script>onscroll=()=>document.title='Scrolled:'+scrollY</script>''',encoding='utf-8')`]));
+Path('/workspaces/${botA.id}/fixture.html').write_text('''<!doctype html><meta charset="utf-8"><title>BotCircle GUI fixture</title><style>body{height:3000px;background:#fafafa;font:20px sans-serif}textarea{position:fixed;left:40px;top:40px;width:600px;height:100px}button{position:fixed;left:40px;top:240px;width:300px;height:80px;background:rgb(11,203,79);border:0}</style><textarea autofocus oninput="document.title='Typed:'+this.value"></textarea><button onclick="document.title='Clicked'">Vérifier le clic</button><script>onscroll=()=>document.title='Scrolled:'+scrollY</script>''',encoding='utf-8')`]));
   await asA(() => desktopAction({ action: 'key', key: 'ctrl+l' }));
   await asA(() => desktopAction({ action: 'type', text: `file:///workspaces/${botA.id}/fixture.html`, submit: true }));
   const title = async () => asA(async () => (await desktopExec(['sh', '-c', 'xdotool getactivewindow getwindowname 2>/dev/null || true'])).toString());
-  await until(title, (value) => value.includes('OpenDots GUI fixture'));
+  await until(title, (value) => value.includes('BotCircle GUI fixture'));
   await asA(() => desktopAction({ action: 'type', text: 'Bonjour énergie ✓' }));
   await until(title, (value) => value.includes('Typed:Bonjour énergie ✓'));
   // Identify a target by its actual pixels, then click in desktop coordinates.

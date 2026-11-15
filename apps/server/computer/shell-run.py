@@ -44,5 +44,5 @@ with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
             except (FileNotFoundError, ProcessLookupError, PermissionError):
                 pass
     if background:
-        print('\n[OpenDots] Processus en arrière-plan conservés ; sorties limitées à cet instant. Pour le navigateur, utilise opendots-open-browser [url]. Redirige explicitement les sorties des tâches durables vers un fichier.', file=sys.stderr)
+        print('\n[BotCircle] Processus en arrière-plan conservés ; sorties limitées à cet instant. Pour le navigateur, utilise opendots-open-browser [url]. Redirige explicitement les sorties des tâches durables vers un fichier.', file=sys.stderr)
 raise SystemExit(code if code >= 0 else 128 - code)

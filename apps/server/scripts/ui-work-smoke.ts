@@ -39,7 +39,7 @@ function fakeOpencode(url: URL, init?: RequestInit) {
   if (path === '/session/ses_smoke/abort') { oc.busy = false; return json(true); }
   if (path === '/permission' || path === '/question') return json([]);
   if (path === '/file') return json([{ name: 'apps', path: 'apps', type: 'directory', ignored: false }, { name: 'README.md', path: 'README.md', type: 'file', ignored: false }]);
-  if (path === '/file/content') return json({ type: 'text', content: '# OpenDots\n' });
+  if (path === '/file/content') return json({ type: 'text', content: '# BotCircle\n' });
   return Response.json({}, { status: 404 });
 }
 const shots = process.env.OPENDOTS_SHOTS_DIR;
@@ -154,7 +154,7 @@ try {
   const loginCard = page.getByRole('region', { name: 'Connexion sécurisée' });
   await loginCard.getByText('Se connecter à service.example', { exact: true }).waitFor();
   await loginCard.getByText('En attente de ta connexion', { exact: true }).waitFor();
-  assert.equal(await loginCard.locator('input').count(), 0); // aucun champ d'identifiant dans OpenDots
+  assert.equal(await loginCard.locator('input').count(), 0); // aucun champ d'identifiant dans BotCircle
   await loginCard.getByText(/Connexion chiffrée \(HTTPS\)/).click();
   await loginCard.getByText('https://service.example/login?next=%2Finvoices', { exact: true }).waitFor();
   await shot('8-secure-login');
@@ -208,7 +208,7 @@ try {
   await space.getByText('+nouveau', { exact: true }).waitFor();
   await space.getByRole('tab', { name: 'Fichiers' }).click();
   await space.locator('[data-code-files]').getByText('README.md').click();
-  await space.locator('[data-code-file]').getByText('# OpenDots').waitFor();
+  await space.locator('[data-code-file]').getByText('# BotCircle').waitFor();
   await space.getByRole('textbox', { name: 'Écrire directement à OpenCode…' }).fill('Garde les animations.');
   await space.getByRole('button', { name: 'Envoyer' }).click();
   await page.waitForFunction(() => true); await space.getByRole('tab', { name: 'Session' }).click();

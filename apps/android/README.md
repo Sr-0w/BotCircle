@@ -1,7 +1,7 @@
-# OpenDots for Android
+# BotCircle for Android
 
-A native Android client for the OpenDots engine: 100 % Kotlin and Jetpack Compose, no WebView.
-It speaks the same HTTP API as the web app, so it works with any OpenDots server reachable over HTTPS.
+A native Android client for the BotCircle engine: 100 % Kotlin and Jetpack Compose, no WebView.
+It speaks the same HTTP API as the web app, so it works with any BotCircle server reachable over HTTPS.
 
 ## What it does
 
@@ -33,7 +33,7 @@ and tool settings are still managed from the web app (see `docs/parity.md` for t
 ## Navigation
 
 The app has no hamburger menu and no side drawer. This replaces the "side drawer" recommendation of section 8 of the
-original Quiet UI spec for OpenDots Android (issue #28): do not reintroduce it.
+original Quiet UI spec for BotCircle Android (issue #28): do not reintroduce it.
 
 - Top level: Companions, Chats, Tasks, Approvals, Settings, switched with the bottom bar. Android back returns to Companions.
 - Companions → conversation → profile → model picker or computer. Back always leads to the page that opened the current one.
@@ -47,7 +47,7 @@ original Quiet UI spec for OpenDots Android (issue #28): do not reintroduce it.
 - `:designsystem` — Quiet UI, the design language shared with Dot Mail: tokens (`Tokens.kt`), theme, and
   components. Backdrop blur goes through `QuietBackdrop` (Haze 2.1); screens never use the blur engine directly.
   Glass is only used for the top header and floating controls; the composer and the bottom of the screen never blur.
-- `:app` — the OpenDots client: `data/` (API client, stream assembler), `chat/` (conversation logic), `ui/` (screens).
+- `:app` — the BotCircle client: `data/` (API client, stream assembler), `chat/` (conversation logic), `ui/` (screens).
 
 Settings → Quiet UI catalog shows every token and component, plus a scrolling test for the blur.
 
@@ -61,7 +61,7 @@ Settings → Quiet UI catalog shows every token and component, plus a scrolling 
 ./gradlew :app:testDebugUnitTest
 ```
 
-The tests drive the real app against a fake OpenDots engine and write a PNG of each screen to `app/build/shots`.
+The tests drive the real app against a fake BotCircle engine and write a PNG of each screen to `app/build/shots`.
 
 ## Strings
 

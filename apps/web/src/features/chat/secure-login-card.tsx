@@ -23,7 +23,7 @@ function useSecureLogin(id: string): SecureLoginDTO | null {
 }
 
 /**
- * Carte de confiance d'une connexion : rendue par OpenDots à partir de ce que le serveur a vérifié, jamais par le
+ * Carte de confiance d'une connexion : rendue par BotCircle à partir de ce que le serveur a vérifié, jamais par le
  * modèle. Elle montre l'origine réelle et ne contient aucun champ de mot de passe : l'utilisateur s'authentifie
  * directement dans le navigateur du compagnon, dont les outils sont suspendus pendant ce temps.
  */
@@ -63,7 +63,7 @@ export function SecureLoginCard({ loginId }: { loginId: string }) {
   );
 }
 
-/** Le navigateur du compagnon, piloté par l'utilisateur seul. Ce qui est tapé va au bureau par le flux VNC, pas à OpenDots ni au modèle. */
+/** Le navigateur du compagnon, piloté par l'utilisateur seul. Ce qui est tapé va au bureau par le flux VNC, pas à BotCircle ni au modèle. */
 function TakeoverDialog({ login, busy, onClose, onResolve }: { login: SecureLoginDTO; busy: boolean; onClose: () => void; onResolve: (outcome: 'authenticated' | 'cancelled' | 'failed') => void }) {
   const [status, setStatus] = useState<DesktopStatus | null>(null), [connected, setConnected] = useState(false), [error, setError] = useState('');
   const target = useRef<HTMLDivElement>(null);

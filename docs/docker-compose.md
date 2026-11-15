@@ -2,7 +2,7 @@
 
 Le fichier [`compose.yml`](../compose.yml) cible **Linux, Docker Engine et Compose
 2.24 ou plus récent**. Il ne nécessite ni compte de recherche ni API payante.
-Chaque utilisateur d’OpenDots fournit toujours sa propre clé OpenRouter ; les
+Chaque utilisateur d’BotCircle fournit toujours sa propre clé OpenRouter ; les
 appels du modèle restent facturés par son fournisseur.
 
 ## Démarrage sur un serveur
@@ -193,7 +193,7 @@ Sauvegarder également `.env` séparément dans un stockage chiffré ; les profi
 captures et clés du dossier data sont sensibles même si les jetons en base sont
 chiffrés. Conserver le fichier `secret.key` de chaque compte et toute clé
 `OPENDOTS_SECRET_KEY` personnalisée. Le volume SearXNG ne contient pas les comptes
-OpenDots ; il peut être régénéré. Les volumes Caddy conservent ses certificats.
+BotCircle ; il peut être régénéré. Les volumes Caddy conservent ses certificats.
 
 Pour restaurer : arrêter l’installation, extraire l’archive dans le chemin
 `OPENDOTS_DATA_DIR` vide avec les permissions/propriétaires conservés, restaurer

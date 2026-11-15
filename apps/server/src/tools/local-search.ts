@@ -22,7 +22,7 @@ async function inspect() {
   try {
     const raw = await docker(['inspect', '--format', '{{.State.Running}}|{{index .Config.Labels "opendots.search"}}|{{index .Config.Labels "opendots.search-config"}}', name]);
     const [running, owner, fingerprint] = raw.split('|');
-    if (owner !== 'managed') throw new Error(`Le conteneur ${name} existe déjà et n’appartient pas à OpenDots.`);
+    if (owner !== 'managed') throw new Error(`Le conteneur ${name} existe déjà et n’appartient pas à BotCircle.`);
     return { running: running === 'true', fingerprint };
   } catch (error) {
     if ((error as { code?: number }).code === 1 && /No such (object|container)/i.test((error as { stderr?: string }).stderr ?? '')) return null;

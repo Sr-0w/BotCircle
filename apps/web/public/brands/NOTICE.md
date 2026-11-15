@@ -7,5 +7,5 @@ GitHub's mark is from https://github.com/simple-icons/simple-icons, icons/github
 (CC0-1.0, https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md).
 
 Product names and logos remain trademarks of their respective owners. These
-assets identify the services that OpenDots connects to; no affiliation is implied.
+assets identify the services that BotCircle connects to; no affiliation is implied.
 IMAP/SMTP is a protocol pair and uses a generic mail symbol, not a fabricated logo.

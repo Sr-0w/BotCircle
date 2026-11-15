@@ -165,7 +165,7 @@ function QuestionCard({ taskId, request, onDone }: { taskId: string; request: Op
   );
 }
 
-/** Les fichiers du projet, lus sur la machine de développement à la demande (rien n'est copié sur OpenDots). */
+/** Les fichiers du projet, lus sur la machine de développement à la demande (rien n'est copié sur BotCircle). */
 function FileBrowser({ taskId }: { taskId: string }) {
   const [path, setPath] = useState(''), [nodes, setNodes] = useState<OpencodeFileNodeDTO[] | null>(null), [error, setError] = useState('');
   const [file, setFile] = useState<{ path: string; binary: boolean; content: string } | null>(null);

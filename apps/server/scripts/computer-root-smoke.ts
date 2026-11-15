@@ -33,7 +33,7 @@ try {
   const installed = await shell(a, `set -eu
 sudo -n id -u
 mkdir -p /tmp/admin-fixture/DEBIAN /tmp/admin-fixture/usr/local/bin
-printf 'Package: opendots-admin-fixture\\nVersion: 1.0\\nArchitecture: all\\nMaintainer: OpenDots <fixture@example.test>\\nDescription: Real administrator installation regression\\n' > /tmp/admin-fixture/DEBIAN/control
+printf 'Package: opendots-admin-fixture\\nVersion: 1.0\\nArchitecture: all\\nMaintainer: BotCircle <fixture@example.test>\\nDescription: Real administrator installation regression\\n' > /tmp/admin-fixture/DEBIAN/control
 printf '#!/bin/sh\\nprintf "installed-as-root\\\\n"\\n' > /tmp/admin-fixture/usr/local/bin/opendots-admin-fixture
 chmod 755 /tmp/admin-fixture/usr/local/bin/opendots-admin-fixture
 dpkg-deb --build /tmp/admin-fixture /tmp/admin-fixture.deb

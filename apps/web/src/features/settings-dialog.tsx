@@ -206,7 +206,7 @@ export function SettingsPanel({ section, onOpenSection }: { section: "general" |
                 <label className="flex items-center justify-between gap-4">
                   <div>
                     <p className="font-medium text-sm">{t("Notifications")}</p>
-                    <p className="text-muted-foreground text-xs">{t("Messages, validations et questions de tes compagnons quand OpenDots est en arrière-plan.")}</p>
+                    <p className="text-muted-foreground text-xs">{t("Messages, validations et questions de tes compagnons quand BotCircle est en arrière-plan.")}</p>
                   </div>
                   <Switch checked={notify} onCheckedChange={async (v) => setNotify(await setNotifications(v))} />
                 </label>

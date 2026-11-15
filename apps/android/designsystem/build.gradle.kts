@@ -1,4 +1,4 @@
-// "Quiet UI" design system: the tokens and components shared by the Dot app family (Dot Mail, OpenDots).
+// "Quiet UI" design system: the tokens and components shared by the Dot app family (Dot Mail, BotCircle).
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)

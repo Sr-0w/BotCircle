@@ -16,7 +16,7 @@
     <string name="agent_behaviour_note">Limites de travail, autonomie et fuseau horaire</string>
     <string name="ai_and_agents">IA et agents</string>
     <string name="answers_sent">Réponses envoyées</string>
-    <string name="app_name">OpenDots</string>
+    <string name="app_name">BotCircle</string>
     <string name="appearance">Apparence</string>
     <string name="approval_approved">Approuvé, exécution…</string>
     <string name="approval_executed">Approuvé et exécuté</string>
@@ -66,7 +66,7 @@
     <string name="code_deny">Refuser</string>
     <string name="code_directory">Dossier du projet par défaut</string>
     <string name="code_edit">Modifier</string>
-    <string name="code_expose_note">Sur la machine de développement, lance : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. Le serveur OpenDots doit joindre cette adresse : réseau privé, tunnel SSH ou reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
+    <string name="code_expose_note">Sur la machine de développement, lance : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. Le serveur BotCircle doit joindre cette adresse : réseau privé, tunnel SSH ou reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
     <string name="code_files_changed">Fichiers modifiés : %1$s</string>
     <string name="code_instances_note">Les machines de développement où tes compagnons délèguent du code</string>
     <string name="code_name_hint">PC de dev</string>
@@ -277,10 +277,10 @@
     <string name="send">Envoyer</string>
     <string name="server">Serveur</string>
     <string name="server_address">Adresse du serveur</string>
-    <string name="server_body">OpenDots tourne sur ton propre serveur. Indique son adresse pour retrouver tes compagnons.</string>
+    <string name="server_body">BotCircle tourne sur ton propre serveur. Indique son adresse pour retrouver tes compagnons.</string>
     <string name="server_hint">HTTPS est requis, sauf sur localhost</string>
     <string name="server_invalid">Cela ne ressemble pas à une adresse de serveur.</string>
-    <string name="server_title">Connexion à OpenDots</string>
+    <string name="server_title">Connexion à BotCircle</string>
     <string name="settings">Paramètres</string>
     <string name="setup_body">Connecte une boîte mail, ajoute des connecteurs ou démarre l’ordinateur d’un compagnon depuis l’app web.</string>
     <string name="setup_title">Aller plus loin</string>

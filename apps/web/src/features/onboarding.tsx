@@ -66,7 +66,7 @@ export function Onboarding({ keyConfigured, onDone }: { keyConfigured: boolean; 
         <div className="flex flex-col items-center gap-4 text-center">
           <DotAvatar color="#27272a" size={64} named={false} />
           <div className="space-y-1.5">
-            <h1 className="font-semibold text-2xl tracking-tight">{t("Bienvenue dans OpenDots")}</h1>
+            <h1 className="font-semibold text-2xl tracking-tight">{t("Bienvenue dans BotCircle")}</h1>
             <p className="text-balance text-muted-foreground text-sm">
               {step === "key"
                 ? t("Deux réglages et ton premier compagnon est prêt. Le reste, tu le lui diras simplement.")

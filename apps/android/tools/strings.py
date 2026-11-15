@@ -1,7 +1,7 @@
 import sys
 from xml.sax.saxutils import escape
 S = {
- "app_name": ("OpenDots", "OpenDots"),
+ "app_name": ("BotCircle", "BotCircle"),
  "about": ("About", "À propos"), "account": ("Account", "Compte"),
  "answers_sent": ("Answers sent", "Réponses envoyées"),
  "appearance": ("Appearance", "Apparence"),
@@ -71,10 +71,10 @@ S = {
  "remove_image": ("Remove image", "Retirer l’image"), "reply": ("Reply", "Répondre"), "retry": ("Retry", "Réessayer"), "save": ("Save", "Enregistrer"),
  "say_hello": ("Say hello!", "Dis bonjour !"), "search_models": ("Search models", "Rechercher un modèle"), "send": ("Send", "Envoyer"),
  "server": ("Server", "Serveur"), "server_address": ("Server address", "Adresse du serveur"),
- "server_body": ("OpenDots runs on your own server. Enter its address to reach your companions.", "OpenDots tourne sur ton propre serveur. Indique son adresse pour retrouver tes compagnons."),
+ "server_body": ("BotCircle runs on your own server. Enter its address to reach your companions.", "BotCircle tourne sur ton propre serveur. Indique son adresse pour retrouver tes compagnons."),
  "server_hint": ("HTTPS is required, except on localhost", "HTTPS est requis, sauf sur localhost"),
  "server_invalid": ("This doesn’t look like a server address.", "Cela ne ressemble pas à une adresse de serveur."),
- "server_title": ("Connect to OpenDots", "Connexion à OpenDots"),
+ "server_title": ("Connect to BotCircle", "Connexion à BotCircle"),
  "settings": ("Settings", "Paramètres"),
  "setup_body": ("Connect a mailbox, add connectors or start a companion’s computer from the web app.", "Connecte une boîte mail, ajoute des connecteurs ou démarre l’ordinateur d’un compagnon depuis l’app web."),
  "setup_title": ("Go further", "Aller plus loin"),
@@ -267,7 +267,7 @@ S = {
  "code_stop": ('Stop', 'Arrêter'),
  "code_instances_note": ('Development machines your companions delegate code to', 'Les machines de développement où tes compagnons délèguent du code'),
  "code_no_instance": ('No instance connected', 'Aucune instance connectée'),
- "code_expose_note": ('On the development machine, run: OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. The OpenDots server must reach that address: use a private network, an SSH tunnel or an HTTPS reverse proxy, never an open port without a password.', 'Sur la machine de développement, lance : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. Le serveur OpenDots doit joindre cette adresse : réseau privé, tunnel SSH ou reverse proxy HTTPS, jamais un port ouvert sans mot de passe.'),
+ "code_expose_note": ('On the development machine, run: OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. The BotCircle server must reach that address: use a private network, an SSH tunnel or an HTTPS reverse proxy, never an open port without a password.', 'Sur la machine de développement, lance : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0. Le serveur BotCircle doit joindre cette adresse : réseau privé, tunnel SSH ou reverse proxy HTTPS, jamais un port ouvert sans mot de passe.'),
  "code_online": ('Online', 'En ligne'),
  "code_offline": ('Unreachable', 'Injoignable'),
  "code_never_checked": ('Never checked', 'Jamais contrôlée'),
