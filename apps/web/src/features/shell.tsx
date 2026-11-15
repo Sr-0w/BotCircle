@@ -23,7 +23,7 @@ import { cn, plainPreview, relativeTime } from "@/lib/utils";
 import { ChatView } from "./chat/chat-view";
 import { AgentPanel } from "./panels/agent-panel";
 import { DotAvatar } from "./dot-avatar";
-import { SettingsPage, SETTINGS_SECTIONS, type SettingsSection } from "./pages/settings-page";
+import { SettingsPage, SETTINGS_ALIASES, SETTINGS_SECTIONS, type SettingsSection } from "./pages/settings-page";
 import { AccountAvatar } from "./account-avatar";
 import { lazy, Suspense } from "react";
 
@@ -32,14 +32,14 @@ import { useAccount } from '@/lib/account';
 // Pages et modales secondaires chargées à la demande.
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
-type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection };
+type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
 function parseHash(): Route {
   const h = window.location.hash.replace(/^#\/?/, "");
   if (LEGACY_PAGES.includes(h)) return { view: 'settings', section: h as SettingsSection };
   if (h === 'settings' || h.startsWith('settings/')) {
     const section = h.split('/')[1];
-    return { view: 'settings', section: SETTINGS_SECTIONS.includes(section as SettingsSection) ? section as SettingsSection : 'general' };
+    return { view: 'settings', section: SETTINGS_ALIASES[section] ?? (SETTINGS_SECTIONS.includes(section as SettingsSection) ? section as SettingsSection : 'general') };
   }
   const chat = /^chat\/(.+)$/.exec(h);
   if (chat) return { view: 'chat', id: chat[1] };
@@ -49,7 +49,7 @@ function parseHash(): Route {
 function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => { const on = () => setRoute(parseHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
-  return [route, next => { window.location.hash = next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : `/settings/${next.section}`; }];
+  return [route, next => { window.location.hash = next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`; }];
 }
 
 const BUSY = ["thinking", "working", "collaborating", "awake"];
@@ -161,8 +161,8 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
             <PauseCircleIcon className="size-3.5" /> {t("Activités autonomes suspendues")}
           </div>
         )}
-        <SideButton active={route.view === 'settings'} onClick={() => go({ view: 'settings', section: 'general' })} icon={<SettingsIcon />} badge={pending}>{t('Paramètres')}</SideButton>
-        <AccountFooter onClick={() => go({ view: 'settings', section: 'general' })} />
+        <SideButton active={route.view === 'settings'} onClick={() => go({ view: 'settings', section: 'general', index: true })} icon={<SettingsIcon />} badge={pending}>{t('Paramètres')}</SideButton>
+        <AccountFooter onClick={() => go({ view: 'settings', section: 'general', index: true })} />
       </div>
     </div>
   );

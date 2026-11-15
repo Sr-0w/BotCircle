@@ -167,7 +167,19 @@ data class ServerSettings(
     val defaultModel: ModelConfig = ModelConfig(),
     val timezone: String = "",
     val paused: Boolean = false,
+    val ollamaUrl: String? = null,
+    /** Null means no limit. */
+    val turnStepLimit: Int? = null,
 )
+
+@Serializable
+data class CodexAccount(val email: String? = null, val planType: String? = null)
+
+@Serializable
+data class CodexStatus(val account: CodexAccount? = null, val error: String? = null)
+
+@Serializable
+data class CodexLogin(val verificationUrl: String = "", val userCode: String = "")
 
 @Serializable
 data class DesktopStatus(

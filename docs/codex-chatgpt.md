@@ -13,11 +13,12 @@ its credentials in a file, protected by a private 0700 directory. It is not
 covered by OpenDots' database secret encryption. Do not share/mount a host's
 personal Codex home or API keys into this integration.
 
-1. Open Settings → credentials → **Connecter ChatGPT**, or use the same card
+1. Open Settings → **Fournisseurs de modèles** → ChatGPT / Codex → **Connecter ChatGPT**
+   (web: `#/settings/providers`; Android: Settings → Model providers), or use the same card
    during onboarding instead of providing an OpenRouter key.
 2. Open the official verification link and enter the displayed code. Device
    authorization may need enabling in ChatGPT's security settings.
-3. Once connected, open Settings → models, choose **Codex · ChatGPT**, and select
+3. Once connected, open Settings → **Modèles**, choose **ChatGPT / Codex**, and select
    a model from the actual Codex catalog. Agents can also select provider `codex`.
 4. **Déconnecter ChatGPT** removes the official client's saved authorization.
 

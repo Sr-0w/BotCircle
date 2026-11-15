@@ -147,6 +147,14 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     }
 
     suspend fun settings(): ServerSettings = get("/settings")
+    suspend fun updateSettings(patch: JsonObject) { json("PUT", "/settings", patch) }
+
+    // --- Model providers (the same endpoints as the web settings) ---------------------------------
+    suspend fun codexAccount(): CodexStatus = get("/codex/account")
+    suspend fun codexLogin(): CodexLogin = OdJson.decodeFromJsonElement(json("POST", "/codex/login"))
+    suspend fun codexLogout() { json("POST", "/codex/logout") }
+    suspend fun ollamaModels(url: String?): List<ModelInfo> = get("/models/ollama" + (url?.takeIf { it.isNotBlank() }?.let { "?url=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""))
+
     suspend fun setPaused(paused: Boolean) { json("PUT", "/settings", buildJsonObject { put("paused", paused) }) }
 
     // --- Companions ---------------------------------------------------------------------

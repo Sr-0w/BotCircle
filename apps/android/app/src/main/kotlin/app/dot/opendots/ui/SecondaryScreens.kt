@@ -200,7 +200,7 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit) {
+fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}) {
     var confirmSignOut by remember { mutableStateOf(false) }
     QuietPage(stringResource(R.string.settings), onBack = null, inTabs = true) {
         item {
@@ -214,9 +214,16 @@ fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onO
             SwitchRow(stringResource(R.string.reduce_transparency), stringResource(R.string.reduce_transparency_note), ui.reduceTransparency, onChange = app::setReduceTransparency)
             Hairline(Modifier.padding(top = DotSpacing.s))
         }
+        // The same organisation as the web settings: providers, then models, then how agents behave.
+        item {
+            SectionLabel(stringResource(R.string.ai_and_agents), Modifier.padding(top = DotSpacing.l))
+            ListRow(stringResource(R.string.providers), subtitle = stringResource(R.string.providers_note), onClick = onOpenProviders)
+            ListRow(stringResource(R.string.default_model), subtitle = stringResource(R.string.default_model_note), onClick = onOpenModel)
+            ListRow(stringResource(R.string.agent_behaviour), subtitle = stringResource(R.string.agent_behaviour_note), onClick = onOpenBehaviour)
+            Hairline(Modifier.padding(top = DotSpacing.s))
+        }
         item {
             SectionLabel(stringResource(R.string.engine), Modifier.padding(top = DotSpacing.l))
-            SwitchRow(stringResource(R.string.pause_autonomous), stringResource(R.string.pause_autonomous_note), ui.paused, onChange = app::setPaused)
             ListRow(stringResource(R.string.server), subtitle = ui.serverUrl, onClick = onOpenWeb)
             ListRow(stringResource(R.string.open_web_app), subtitle = stringResource(R.string.open_web_app_note), onClick = onOpenWeb)
             Hairline(Modifier.padding(top = DotSpacing.s))

@@ -62,7 +62,8 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
   return (
     <ChatActionsContext.Provider value={actions}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-general-chat>
-        <Conversation className="min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
+      <Conversation className="min-h-0 flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-10 sm:px-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
@@ -89,7 +90,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             )}
           </ConversationContent>
           <ConversationScrollButton />
-        </Conversation>
+        </Conversation></div>
         <div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-6 sm:pb-5">
           <Composer
             busy={busy}

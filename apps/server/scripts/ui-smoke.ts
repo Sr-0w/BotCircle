@@ -53,7 +53,7 @@ try {
   await page.getByRole('alert').filter({ hasText: 'Les mots de passe ne correspondent pas.' }).waitFor();
   await page.getByLabel('Confirmer le mot de passe').fill('browser password for test');
   await page.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
-  await page.getByText('1. Clé OpenRouter', { exact: true }).waitFor();
+  await page.getByText('1. Connexion au fournisseur', { exact: true }).waitFor();
   const profile = await (await context.request.get(`${origin}/api/auth/me`)).json();
   const account = (await accountById(profile.account.id))!;
   assert.equal(account.role, 'user');
@@ -106,7 +106,7 @@ try {
   await page.setViewportSize({ width: 1365, height: 1000 });
   console.log('Chromium : cartes équipe et ouverture du fil vérifiées sur desktop/mobile.');
   await page.getByRole('button', { name: 'Paramètres', exact: true }).click();
-  await page.getByRole('tab', { name: 'Connecteurs', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connecteurs et services', exact: true }).click();
   const discoverBox = await page.getByRole('tab', { name: 'Découvrir', exact: true }).boundingBox();
   const connectedBox = await page.getByRole('tab', { name: /Mes connexions/ }).boundingBox();
   assert(Math.abs(discoverBox!.y - connectedBox!.y) < 2, 'Nested catalogue tabs must remain horizontal inside vertical settings tabs');
@@ -160,7 +160,7 @@ try {
   await page.getByText('browser', { exact: true }).waitFor({ state: 'hidden' });
   assert.equal((await withAccount(account, () => listConnectors('integration'))).length, 0);
   await promoteAdmin(account.email); await page.reload();
-  await page.getByRole('tab', { name: 'Connecteurs', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connecteurs et services', exact: true }).click();
   await page.getByText('Applications OAuth du déploiement', { exact: true }).click();
   await page.getByText('Connexions personnalisées et plugins', { exact: true }).click();
   await page.getByText('Serveurs MCP', { exact: true }).waitFor();
@@ -176,8 +176,8 @@ try {
   assert.equal(await page.getByRole('dialog').getByRole('checkbox').count(), 5);
   await page.keyboard.press('Escape');
   await page.screenshot({ path: process.env.OPENDOTS_UI_SCREENSHOT ?? '/tmp/opendots-connectors-ui.png', fullPage: true });
-  await page.getByRole('tab', { name: 'Général', exact: true }).click();
-  await page.getByRole('heading', { name: 'Général', exact: true }).waitFor();
+  await page.getByRole('tab', { name: 'Comportement des agents', exact: true }).click();
+  await page.getByRole('heading', { name: 'Comportement des agents', exact: true }).waitFor();
   const turnLimit = page.getByLabel('Limite d’étapes par tour', { exact: true });
   await turnLimit.waitFor(); assert.equal(await turnLimit.inputValue(), '');
   const saveLimit = turnLimit.locator('..').getByRole('button', { name: 'Enregistrer', exact: true });
@@ -189,13 +189,24 @@ try {
   await page.waitForFunction(async () => (await (await fetch('/api/settings')).json()).turnStepLimit === null);
   await page.screenshot({ path: '/tmp/opendots-turn-limit-settings.png', fullPage: true });
 
+  await page.getByRole('tab', { name: 'Compte et apparence', exact: true }).click();
   await page.getByText('Profil public Gravatar', { exact: true }).waitFor();
+  // Trois thèmes complets : le noir OLED met la page à #000000 exactement.
+  await page.getByRole('radio', { name: 'Noir OLED', exact: true }).click();
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(0, 0, 0)');
+  await page.getByRole('radio', { name: 'Clair', exact: true }).click();
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(255, 255, 255)');
+  // Une ancienne adresse mène à la nouvelle rubrique.
+  await page.goto(`${origin}/#/settings/credentials`); await page.getByRole('heading', { name: 'Fournisseurs de modèles', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Mon compte' }).getByRole('img', { name: 'Camille Martin' }).waitFor();
   await page.waitForFunction(() => { const img = document.querySelector('[aria-label="Mon compte"] img') as HTMLImageElement; return img?.complete && img.naturalWidth > 0; });
-  for (const [tab, heading] of [['Modèles','Modèles'],['Clés et modèles locaux','Clés et modèles locaux'],['Recherche et outils','Recherche et outils'],['Tâches planifiées','Tâches planifiées'],['Skills','Skills'],['Ordinateur','Ordinateur'],['Validations','Validations']] as const) {
+  for (const [tab, heading] of [['Modèles','Modèles'],['Fournisseurs de modèles','Fournisseurs de modèles'],['Recherche et outils','Recherche et outils'],['Tâches planifiées','Tâches planifiées'],['Skills','Skills'],['Ordinateur','Ordinateur'],['Validations','Validations']] as const) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
-    if (tab === 'Clés et modèles locaux') {
+    if (tab === 'Fournisseurs de modèles') {
+      // Les trois fournisseurs au même niveau, chacun avec son état.
+      for (const name of ['OpenRouter', 'ChatGPT / Codex', 'Ollama']) await page.getByRole('region', { name, exact: true }).waitFor();
+      assert.equal(await page.getByRole('region', { name: 'OpenRouter', exact: true }).getAttribute('data-provider-state'), 'connected');
       let authorized = false;
       await page.route('**/api/codex/account', route => route.fulfill({ json: { account: authorized ? { email: 'fixture@example.test', planType: 'plus' } : null } }));
       await page.route('**/api/codex/login', route => route.fulfill({ json: { verificationUrl: 'https://auth.openai.com/codex/device', userCode: 'TEST-1234' } }));
@@ -206,13 +217,14 @@ try {
       assert.equal(await card.getByRole('link', { name: 'Ouvrir ChatGPT' }).getAttribute('href'), 'https://auth.openai.com/codex/device');
       authorized = true;
       await card.getByText('ChatGPT connecté', { exact: true }).waitFor();
+      await page.waitForFunction(() => document.querySelector('[aria-label="ChatGPT / Codex"]')?.getAttribute('data-provider-state') === 'connected');
       await card.getByRole('button', { name: 'Déconnecter ChatGPT' }).click();
       await card.getByRole('button', { name: 'Connecter ChatGPT', exact: true }).waitFor();
     }
 
   }
   await page.goto(`${origin}/#connectors`); await page.getByRole('heading', { name: 'Magasin de connecteurs', exact: true }).waitFor();
-  await page.getByRole('tab', { name: 'Général', exact: true }).click();
+  await page.getByRole('tab', { name: 'Compte et apparence', exact: true }).click();
   await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
   await page.getByRole('heading', { name: 'Connecte-toi à ton espace' }).waitFor();
   assert.equal((await context.request.get(`${origin}/api/agents`)).status(), 401);
@@ -227,3 +239,4 @@ try {
   await browser.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
   await closeAllDatabases(); await closeAuthStore(); await rm(dir, { recursive: true, force: true });
 }
+process.exit(0);

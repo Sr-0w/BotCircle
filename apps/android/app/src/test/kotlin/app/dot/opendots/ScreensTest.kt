@@ -117,6 +117,9 @@ class ScreensTest {
                     path == "/artifacts/art_r1" -> json(artifact)
                     path == "/artifacts/art_n1" -> json("""{"id":"art_n1","name":"meeting notes.md","mediaType":"text/markdown","size":41}""")
                     path == "/artifacts/art_r1/grants/a3" -> json("""{"grants":[],"access":[{"actor":"user","action":"revoke","detail":"✕ a3","createdAt":"2026-11-13T09:06:00Z"}]}""")
+                    path == "/settings" -> json("""{"openrouterKey":"sk-or-…-9f2c","defaultModel":{"provider":"openrouter","model":"openai/gpt-5"},"timezone":"Europe/Brussels","paused":false,"ollamaUrl":null,"turnStepLimit":null}""")
+                    path == "/codex/account" -> json("""{"account":null,"error":null}""")
+                    path == "/codex/login" -> json("""{"verificationUrl":"https://auth.openai.com/codex/device","userCode":"TEST-1234"}""")
                     path == "/events" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"hello\"}\n\n").build()
                     path == "/approvals/ap1" -> json("""{"ok":true,"status":"executed","error":null}""")
                     path.endsWith("/read") -> json("""{"ok":true}""")
@@ -256,6 +259,25 @@ class ScreensTest {
         waitFor("Reads the meeting notes")
         waitFor("summary.pdf")
         waitFor("PDF · 47 KB")
+    }
+
+    @Test fun providersSitTogetherWithTheirStatus() {
+        launch(ThemeMode.OLED)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Settings")
+        waitFor("Model providers")
+        compose.onNodeWithText("Model providers").performClick()
+        waitFor("OpenRouter")
+        waitFor("ChatGPT / Codex")
+        waitFor("Ollama")
+        waitFor("sk-or-…-9f2c")
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("provider-connected")).fetchSemanticsNodes().size == 1 && compose.onAllNodes(androidx.compose.ui.test.hasTestTag("provider-disconnected")).fetchSemanticsNodes().size == 2 }
+        shoot("providers-oled")
+        // The ChatGPT sign-in happens here, next to the other providers, with the official device code.
+        compose.onNodeWithText("Connect ChatGPT").performClick()
+        waitFor("TEST-1234")
+        waitFor("openai/gpt-5")
     }
 
     @Test fun signInThenEnter() {

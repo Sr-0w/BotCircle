@@ -142,6 +142,17 @@ try {
   await page.getByRole('navigation', { name: 'Chats' }).getByText('Réunion de vendredi', { exact: true }).waitFor();
   await page.locator('header').getByText('Réunion de vendredi', { exact: true }).waitFor();
   await shot('7-chat-settings');
+  // Quiet UI : trois thèmes complets, valeurs exactes du design language.
+  for (const [theme, background] of [['light', 'rgb(255, 255, 255)'], ['dark', 'rgb(13, 13, 14)'], ['oled', 'rgb(0, 0, 0)']] as const) {
+    await page.evaluate((value) => localStorage.setItem('od-theme', value), theme);
+    await page.reload();
+    await page.locator('[data-general-chat] [data-task-card]').first().waitFor();
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
+    assert.match(await page.evaluate(() => getComputedStyle(document.body).fontFamily), /Inter/);
+    await shot(`theme-${theme}`);
+  }
+  await page.goto(`${origin}/#/settings/providers`); await page.getByRole('region', { name: 'Ollama', exact: true }).waitFor(); await shot('settings-providers');
+  await page.goBack(); await page.getByRole('tab', { name: 'Réglages' }).click();
   await page.getByRole('button', { name: 'Supprimer ce chat' }).click();
   await page.waitForURL(/#\/agent\//);
   assert.equal(await page.getByRole('navigation', { name: 'Chats' }).getByText('Réunion de vendredi', { exact: true }).count(), 0);

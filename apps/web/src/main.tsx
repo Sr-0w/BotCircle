@@ -9,6 +9,7 @@ import { Onboarding } from "@/features/onboarding";
 import { Shell } from "@/features/shell";
 import { AuthPage } from '@/features/auth-page';
 import { AccountContext, type Account } from '@/lib/account';
+import "@fontsource-variable/inter";
 import "./index.css";
 
 import { t } from "@/lib/i18n";

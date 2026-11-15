@@ -12,6 +12,9 @@
     <string name="access_revoke">Accès retiré</string>
     <string name="access_share">Partagé</string>
     <string name="account">Compte</string>
+    <string name="agent_behaviour">Comportement des agents</string>
+    <string name="agent_behaviour_note">Limites de travail, autonomie et fuseau horaire</string>
+    <string name="ai_and_agents">IA et agents</string>
     <string name="answers_sent">Réponses envoyées</string>
     <string name="app_name">OpenDots</string>
     <string name="appearance">Apparence</string>
@@ -52,6 +55,9 @@
     <string name="chats_empty_title">Aucun chat</string>
     <string name="chats_none_found">Aucun chat trouvé</string>
     <string name="close">Fermer</string>
+    <string name="codex_connect">Connecter ChatGPT</string>
+    <string name="codex_enter_code">Entre ce code sur la page officielle :</string>
+    <string name="codex_open">Ouvrir ChatGPT</string>
     <string name="companion">Compagnon</string>
     <string name="companion_details">Fiche du compagnon</string>
     <string name="companions">Compagnons</string>
@@ -83,6 +89,8 @@
     <string name="copied">Copié</string>
     <string name="copy">Copier</string>
     <string name="create_account">Créer le compte</string>
+    <string name="default_model">Modèle par défaut</string>
+    <string name="default_model_note">pour les chats et les compagnons sans modèle propre</string>
     <string name="delete">Supprimer</string>
     <string name="details">Détails</string>
     <string name="discard">Abandonner</string>
@@ -167,6 +175,18 @@
     <string name="perm_web">Lire des pages web publiques</string>
     <string name="permissions">Permissions</string>
     <string name="permissions_note">L’envoi d’e-mails et les autres actions sensibles demandent toujours ta validation.</string>
+    <string name="provider_api_key">Clé API</string>
+    <string name="provider_checking">Vérification…</string>
+    <string name="provider_connect">Connecter</string>
+    <string name="provider_connected">Connecté</string>
+    <string name="provider_device_code">Connexion ChatGPT (code d’appareil)</string>
+    <string name="provider_disconnect">Déconnecter</string>
+    <string name="provider_disconnected">Non connecté</string>
+    <string name="provider_error">Erreur de connexion</string>
+    <string name="provider_local">Modèles locaux, sans compte</string>
+    <string name="provider_replace">Remplacer</string>
+    <string name="providers">Fournisseurs de modèles</string>
+    <string name="providers_note">OpenRouter, ChatGPT / Codex et Ollama, avec leur état</string>
     <string name="quiet_catalog">Catalogue Quiet UI</string>
     <string name="quiet_catalog_note">Tokens, composants et test du flou d’arrière-plan</string>
     <string name="react">Réagir</string>
@@ -214,6 +234,9 @@
     <string name="state_thinking">En réflexion</string>
     <string name="state_waiting">En attente</string>
     <string name="state_working">Au travail</string>
+    <string name="step_limit">Étapes par tour</string>
+    <string name="step_limit_none">Aucune limite</string>
+    <string name="step_limit_note">Vide : les agents poursuivent jusqu’au bout, ou jusqu’à ton arrêt.</string>
     <string name="task_blocker">Blocage</string>
     <string name="task_cancel_confirm">Annuler la tâche</string>
     <string name="task_cancel_title">Annuler cette tâche ?</string>
@@ -259,6 +282,8 @@
     <string name="theme_oled">Noir OLED</string>
     <string name="theme_oled_note">Le noir OLED utilise un vrai fond #000000.</string>
     <string name="theme_system">Système</string>
+    <string name="timezone">Fuseau horaire</string>
+    <string name="timezone_note">Sert aux planifications et à l’heure que voient les compagnons.</string>
     <string name="tool_a_page">une page</string>
     <string name="tool_activity_create">Crée une activité</string>
     <string name="tool_activity_delete">Supprime une activité</string>

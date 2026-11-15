@@ -61,7 +61,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Forum
 import app.dot.opendots.data.Agent
+import app.dot.opendots.ui.AgentBehaviourPage
 import app.dot.opendots.ui.ChatSettingsPage
+import app.dot.opendots.ui.DefaultModelPage
+import app.dot.opendots.ui.ProvidersPage
 import app.dot.opendots.ui.ChatsPage
 import app.dot.opendots.ui.FilesSheet
 import kotlinx.serialization.json.buildJsonObject
@@ -151,7 +154,9 @@ fun OpenDotsRoot(app: AppState, ui: AppUiState) {
 private enum class Tab { Companions, Chats, Tasks, Approvals, Settings }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private enum class Page { None, Chat, Profile, Model, Desktop, Catalog, GeneralChat, ChatSettings, ChatModel }
+private val SETTINGS_PAGES get() = setOf(Page.Providers, Page.DefaultModel, Page.AgentBehaviour)
+
+private enum class Page { None, Chat, Profile, Model, Desktop, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -169,6 +174,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             Page.Model, Page.Desktop -> Page.Profile
             Page.Profile -> Page.Chat
             Page.ChatModel -> Page.ChatSettings
+            Page.DefaultModel -> Page.Providers
             Page.ChatSettings -> Page.GeneralChat
             else -> Page.None
         }
@@ -193,14 +199,14 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         var companionFiles by remember { mutableStateOf(false) }
         val chatPage = current == Page.GeneralChat || current == Page.ChatSettings || current == Page.ChatModel
         when {
-            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && !chatPage) -> Column(Modifier.fillMaxSize()) {
+            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && !chatPage && current !in SETTINGS_PAGES) -> Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
                     when (tab) {
                         Tab.Companions -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
                         Tab.Chats -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
                         Tab.Tasks -> TasksScreen(app, ui)
                         Tab.Approvals -> ApprovalsScreen(app, ui)
-                        Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb)
+                        Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour })
                     }
                 }
                 DotBottomBar(
@@ -216,6 +222,9 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 )
             }
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
+            current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })
+            current == Page.DefaultModel -> DefaultModelPage(app, onBack = ::back)
+            current == Page.AgentBehaviour -> AgentBehaviourPage(app, ui.paused, onBack = ::back)
             current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile })
             current == Page.GeneralChat -> ChatScreen(
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),

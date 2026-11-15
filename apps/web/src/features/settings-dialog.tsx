@@ -16,7 +16,7 @@ import { notificationsEnabled, notificationsSupported, setNotifications } from "
 
 import { t } from "@/lib/i18n";
 /** Account and runtime controls embedded in the full settings screen. */
-export function SettingsPanel({ section }: { section: "general" | "models" | "tools" | "credentials" }) {
+export function SettingsPanel({ section, onOpenSection }: { section: "general" | "providers" | "models" | "agents" | "tools"; onOpenSection?: (section: "providers" | "models") => void }) {
   const [modelProvider, setModelProvider] = useState<"openrouter" | "ollama" | "codex">("openrouter");
   const [failure, setFailure] = useState("");
   const [revision, setRevision] = useState(0);
@@ -28,6 +28,11 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
   const [busy, setBusy] = useState(false);
   const { theme, setTheme } = useTheme();
   const [notify, setNotify] = useState(notificationsEnabled);
+  const [codexConnected, setCodexConnected] = useState<boolean | null>(null);
+  const [ollamaCount, setOllamaCount] = useState<number | null>(null);
+  useEffect(() => { if (section === "providers" || section === "models") api.codexAccount().then((r) => setCodexConnected(Boolean(r.account))).catch(() => setCodexConnected(false)); }, [section]);
+  useEffect(() => { if (section === "providers" && settings?.ollamaUrl) api.ollamaModels().then((m) => setOllamaCount(m.length)).catch(() => setOllamaCount(-1)); }, [section, settings?.ollamaUrl]);
+  const connected = { openrouter: Boolean(settings?.openrouterKey), codex: codexConnected === true, ollama: Boolean(settings?.ollamaUrl) && ollamaCount !== -1 };
 
   useEffect(() => {
     api.settings().then((s) => {
@@ -69,8 +74,19 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
               <div className="space-y-1">
                 <Label className="text-xs">{t("Modèle par défaut")}</Label>
                 <p className="font-mono text-sm">{model?.model}</p>
+                <p className="text-muted-foreground text-xs">{t("Utilisé par les chats et par tout compagnon qui n’a pas son propre modèle. Chaque compagnon peut en choisir un autre depuis son profil.")}</p>
               </div>
-              <select aria-label="Fournisseur de modèles" value={modelProvider} onChange={e => setModelProvider(e.target.value as typeof modelProvider)} className="rounded border p-2"><option value="openrouter">OpenRouter</option><option value="codex">Codex · ChatGPT</option><option value="ollama">Ollama</option></select>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Fournisseur de modèles")}>
+                {([["openrouter", "OpenRouter"], ["codex", "ChatGPT / Codex"], ["ollama", "Ollama"]] as const).map(([id, label]) => (
+                  <Button key={id} type="button" size="sm" role="radio" aria-checked={modelProvider === id} variant={modelProvider === id ? "default" : "secondary"} className="rounded-full" onClick={() => setModelProvider(id)}>{label}</Button>
+                ))}
+              </div>
+              {!connected[modelProvider] && !(modelProvider === "codex" && codexConnected === null) && (
+                <p className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed p-3 text-muted-foreground text-xs" role="status">
+                  {t("Ce fournisseur n’est pas encore connecté.")}
+                  <Button type="button" size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => onOpenSection?.("providers")}>{t("Configurer le fournisseur")}</Button>
+                </p>
+              )}
               <ModelPicker provider={modelProvider}
                 className="h-64"
                 value={model?.model ?? null}
@@ -119,21 +135,22 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
                 )}
               </div>
             </section>}
-{section === "credentials" && <section className="space-y-5 pt-2"><CodexConnection />
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t("Clé OpenRouter")}</Label>
-                <p className="font-mono text-muted-foreground text-xs">{settings.openrouterKey ?? t("non configurée")}</p>
+{section === "providers" && <section className="space-y-4 pt-2">
+              <ProviderCard name="OpenRouter" method={t("Clé API")} state={connected.openrouter ? "connected" : "disconnected"} detail={settings.openrouterKey ?? undefined} onModels={() => onOpenSection?.("models")}>
                 <div className="flex gap-2">
-                  <Input type="password" placeholder={t("Nouvelle clé sk-or-v1-…")} value={key} onChange={(e) => setKey(e.target.value)} className="font-mono" />
+                  <Input type="password" aria-label={t("Clé OpenRouter")} placeholder={t("Nouvelle clé sk-or-v1-…")} value={key} onChange={(e) => setKey(e.target.value)} className="font-mono" />
                   <Button disabled={busy || key.length < 10} onClick={() => update({ openrouterKey: key }, t("Clé mise à jour")).then(() => setKey(""))}>
-                    {t("Remplacer")}
+                    {connected.openrouter ? t("Remplacer") : t("Connecter")}
                   </Button>
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t("Ollama (modèles locaux)")}</Label>
+                <p className="text-muted-foreground text-xs">{t("La clé est chiffrée et reste sur ce serveur ; elle n’est jamais affichée en entier.")}</p>
+              </ProviderCard>
+              <ProviderCard name="ChatGPT / Codex" method={t("Connexion ChatGPT (code d’appareil)")} state={codexConnected === null ? "checking" : codexConnected ? "connected" : "disconnected"} onModels={() => onOpenSection?.("models")}>
+                <CodexConnection onChange={setCodexConnected} />
+              </ProviderCard>
+              <ProviderCard name="Ollama" method={t("Modèles locaux, sans compte")} state={!settings.ollamaUrl ? "disconnected" : ollamaCount === -1 ? "error" : "connected"} detail={settings.ollamaUrl ? (ollamaCount != null && ollamaCount >= 0 ? t("{url} · {n} modèle(s)", { url: settings.ollamaUrl, n: ollamaCount }) : settings.ollamaUrl) : undefined} onModels={() => onOpenSection?.("models")}>
                 <div className="flex gap-2">
-                  <Input placeholder="http://127.0.0.1:11434" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} />
+                  <Input aria-label={t("Adresse d’Ollama")} placeholder="http://127.0.0.1:11434" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} />
                   <Button
                     variant="outline"
                     disabled={busy}
@@ -141,6 +158,7 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
                       try {
                         const models = await api.ollamaModels(ollamaUrl || undefined);
                         await update({ ollamaUrl: ollamaUrl || null }, t("Ollama connecté · {v0} modèle(s)", { v0: models.length }));
+                        setOllamaCount(models.length);
                       } catch (e) {
                         toast.error(t("Ollama injoignable : {error}", { error: (e as Error).message }));
                       }
@@ -148,11 +166,11 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
                   >
                     {t("Connecter")}
                   </Button>
+                  {settings.ollamaUrl && <Button variant="ghost" disabled={busy} onClick={() => { setOllamaUrl(""); setOllamaCount(null); void update({ ollamaUrl: null }, t("Ollama déconnecté")); }}>{t("Déconnecter")}</Button>}
                 </div>
-                <p className="text-muted-foreground text-xs">{t("Ensuite, dis par exemple à un compagnon : « utilise le modèle local llama3.1 ».")}</p>
-              </div>
+              </ProviderCard>
             </section>}
-{section === "general" && <section className="space-y-4 pt-2">
+{section === "agents" && <section className="space-y-4 pt-2">
               <div className="space-y-1.5">
                 <Label htmlFor="turn-step-limit">{t("Limite d’étapes par tour")}</Label>
                 <p className="text-muted-foreground text-xs">{t("Aucune limite par défaut. Laisse vide pour laisser les agents poursuivre leur travail ; tu peux les arrêter avec Stop.")}</p>
@@ -162,7 +180,6 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
                 </div>
                 <p className="text-muted-foreground text-xs">{t("Une limite choisie ici s’applique aux prochains tours de tes agents. À la limite, ils présentent leur avancement avant de faire une pause.")}</p>
               </div>
-
               <label className="flex items-center justify-between gap-4">
                 <div>
                   <p className="font-medium text-sm">{t("Suspendre les activités autonomes")}</p>
@@ -170,6 +187,21 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
                 </div>
                 <Switch checked={settings.paused} onCheckedChange={(paused) => update({ paused }, paused ? t("Activités suspendues") : t("Activités reprises"))} />
               </label>
+              <div className="space-y-1.5">
+                <Label className="text-xs" htmlFor="timezone">{t("Fuseau horaire")}</Label>
+                <Input id="timezone" defaultValue={settings.timezone} onBlur={(e) => e.target.value !== settings.timezone && update({ timezone: e.target.value })} />
+                <p className="text-muted-foreground text-xs">{t("Sert aux planifications et à l’heure que voient les compagnons.")}</p>
+              </div>
+            </section>}
+{section === "general" && <section className="space-y-5 pt-2">
+              <div className="space-y-2">
+                <p className="font-medium text-sm" id="theme-label">{t("Apparence")}</p>
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="theme-label">
+                  {([["system", "Système"], ["light", "Clair"], ["dark", "Sombre"], ["oled", "Noir OLED"]] as const).map(([id, label]) => (
+                    <Button key={id} type="button" size="sm" role="radio" aria-checked={theme === id} variant={theme === id ? "default" : "secondary"} className="rounded-full" onClick={() => setTheme(id)}>{t(label)}</Button>
+                  ))}
+                </div>
+              </div>
               {notificationsSupported() && (
                 <label className="flex items-center justify-between gap-4">
                   <div>
@@ -179,15 +211,28 @@ export function SettingsPanel({ section }: { section: "general" | "models" | "to
                   <Switch checked={notify} onCheckedChange={async (v) => setNotify(await setNotifications(v))} />
                 </label>
               )}
-              <label className="flex items-center justify-between gap-4">
-                <p className="font-medium text-sm">{t("Thème sombre")}</p>
-                <Switch checked={theme === "dark"} onCheckedChange={(v) => setTheme(v ? "dark" : "light")} />
-              </label>
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t("Fuseau horaire")}</Label>
-                <Input defaultValue={settings.timezone} onBlur={(e) => e.target.value !== settings.timezone && update({ timezone: e.target.value })} />
-              </div>
             </section>}
     </>}
   </div>;
+}
+
+const PROVIDER_STATES = { connected: "Connecté", disconnected: "Non connecté", error: "Erreur de connexion", checking: "Vérification…" } as const;
+
+/** One model provider: what it is, how it authenticates, whether it is connected, and its configuration. */
+function ProviderCard({ name, method, state, detail, onModels, children }: { name: string; method: string; state: keyof typeof PROVIDER_STATES; detail?: string; onModels: () => void; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 rounded-2xl border bg-card p-4" aria-label={name} data-provider-state={state}>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-medium">{name}</h2>
+          <p className="text-muted-foreground text-xs">{method}{detail && <span className="font-mono"> · {detail}</span>}</p>
+        </div>
+        <span className={"flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs " + (state === "error" ? "text-destructive" : state === "connected" ? "" : "text-muted-foreground")}>
+          <span className={"size-1.5 rounded-full " + (state === "connected" ? "bg-success" : state === "error" ? "bg-destructive" : "bg-muted-foreground/50")} />{t(PROVIDER_STATES[state])}
+        </span>
+      </div>
+      {children}
+      {state === "connected" && <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={onModels}>{t("Choisir un modèle de ce fournisseur")}</Button>}
+    </section>
+  );
 }
