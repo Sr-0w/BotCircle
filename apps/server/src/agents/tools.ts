@@ -1,4 +1,5 @@
 import { taskTools } from '../tasks/tools.ts';
+import { secureLoginTools } from '../securelogin/tools.ts';
 import { artifactTools, shareArtifactsWith } from '../artifacts/tools.ts';
 import { ArtifactError } from '../artifacts/service.ts';
 import { tool, type ToolSet } from 'ai';
@@ -714,6 +715,8 @@ export function buildTools(ctx: ToolContext): ToolSet {
 
   if (ctx.isMain && !ctx.taskId) Object.assign(tools, taskTools(ctx));
   Object.assign(tools, artifactTools(ctx));
+  // Seulement pour un compagnon qui a un ordinateur : c'est là que les pages de connexion apparaissent.
+  if (ctx.agent.permissions.computer) Object.assign(tools, secureLoginTools(ctx));
   return tools;
 }
 

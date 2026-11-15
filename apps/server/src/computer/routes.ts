@@ -1,3 +1,4 @@
+import { pendingSecureLogin } from '../securelogin/service.ts';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { config } from '../config.ts';
@@ -49,6 +50,8 @@ export function desktopRoutes() {
   app.post('/desktop/stop', async (c) => { await stopDesktop(); return c.json(await desktopStatus()); });
   app.post('/desktop/control', async (c) => {
     const body = z.object({ enabled: z.boolean() }).strict().parse(await c.req.json());
+    // Pendant une connexion sécurisée, la main ne se rend que depuis la carte de connexion : c'est elle qui informe le compagnon.
+    if (!body.enabled && await pendingSecureLogin(desktopAgentId())) return c.json({ error: 'Une connexion sécurisée est en cours : termine-la ou annule-la depuis sa carte dans la conversation.' }, 409);
     await setHumanControl(body.enabled); return c.json({ ok: true });
   });
   app.post('/screenshot', async (c) => c.json(await screenshot()));

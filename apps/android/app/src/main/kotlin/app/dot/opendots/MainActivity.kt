@@ -225,7 +225,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })
             current == Page.DefaultModel -> DefaultModelPage(app, onBack = ::back)
             current == Page.AgentBehaviour -> AgentBehaviourPage(app, ui.paused, onBack = ::back)
-            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile })
+            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); page = Page.Desktop })
             current == Page.GeneralChat -> ChatScreen(
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
                 onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat,

@@ -1,5 +1,6 @@
 import { addTaskEvent, getTask, hasRunningTask, listTasks, recordStep, registerTaskStream, releaseTaskStream, takeInstructions, updateTask, waitForUser, TASK_LOOP_REPEATS, TASK_MAX_STEPS } from '../tasks/service.ts';
 import { workerTools } from '../tasks/tools.ts';
+import { pendingSecureLogin, SENSITIVE_TOOL } from '../securelogin/service.ts';
 import type { ArtifactRow } from '../artifacts/service.ts';
 import { artifactUrl } from '@opendots/shared';
 import { desktopVisionMessages } from '../computer/vision.ts';
@@ -537,7 +538,7 @@ async function executeTurn(
       .where(and(eq(schema.approvals.agentId, agent.id), eq(schema.approvals.status, 'pending'))),
   ]);
 
-  const system = buildSystemPrompt({
+  const baseSystem = buildSystemPrompt({
     agent,
     team,
     memories,
@@ -552,6 +553,7 @@ async function executeTurn(
     tasks: taskId ? [] : (await listTasks({ agentId, active: true, limit: 8 })).map((t) => ({ id: t.id, title: t.title, status: t.status, phase: t.phase, currentAction: t.currentAction, completedSteps: t.completedSteps, blocker: t.blocker })),
     background: runSlot(live.key).background.filter((turn) => turn !== live).map((turn) => ({ task: turn.hint, progress: turn.notes.slice(-4) })),
   });
+  let system = baseSystem;
 
   const responseId = newId('msg');
   const taskNotes: string[] = [];
@@ -579,7 +581,11 @@ async function executeTurn(
       activeTools: activeToolNames(tools, capabilities.lazy) as any,
       prepareStep: async ({ messages, stepNumber, steps }) => {
         const prepared = compactSemanticObservations(desktopVisionMessages(messages));
-        const names = activeToolNames(tools, capabilities.lazy) as any;
+        // Connexion sécurisée en cours : tout outil qui lit l'écran, le DOM, le presse-papiers ou le disque du bureau est retiré.
+        const signingIn = await pendingSecureLogin(agentId);
+        const names = (signingIn ? (activeToolNames(tools, capabilities.lazy) as string[]).filter((name) => !SENSITIVE_TOOL.test(name)) : activeToolNames(tools, capabilities.lazy)) as any;
+        if (signingIn) system = baseSystem + `\n\nA secure sign-in is in progress on ${signingIn.origin}: the user has control of your browser and your computer tools are suspended. Do not ask for or mention any credential. If the user talks to you, answer normally about other things; you will be told the sign-in outcome.`;
+        else system = baseSystem;
         const detachedNote = live.detached
           ? '\n\nYou were moved to the background because the user sent a new message, which another turn is answering. Finish the task already underway: do not drop it and do not answer the new message. Send a text_user status only when there is something new to report, then end with a short factual result of what was actually done.'
           : '';
@@ -611,6 +617,7 @@ async function executeTurn(
             }
             for (const result of step.toolResults ?? []) {
               const out = result.output as { status?: string; summary?: string } | null;
+              if (out?.status === 'waiting_for_secure_login' && !taskStop) taskStop = 'The user must sign in themselves before this task can continue; the task is suspended until they are done.';
               if (out?.status === 'pending_approval' && !taskStop) {
                 await waitForUser(taskId, `Validation requise : ${out.summary ?? 'action à approuver'}`);
                 taskStop = 'An action is waiting for the user\'s approval; the task is suspended until they decide.';
@@ -626,7 +633,7 @@ async function executeTurn(
           if (note) return { activeTools: names, messages: prepared, instructions: system + note };
         }
         if (statusNote || steerNote) return { activeTools: names, messages: prepared, instructions: system + detachedNote + steerNote + statusNote };
-        return { activeTools: names, messages: prepared, ...(detachedNote ? { instructions: system + detachedNote } : {}) };
+        return { activeTools: names, messages: prepared, ...(detachedNote || signingIn ? { instructions: system + detachedNote } : {}) };
       },
       // No default step limit. If explicitly configured, reserve a synthesis.
       stopWhen: stepLimit === null ? [formShown] : [isStepCount(stepLimit + 1), formShown],

@@ -257,6 +257,14 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         }
     }
 
+    // --- Secure sign-in --------------------------------------------------------------------------
+
+    suspend fun secureLogins(pending: Boolean = false): List<SecureLogin> = get("/secure-logins" + if (pending) "?pending=1" else "")
+    suspend fun secureLogin(id: String): SecureLogin = get("/secure-logins/$id")
+    /** [outcome] is authenticated, cancelled or failed. Only this status ever reaches the companion. */
+    suspend fun resolveSecureLogin(id: String, outcome: String): SecureLogin =
+        OdJson.decodeFromJsonElement(json("POST", "/secure-logins/$id/resolve", buildJsonObject { put("outcome", outcome) }))
+
     // --- Background tasks ------------------------------------------------------------------------
 
     suspend fun tasks(): List<BgTask> = get("/tasks")

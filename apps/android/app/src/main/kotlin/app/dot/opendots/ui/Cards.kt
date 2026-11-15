@@ -22,6 +22,8 @@ import androidx.compose.material.icons.outlined.QuestionAnswer
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +80,12 @@ fun ActionCard(part: Part.Tool, message: ChatMessage, env: MessageEnv) {
         part.name == "team_send_message" -> {
             val to = out.str("to") ?: input?.str("to").orEmpty()
             InfoCard(Icons.AutoMirrored.Outlined.Chat, stringResource(R.string.message_sent_to, to), input?.str("message"))
+        }
+        part.name == "request_secure_login" && out.str("loginId") != null -> {
+            val id = out.str("loginId")!!
+            val login = env.secureLogins[id]
+            LaunchedEffect(id, login == null) { if (login == null) env.onNeedSecureLogin(id) }
+            SecureLoginCard(login, env)
         }
         (part.name == "task_start" || part.name == "invoke_agent") && out.str("taskId") != null -> {
             val taskId = out.str("taskId")!!
@@ -395,4 +403,38 @@ fun splitApprovalSummary(summary: String): ApprovalSummary {
     val context = text.first().takeIf { text.size > 1 && it.length <= 80 }
     val rest = if (context != null) text.drop(1) else text
     return ApprovalSummary(context, rest.first(), details, rest.drop(1) + extra)
+}
+
+/**
+ * The trusted sign-in card: drawn by the app from what the server verified, never by the model. It shows the real
+ * origin and has no credential field - the user signs in themselves in the companion's browser, whose tools are
+ * suspended meanwhile.
+ */
+@Composable
+fun SecureLoginCard(login: app.dot.opendots.data.SecureLogin?, env: MessageEnv) {
+    val c = Dot.colors
+    DotCard(Modifier.fillMaxWidth().testTag("secure-login"), emphasized = login?.pending == true) {
+        if (login == null) { Text(stringResource(R.string.login_loading), style = Dot.type.callout, color = c.textSecondary); return@DotCard }
+        CardHeader(
+            Icons.Outlined.Lock, stringResource(R.string.login_title, login.host),
+            stringResource(when (login.status) { "authenticated" -> R.string.login_done; "cancelled" -> R.string.login_cancelled; "failed" -> R.string.login_failed; "expired" -> R.string.login_expired; else -> R.string.login_pending }),
+            if (login.status == "authenticated") c.success else c.textSecondary,
+        )
+        var open by remember(login.id) { mutableStateOf(false) }
+        DotDisclosure(stringResource(if (login.encrypted) R.string.login_https else R.string.login_local), open, { open = !open }, Modifier.padding(start = 30.dp)) {
+            Text(login.url, style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textPrimary)
+        }
+        if (login.reason.isNotBlank()) { Spacer(Modifier.height(DotSpacing.s)); Text(login.reason, style = Dot.type.callout, color = c.textSecondary) }
+        if (login.pending) {
+            Spacer(Modifier.height(DotSpacing.s))
+            Text(stringResource(R.string.login_note), style = Dot.type.caption, color = c.textTertiary)
+            Spacer(Modifier.height(DotSpacing.m))
+            DotButton(stringResource(R.string.login_take_control), { env.onTakeControl(login.agentId) }, compact = true)
+            Spacer(Modifier.height(DotSpacing.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                DotButton(stringResource(R.string.login_signed_in), { env.onResolveSecureLogin(login.id, "authenticated") }, style = ButtonStyle.Secondary, compact = true)
+                DotButton(stringResource(R.string.cancel), { env.onResolveSecureLogin(login.id, "cancelled") }, style = ButtonStyle.Ghost, compact = true)
+            }
+        }
+    }
 }

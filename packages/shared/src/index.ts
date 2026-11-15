@@ -272,7 +272,28 @@ export type ServerEvent =
   | { type: 'draft.changed'; draft: MailDraftDTO }
   | { type: 'task.changed'; task: TaskDTO }
   | { type: 'chat.changed'; chatId: string; deleted?: boolean }
-  | { type: 'artifact.changed'; artifactId: string };
+  | { type: 'artifact.changed'; artifactId: string }
+  | { type: 'secure_login.changed'; login: SecureLoginDTO };
+
+// --- Connexion sécurisée ----------------------------------------------------------
+
+/** `pending` : l'utilisateur a la main ; les autres états sont définitifs. */
+export type SecureLoginStatus = 'pending' | 'authenticated' | 'cancelled' | 'failed' | 'expired';
+
+/** Une demande de connexion : l'origine exacte visée et son issue. Jamais d'identifiant, de mot de passe ni de code. */
+export interface SecureLoginDTO {
+  id: string;
+  agentId: string;
+  conversationId: string;
+  taskId: string | null;
+  /** Schéma + hôte (+ port), tel que vérifié par le serveur. */
+  origin: string;
+  url: string;
+  reason: string;
+  status: SecureLoginStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+}
 
 // --- Artefacts (fichiers) -----------------------------------------------------
 
@@ -581,6 +602,7 @@ export function isActionToolPart(part: Presentable): boolean {
   if (!out || out.ok === false) return false;
   if (part.type === 'tool-team_send_message' && out.status === 'sent') return true;
   // Une tâche déléguée laisse sa carte dans le fil (mise à jour en place).
+  if (part.type === 'tool-request_secure_login' && typeof (out as { loginId?: unknown }).loginId === 'string') return true;
   if ((part.type === 'tool-task_start' || part.type === 'tool-invoke_agent') && typeof (out as { taskId?: unknown }).taskId === 'string') return true;
   if (ACTION_TOOL_TYPES.has(part.type)) return true;
   return out.status === 'pending_approval';

@@ -27,6 +27,8 @@ const { openDatabase, closeAllDatabases } = await import('../src/db/client.ts');
 const { createAgent, mainConversationId } = await import('../src/agents/repo.ts');
 const { setSetting, setOpenRouterKey } = await import('../src/settings.ts');
 const { createTask } = await import('../src/tasks/service.ts');
+const { requestSecureLogin } = await import('../src/securelogin/service.ts');
+const { saveMessage } = await import('../src/conversations/repo.ts');
 const { registerLifeHandlers } = await import('../src/life/engine.ts');
 const { startQueue, stopQueue } = await import('../src/jobs/queue.ts');
 registerLifeHandlers();
@@ -111,6 +113,32 @@ try {
   await details.locator('[data-task-events] li').first().waitFor();
   await shot('4-task-details');
   await page.keyboard.press('Escape');
+
+  // --- Connexion sécurisée (#23) : carte de confiance, origine vérifiée, issue transmise sans secret.
+  let loginId = '';
+  await withAccount(account, async () => {
+    const login = await requestSecureLogin({ agentId: devId, conversationId: await mainConversationId(devId), url: 'https://service.example/login?next=%2Finvoices', reason: 'Lire la dernière facture' });
+    loginId = login.id;
+    await saveMessage(await mainConversationId(devId), { id: 'login-fixture', role: 'assistant', parts: [
+      { type: 'text', text: 'Une connexion est nécessaire sur service.example.' },
+      { type: 'tool-request_secure_login', toolCallId: 'login-call', state: 'output-available', input: { url: login.url, reason: login.reason }, output: { ok: true, status: 'waiting_for_secure_login', loginId: login.id, origin: login.origin } },
+    ] as any, metadata: { agentId: devId } }, { author: 'agent', agentId: devId });
+  });
+  await page.goto(`${origin}/#/agent/${devId}`);
+  const loginCard = page.getByRole('region', { name: 'Connexion sécurisée' });
+  await loginCard.getByText('Se connecter à service.example', { exact: true }).waitFor();
+  await loginCard.getByText('En attente de ta connexion', { exact: true }).waitFor();
+  assert.equal(await loginCard.locator('input').count(), 0); // aucun champ d'identifiant dans OpenDots
+  await loginCard.getByText(/Connexion chiffrée \(HTTPS\)/).click();
+  await loginCard.getByText('https://service.example/login?next=%2Finvoices', { exact: true }).waitFor();
+  await shot('8-secure-login');
+  // Tant qu'elle est en cours, la main ne se rend pas par un autre chemin.
+  assert.equal((await context.request.post(`${origin}/api/computer/desktop/control?agentId=${devId}`, { data: { enabled: false }, headers: { 'x-opendots-client': '1' } })).status(), 409);
+  await loginCard.getByRole('button', { name: 'Annuler', exact: true }).click();
+  await loginCard.getByText('Connexion annulée', { exact: true }).waitFor();
+  assert.equal(await loginCard.getByRole('button').count(), 0);
+  assert.equal((await (await context.request.get(`${origin}/api/secure-logins/${loginId}`)).json()).status, 'cancelled');
+  await page.goto(`${origin}/#/agent/${ariId}`);
 
   // --- Chats (#29) : destination distincte, @mention, intervention signée, renommage, suppression.
   await page.getByRole('button', { name: 'Nouveau chat' }).click();

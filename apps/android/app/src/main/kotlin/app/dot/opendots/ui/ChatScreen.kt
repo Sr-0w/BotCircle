@@ -137,7 +137,7 @@ private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
 }
 
 @Composable
-fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null) {
+fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}) {
     // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
     val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
     LaunchedEffect(session) { session.open() }
@@ -183,7 +183,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
     }
 
-    val env = remember(ui.agents, ui.approvals, ui.requests, ui.drafts, ui.tasks, chat.busy, session) {
+    val env = remember(ui.agents, ui.approvals, ui.requests, ui.drafts, ui.tasks, ui.secureLogins, chat.busy, session) {
         MessageEnv(
             agents = ui.agents, approvals = ui.approvals, requests = ui.requests, drafts = ui.drafts, busy = chat.busy,
             resolveUrl = app.client::resolve,
@@ -201,6 +201,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             onShowWork = { workSheet = true },
             tasks = ui.tasks, onNeedTask = app::loadTask, onOpenTask = { taskSheet = it }, onTaskAction = app::taskAction,
             fileActions = fileActions, onFileAccess = { accessSheet = it }, attribution = general != null,
+            secureLogins = ui.secureLogins, onNeedSecureLogin = app::ensureSecureLogin, onResolveSecureLogin = { id, outcome -> app.resolveSecureLogin(id, outcome) }, onTakeControl = onOpenDesktop,
         )
     }
 

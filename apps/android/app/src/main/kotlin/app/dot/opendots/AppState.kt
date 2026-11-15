@@ -13,6 +13,7 @@ import app.dot.opendots.data.BgTask
 import app.dot.opendots.data.ChatTarget
 import app.dot.opendots.data.GeneralChat
 import app.dot.opendots.data.MailDraft
+import app.dot.opendots.data.SecureLogin
 import app.dot.opendots.data.ModelInfo
 import app.dot.opendots.data.OpenDotsClient
 import app.dot.opendots.data.ServerEvent
@@ -59,6 +60,8 @@ data class AppUiState(
     val tasks: Map<String, BgTask> = emptyMap(),
     /** General chats, most recent first. */
     val chats: List<GeneralChat> = emptyList(),
+    /** Secure sign-in requests seen by the app, by id. */
+    val secureLogins: Map<String, SecureLogin> = emptyMap(),
     val currentChatId: String? = null,
     val connected: Boolean = true,
     val paused: Boolean = false,
@@ -239,6 +242,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
             is ServerEvent.DraftChanged -> _state.update { it.copy(drafts = it.drafts + (event.draft.id to event.draft)) }
             is ServerEvent.ActivityChanged -> if (_state.value.activities != null) loadActivities()
             is ServerEvent.TaskChanged -> _state.update { it.copy(tasks = it.tasks + (event.task.id to event.task.copy(events = it.tasks[event.task.id]?.events.orEmpty()))) }
+            is ServerEvent.SecureLoginChanged -> _state.update { it.copy(secureLogins = it.secureLogins + (event.login.id to event.login)) }
             is ServerEvent.ChatChanged -> {
                 if (event.deleted) _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == event.chatId }, currentChatId = s.currentChatId.takeIf { it != event.chatId }) }
                 viewModelScope.launch { runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } } }
@@ -280,6 +284,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         viewModelScope.launch {
             runCatching { client.tasks() }.onSuccess { list -> _state.update { s -> s.copy(tasks = list.associate { it.id to it.copy(events = s.tasks[it.id]?.events.orEmpty()) }) } }
             runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
+            runCatching { client.secureLogins(pending = true) }.onSuccess { list -> _state.update { s -> s.copy(secureLogins = s.secureLogins.filterValues { !it.pending } + list.associateBy { it.id }) } }
         }
     }
 
@@ -291,6 +296,20 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun taskAction(id: String, action: String) = act { val task = client.taskAction(id, action); _state.update { it.copy(tasks = it.tasks + (task.id to task.copy(events = it.tasks[task.id]?.events.orEmpty()))) }; loadTask(id) }
 
     fun taskInstruction(id: String, instruction: String, onSent: () -> Unit) = act { client.taskInstruction(id, instruction); onSent(); loadTask(id) }
+
+    // --- Secure sign-in ---------------------------------------------------------------------------
+
+    fun ensureSecureLogin(id: String) {
+        if (id in _state.value.secureLogins) return
+        viewModelScope.launch { runCatching { client.secureLogin(id) }.onSuccess { login -> _state.update { it.copy(secureLogins = it.secureLogins + (login.id to login)) } } }
+    }
+
+    /** Ends a sign-in: the companion gets its tools back and is told the outcome, nothing else. */
+    fun resolveSecureLogin(id: String, outcome: String, onDone: () -> Unit = {}) = act {
+        val login = client.resolveSecureLogin(id, outcome)
+        _state.update { it.copy(secureLogins = it.secureLogins + (login.id to login)) }
+        onDone()
+    }
 
     // --- General chats --------------------------------------------------------------------------
 

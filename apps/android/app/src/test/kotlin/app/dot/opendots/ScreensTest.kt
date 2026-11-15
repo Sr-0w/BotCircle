@@ -117,6 +117,12 @@ class ScreensTest {
                     path == "/artifacts/art_r1" -> json(artifact)
                     path == "/artifacts/art_n1" -> json("""{"id":"art_n1","name":"meeting notes.md","mediaType":"text/markdown","size":41}""")
                     path == "/artifacts/art_r1/grants/a3" -> json("""{"grants":[],"access":[{"actor":"user","action":"revoke","detail":"✕ a3","createdAt":"2026-11-13T09:06:00Z"}]}""")
+                    path == "/agents/a2/messages" -> json("""{"conversationId":"c2","cursor":null,"active":false,"messages":[
+                      {"id":"v1","role":"assistant","metadata":{"agentId":"a2"},"parts":[{"type":"text","text":"A sign-in is needed on service.example."},
+                        {"type":"tool-request_secure_login","toolCallId":"l1","state":"output-available","input":{"url":"https://service.example/login","reason":"Read the latest invoice"},"output":{"ok":true,"status":"waiting_for_secure_login","loginId":"sl1","origin":"https://service.example"}}]}]}""")
+                    path == "/agents/a2/stream" -> MockResponse.Builder().code(204).build()
+                    path == "/secure-logins/sl1" -> json("""{"id":"sl1","agentId":"a2","conversationId":"c2","origin":"https://service.example","url":"https://service.example/login?next=%2Finvoices","reason":"Read the latest invoice","status":"pending"}""")
+                    path == "/secure-logins/sl1/resolve" -> json("""{"id":"sl1","agentId":"a2","conversationId":"c2","origin":"https://service.example","url":"https://service.example/login?next=%2Finvoices","reason":"Read the latest invoice","status":"cancelled"}""")
                     path == "/settings" -> json("""{"openrouterKey":"sk-or-…-9f2c","defaultModel":{"provider":"openrouter","model":"openai/gpt-5"},"timezone":"Europe/Brussels","paused":false,"ollamaUrl":null,"turnStepLimit":null}""")
                     path == "/codex/account" -> json("""{"account":null,"error":null}""")
                     path == "/codex/login" -> json("""{"verificationUrl":"https://auth.openai.com/codex/device","userCode":"TEST-1234"}""")
@@ -278,6 +284,26 @@ class ScreensTest {
         compose.onNodeWithText("Connect ChatGPT").performClick()
         waitFor("TEST-1234")
         waitFor("openai/gpt-5")
+    }
+
+    @Test fun aSignInIsATrustedCardWithoutAnyCredentialField() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        waitFor("Venty")
+        compose.onNodeWithText("Venty").performClick()
+        waitFor("Sign in to service.example")
+        waitFor("Waiting for you to sign in")
+        waitFor("Read the latest invoice")
+        // The card offers control of the browser, never a place to type a password.
+        waitFor("Take control of the browser")
+        assertEquals(0, compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("secure-login"))).fetchSemanticsNodes().size)
+        shoot("secure-login-dark")
+        compose.onNodeWithText("Cancel").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/secure-logins/sl1/resolve" } }
+        assertEquals("""{"outcome":"cancelled"}""", posts.first { it.first == "/secure-logins/sl1/resolve" }.second)
+        waitFor("Sign-in cancelled")
+        assertTrue(!compose.onAllNodesWithTextCompat("Take control of the browser"))
     }
 
     @Test fun signInThenEnter() {

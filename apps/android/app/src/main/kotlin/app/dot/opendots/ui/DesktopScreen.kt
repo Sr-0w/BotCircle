@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -346,7 +347,10 @@ private fun LiveDesktop(app: AppState, agent: Agent, status: DesktopStatus, onRe
                     style = Dot.type.caption, color = Dot.colors.textSecondary, maxLines = 2, modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(DotSpacing.s))
-                if (control) DotButton(stringResource(R.string.computer_release), { setControl(false) }, style = ButtonStyle.Secondary, loading = switching, compact = true)
+                // During a secure sign-in, handing back is what tells the companion the outcome - and nothing else.
+                val login = app.state.collectAsStateWithLifecycle().value.secureLogins.values.firstOrNull { it.agentId == agent.id && it.pending }
+                if (login != null) DotPrimaryButton(stringResource(R.string.login_signed_in), { app.resolveSecureLogin(login.id, "authenticated") { control = false } }, compact = true)
+                else if (control) DotButton(stringResource(R.string.computer_release), { setControl(false) }, style = ButtonStyle.Secondary, loading = switching, compact = true)
                 else DotPrimaryButton(stringResource(R.string.computer_take), { setControl(true) }, loading = switching, compact = true)
             }
         }

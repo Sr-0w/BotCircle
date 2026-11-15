@@ -14,13 +14,17 @@ It speaks the same HTTP API as the web app, so it works with any OpenDots server
   listed under Tasks with their journal.
 - Chats: free threads that belong to no companion, with their own model; `@Name` brings a companion in and its answer
   is signed.
+- Secure sign-in: when a companion's browser hits a login page, a trusted card shows the real host and lets you take
+  control of its browser; the companion's tools are suspended and it only learns the outcome.
+- Settings: model providers with their status (OpenRouter key, ChatGPT device-code sign-in, Ollama), default model,
+  agent behaviour.
 - Replies, reactions, stop.
 - Full-screen pages, no drawer: Companions (home), Chats, Tasks, Approvals and Settings behind a quiet bottom bar; a
   conversation, a companion's profile (name, model, permissions) and its computer are pushed pages.
 - A companion's computer, live, with optional take-over (mouse and keyboard).
 - System, light, dark and true-black OLED themes; English and French.
 
-Connectors, skills, memory and the desktop viewer are still managed from the web app.
+Connectors, skills and memory are still managed from the web app.
 
 ## Navigation
 

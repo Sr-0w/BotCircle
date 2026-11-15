@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { AgentDTO, ApprovalDTO, ChatDTO, ServerEvent, TaskDTO } from "@opendots/shared";
+import type { AgentDTO, ApprovalDTO, ChatDTO, SecureLoginDTO, ServerEvent, TaskDTO } from "@opendots/shared";
 import { api } from "./api";
 import { closeDialog } from "./dialogs";
 import { notifyFromEvent } from "./notify";
@@ -12,12 +12,14 @@ interface State {
   tasks: TaskDTO[];
   /** Chats généraux, du plus récent au plus ancien. */
   chats: ChatDTO[];
+  /** Demandes de connexion sécurisée vues par ce client. */
+  secureLogins: SecureLoginDTO[];
   connected: boolean;
   paused: boolean;
 }
 
 let generation = 0;
-let state: State = { agents: [], approvals: [], tasks: [], chats: [], connected: false, paused: false };
+let state: State = { agents: [], approvals: [], tasks: [], chats: [], secureLogins: [], connected: false, paused: false };
 const listeners = new Set<() => void>();
 const eventListeners = new Set<(e: ServerEvent) => void>();
 
@@ -101,6 +103,9 @@ function handle(e: ServerEvent) {
         if (owner) refreshAgent(owner.id);
       }
       break;
+    case "secure_login.changed":
+      set((s) => ({ secureLogins: [e.login, ...s.secureLogins.filter((login) => login.id !== e.login.id)] }));
+      break;
     case "task.changed":
       set((s) => ({ tasks: s.tasks.some((task) => task.id === e.task.id) ? s.tasks.map((task) => (task.id === e.task.id ? e.task : task)) : [e.task, ...s.tasks] }));
       break;
@@ -131,7 +136,7 @@ export function clearAccountState() {
   source?.close(); source = null;
   for (const timer of refreshTimers.values()) window.clearTimeout(timer);
   refreshTimers.clear();
-  set({ agents: [], approvals: [], tasks: [], chats: [], connected: false, paused: false });
+  set({ agents: [], approvals: [], tasks: [], chats: [], secureLogins: [], connected: false, paused: false });
 }
 
 export function connectEvents() {

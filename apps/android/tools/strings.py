@@ -250,6 +250,18 @@ S = {
  "step_limit_note": ('Empty: agents keep working until they are done or you stop them.', 'Vide : les agents poursuivent jusqu’au bout, ou jusqu’à ton arrêt.'),
  "timezone": ('Time zone', 'Fuseau horaire'),
  "timezone_note": ('Used for schedules and the time companions see.', 'Sert aux planifications et à l’heure que voient les compagnons.'),
+ "login_loading": ('Sign-in…', 'Connexion…'),
+ "login_title": ('Sign in to %1$s', 'Se connecter à %1$s'),
+ "login_pending": ('Waiting for you to sign in', 'En attente de ta connexion'),
+ "login_done": ('Signed in', 'Connexion effectuée'),
+ "login_cancelled": ('Sign-in cancelled', 'Connexion annulée'),
+ "login_failed": ('Sign-in did not succeed', 'Connexion non aboutie'),
+ "login_expired": ('Request expired', 'Demande expirée'),
+ "login_https": ('Encrypted (HTTPS) · full address', 'Chiffrée (HTTPS) · adresse complète'),
+ "login_local": ('Unencrypted local connection · full address', 'Connexion locale non chiffrée · adresse complète'),
+ "login_note": ('You type your credentials yourself, straight into its browser. Its screenshots, clicks and terminal are suspended; it is only told “signed in” or not.', 'Tu saisis tes identifiants toi-même, directement dans son navigateur. Ses captures, ses clics et son terminal sont suspendus ; il ne reçoit que « connecté » ou non.'),
+ "login_take_control": ('Take control of the browser', 'Prendre le contrôle du navigateur'),
+ "login_signed_in": ('I’m signed in — hand back', 'Je suis connecté — rendre la main'),
 }
 P = {
  "actions": (("%d action", "%d actions"), ("%d action", "%d actions")),

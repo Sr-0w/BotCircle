@@ -274,6 +274,7 @@ sealed interface ServerEvent {
     data class TaskChanged(val task: BgTask) : ServerEvent
     data class ChatChanged(val chatId: String, val deleted: Boolean) : ServerEvent
     data class ArtifactChanged(val artifactId: String) : ServerEvent
+    data class SecureLoginChanged(val login: SecureLogin) : ServerEvent
     data class Other(val type: String) : ServerEvent
 }
 
@@ -399,4 +400,24 @@ fun findMentions(text: String, agents: List<Agent>): List<String> {
         }
         found
     }.map { it.id }
+}
+
+/**
+ * A secure sign-in request (`SecureLoginDTO`): the exact origin the server verified, and the outcome. It never carries
+ * a username, password or code - the user signs in themselves in the companion's browser.
+ */
+@Immutable
+@Serializable
+data class SecureLogin(
+    val id: String,
+    val agentId: String = "",
+    val conversationId: String = "",
+    val origin: String = "",
+    val url: String = "",
+    val reason: String = "",
+    val status: String = "pending",
+) {
+    val pending: Boolean get() = status == "pending"
+    val host: String get() = origin.substringAfter("://")
+    val encrypted: Boolean get() = origin.startsWith("https://")
 }

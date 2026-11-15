@@ -26,6 +26,7 @@ import type {
   TaskDTO,
   TaskEventDTO,
   ChatDTO,
+  SecureLoginDTO,
   JournalEntryDTO,
   MemoryDTO,
   ModelConfig,
@@ -137,6 +138,10 @@ export const api = {
   task: (id: string) => request<TaskDTO & { events: TaskEventDTO[] }>('GET', `/tasks/${id}`),
   taskAction: (id: string, action: 'cancel' | 'pause' | 'resume') => request<TaskDTO>('POST', `/tasks/${id}/${action}`),
   taskInstruction: (id: string, instruction: string) => request<TaskDTO>('POST', `/tasks/${id}/instruction`, { instruction }),
+
+  secureLogins: (pending = false) => request<SecureLoginDTO[]>('GET', `/secure-logins${pending ? '?pending=1' : ''}`),
+  secureLogin: (id: string) => request<SecureLoginDTO>('GET', `/secure-logins/${id}`),
+  resolveSecureLogin: (id: string, outcome: 'authenticated' | 'cancelled' | 'failed') => request<SecureLoginDTO>('POST', `/secure-logins/${id}/resolve`, { outcome }),
 
   chats: (q?: string) => request<ChatDTO[]>('GET', `/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createChat: (input: { title?: string; model?: ModelConfig | null } = {}) => request<ChatDTO>('POST', '/chats', input),

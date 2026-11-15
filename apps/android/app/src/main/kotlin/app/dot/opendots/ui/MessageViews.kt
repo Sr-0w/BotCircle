@@ -76,6 +76,7 @@ import app.dot.opendots.data.ChatMessage
 import app.dot.opendots.data.MailDraft
 import app.dot.opendots.data.Part
 import app.dot.opendots.data.Reaction
+import app.dot.opendots.data.SecureLogin
 import app.dot.opendots.data.ReplyRef
 import app.dot.opendots.data.UserRequest
 import app.dot.opendots.data.arr
@@ -116,6 +117,11 @@ class MessageEnv(
     val onFileAccess: ((String) -> Unit)? = null,
     /** General chats sign every answer: the assistant, or the companion that contributed. */
     val attribution: Boolean = false,
+    val secureLogins: Map<String, SecureLogin> = emptyMap(),
+    val onNeedSecureLogin: (String) -> Unit = {},
+    val onResolveSecureLogin: (id: String, outcome: String) -> Unit = { _, _ -> },
+    /** Opens the companion's browser with the user in control. */
+    val onTakeControl: (agentId: String) -> Unit = {},
 )
 
 @Composable

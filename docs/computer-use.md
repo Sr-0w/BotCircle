@@ -186,6 +186,30 @@ page, losing the connection or restarting OpenDots does not silently resume mode
 captures. Explicitly hand control back, allow models on reopening the page, or stop
 the desktop. Earlier images already sent to a provider cannot be withdrawn.
 
+### Secure sign-in
+
+When a page in a companion's browser asks for a login, the companion calls `request_secure_login` with the page URL
+instead of asking for credentials. The server then:
+
+1. checks the URL (HTTPS only, except a local address; no credentials embedded) and records only the origin, the URL,
+   the reason and, later, the outcome — the table has no column that could hold a secret;
+2. puts the desktop under human control **before** the card appears, so model screenshots, clicks, typing and DOM
+   inspection are refused, and removes every other tool that can read the desktop from the companion's turns
+   (`shell_*`, workspace file transfers, `git_*`) for as long as the request is pending;
+3. shows a trusted card (Web and Android) with the real host and the full address. The card has no password field:
+   the user opens the companion's browser from it and types there. Keystrokes travel over the VNC relay to the
+   desktop; they never pass through the model, the conversation or the logs;
+4. on "I'm signed in", "I couldn't sign in", "Cancel" or after 30 minutes (`OPENDOTS_SECURE_LOGIN_TTL_MIN`), clears the
+   desktop clipboard, hands control back and tells the companion **only** the status: `authenticated`, `failed`,
+   `cancelled` or `expired`. A worker task waits in `waiting_for_user` meanwhile and resumes by itself.
+
+While a request is pending, control cannot be handed back from the computer page: only the card ends it.
+
+Limits to know: this is the takeover flow, not a credential-injection form — OpenDots never holds the password, which
+also means it cannot autofill it. And once signed in, the session lives in the companion's browser profile: a
+companion with shell access to its own computer could read its own cookies. Do not sign a companion into an account
+you would not let it act on.
+
 The last 20 screenshot artifacts are retained in the account's private data
 folder for chat display/history. They are never public image URLs. Backups of the
 account include potentially sensitive screenshots and browser sessions.

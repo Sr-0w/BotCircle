@@ -131,6 +131,10 @@ export async function desktopExec(args: string[], input?: string, options: { sig
     if (options.signal?.aborted) cancel();
   }); } finally { release(); }
 }
+/** Ménage côté bureau qui ne doit jamais faire échouer l'appelant (bureau arrêté, outil absent). */
+export async function desktopExecQuiet(args: string[]) {
+  try { if ((await desktopStatus()).running) await desktopExec(args, undefined, { timeoutMs: 5_000 }); } catch { /* sans effet */ }
+}
 export function desktopVncStream(port: number) {
   return spawn('docker', ['exec', '-i', computerName(), 'socat', 'STDIO', `TCP:127.0.0.1:${port}`], { stdio: ['pipe', 'pipe', 'pipe'] });
 }

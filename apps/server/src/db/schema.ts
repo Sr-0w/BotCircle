@@ -10,7 +10,7 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import type {
+import type { SecureLoginStatus,
   ActivityKind,
   ActivitySchedule,
   ActivityMailFilter,
@@ -416,4 +416,26 @@ export const taskEvents = pgTable(
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [index('task_events_task_idx').on(t.taskId, t.seq)],
+);
+
+/**
+ * Connexion sécurisée : un compagnon a besoin que l'utilisateur s'authentifie sur un site. Rien de secret n'est
+ * stocké ici — seulement l'origine visée, la raison et l'issue. Tant que `status` vaut `pending`, les outils
+ * d'ordinateur de ce compagnon sont suspendus.
+ */
+export const secureLogins = pgTable(
+  'secure_logins',
+  {
+    id: text('id').primaryKey(),
+    agentId: text('agent_id').notNull(),
+    conversationId: text('conversation_id').notNull(),
+    taskId: text('task_id'),
+    origin: text('origin').notNull(),
+    url: text('url').notNull(),
+    reason: text('reason').notNull().default(''),
+    status: text('status').$type<SecureLoginStatus>().notNull().default('pending'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    resolvedAt: ts('resolved_at'),
+  },
+  (t) => [index('secure_logins_agent_idx').on(t.agentId, t.status)],
 );

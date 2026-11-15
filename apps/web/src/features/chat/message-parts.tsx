@@ -34,6 +34,7 @@ import { ComputerSetupCard, WelcomeSetupCards } from './setup-cards';
 import { DesktopScreenshot } from './desktop-screenshot';
 import { MessageActions, MessageQuote, ReactionPills } from './message-actions';
 import { FileCard, TaskCard } from './attachments';
+import { SecureLoginCard } from './secure-login-card';
 
 import { t } from "@/lib/i18n";
 const LiveComputer = lazy(() => import('./live-computer').then(m => ({ default: m.LiveComputer })));
@@ -113,6 +114,7 @@ function describeTool(name: string, input: any, output: any): { title: string; i
       return { title: output?.subject ? t("Lit « {v0} »", { v0: String(output.subject).slice(0, 40) }) : t("Lit un e-mail"), icon: <MailIcon className="size-3.5" /> };
     case "mail_prepare":
       return { title: t("Prépare un e-mail"), icon: <MailIcon className="size-3.5" /> };
+    case "request_secure_login": return { title: t("Demande une connexion sécurisée"), icon: <KeyRoundIcon className="size-3.5" /> };
     case "task_start": return { title: i.title ? t("Lance la tâche « {v0} »", { v0: String(i.title).slice(0, 50) }) : t("Lance une tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
     case "task_status": case "task_list": return { title: t("Consulte l’état de ses tâches"), icon: <ClipboardListIcon className="size-3.5" /> };
     case "task_send_instruction": return { title: t("Transmet une consigne à sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
@@ -264,6 +266,7 @@ function ToolCard({ part, agentId, date }: { part: ToolUIPart; agentId?: string;
   const input = (part as any).input ?? {};
   if (!out || out.ok === false) return null;
   if (isSentTeam(part)) return <SentTeamCard part={part} agentId={agentId} date={date} />;
+  if (name === "request_secure_login" && out.loginId) return <SecureLoginCard loginId={out.loginId} />;
   if ((name === "task_start" || name === "invoke_agent") && out.taskId) return <TaskCard taskId={out.taskId} showAgent={name === "invoke_agent"} />;
   if (name === "ask_user" && out.requestId) return <AskUserCard requestId={out.requestId} title={input.title} questions={input.questions ?? []} />;
   if (name === "connection_request_setup") return <ConnectionRequestCard kind={out.kind} provider={out.provider} permissions={out.permissions} reason={out.reason} agentId={agentId} />;
