@@ -66,6 +66,9 @@ export const conversations = pgTable(
     title: text('title'),
     /** Modèle propre à un chat général (sinon le modèle par défaut). */
     model: jsonb('model').$type<ModelConfig | null>(),
+    /** Chat général : la recherche web est-elle donnée au modèle ? Retirée des outils quand elle est coupée. */
+    webSearch: boolean('web_search').notNull().default(true),
+    pinned: boolean('pinned').notNull().default(false),
     archived: boolean('archived').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),

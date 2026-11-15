@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { CheckIcon, CopyIcon, EllipsisIcon, ReplyIcon } from 'lucide-react';
+import { CheckIcon, CopyIcon, EllipsisIcon, PencilIcon, ReplyIcon, RotateCcwIcon } from 'lucide-react';
 import type { MessageReaction, MessageReplyRef } from '@opendots/shared';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -47,7 +47,7 @@ export function ReactionPills({ reactions, onToggle }: { reactions: MessageReact
 }
 
 /** Actions d'un message : bouton visible, menu, et appui long sur mobile. */
-export function MessageActions({ text, onReply, onReact, align = 'start', children }: { text: string; onReply: () => void; onReact: (emoji: string) => void; align?: 'start' | 'end'; children: ReactNode }) {
+export function MessageActions({ text, onReply, onReact, onEdit, onRegenerate, align = 'start', children }: { text: string; onReply: () => void; onReact: (emoji: string) => void; onEdit?: () => void; onRegenerate?: () => void; align?: 'start' | 'end'; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const press = useRef<number | null>(null);
@@ -107,12 +107,16 @@ export function MessageActions({ text, onReply, onReact, align = 'start', childr
               ))}
             </div>
             <DropdownMenuItem onSelect={onReply}><ReplyIcon />{t('Répondre')}</DropdownMenuItem>
+            {onEdit && <DropdownMenuItem onSelect={onEdit}><PencilIcon />{t('Modifier')}</DropdownMenuItem>}
+            {onRegenerate && <DropdownMenuItem onSelect={onRegenerate}><RotateCcwIcon />{t('Régénérer')}</DropdownMenuItem>}
             {text && <DropdownMenuItem onSelect={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}{copied ? t('Copié') : t('Copier')}</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex items-center gap-0.5 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/bubble:opacity-100 [@media(hover:hover)]:group-focus-within/bubble:opacity-100">
           <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Répondre')} onClick={onReply}><ReplyIcon /></Button>
           {text && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={copied ? t('Copié') : t('Copier')} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</Button>}
+          {onEdit && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Modifier')} onClick={onEdit}><PencilIcon /></Button>}
+          {onRegenerate && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Régénérer')} onClick={onRegenerate}><RotateCcwIcon /></Button>}
         </div>
         {copied && <span className="px-1 text-[11px] text-muted-foreground">{t('Copié')}</span>}
       </div>

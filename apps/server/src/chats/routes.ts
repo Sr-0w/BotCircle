@@ -9,7 +9,7 @@ import { loadMessages, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import { listTasks, toTaskDTO } from '../tasks/service.ts';
 import type { ModelConfig } from '@opendots/shared';
 import { ChatError, createChat, deleteChat, getChat, listChats, toChatDTO, updateChat } from './repo.ts';
-import { runChatTurn, stopChat } from './turn.ts';
+import { editChatMessage, regenerateChatTurn, runChatTurn, stopChat } from './turn.ts';
 
 const modelSchema = z.object({
   provider: z.enum(['openrouter', 'ollama', 'codex']),
@@ -33,12 +33,12 @@ export function chatRoutes() {
     return row ? c.json(await toChatDTO(row)) : c.json({ error: 'Chat introuvable.' }, 404);
   });
   app.patch('/:id', async (c) => {
-    const body = z.object({ title: z.string().max(200).optional(), model: modelSchema.nullable().optional() }).parse(await c.req.json());
+    const body = z.object({ title: z.string().max(200).optional(), model: modelSchema.nullable().optional(), webSearch: z.boolean().optional(), pinned: z.boolean().optional() }).parse(await c.req.json());
     if (body.model) {
       const check = await checkModel(body.model as ModelConfig);
       if (!check.ok) return c.json({ error: check.error }, 400);
     }
-    return c.json(await toChatDTO(await updateChat(c.req.param('id'), { title: body.title, ...(body.model !== undefined ? { model: body.model as ModelConfig | null } : {}) })));
+    return c.json(await toChatDTO(await updateChat(c.req.param('id'), { title: body.title, webSearch: body.webSearch, pinned: body.pinned, ...(body.model !== undefined ? { model: body.model as ModelConfig | null } : {}) })));
   });
   app.delete('/:id', async (c) => c.json({ ok: await deleteChat(c.req.param('id')) }));
 
@@ -56,9 +56,17 @@ export function chatRoutes() {
   app.post('/:id/chat', bodyLimit({ maxSize: 1_000_000, onError: (c) => c.json({ error: 'Message trop volumineux.' }, 413) }), async (c) => {
     const row = await getChat(c.req.param('id'));
     if (!row) return c.json({ error: 'Chat introuvable.' }, 404);
-    const message = ((await c.req.json()) as { message?: OpenDotsUIMessage }).message;
+    const body = (await c.req.json()) as { message?: OpenDotsUIMessage; regenerate?: boolean; editOf?: string };
+    // The same live stream serves a new message, a regenerated answer and an edited message.
+    if (body.regenerate) return createUIMessageStreamResponse({ stream: (await regenerateChatTurn(row.id)).stream.readable() });
+    const message = body.message;
     if (!message || message.role !== 'user' || !Array.isArray(message.parts) || !message.id) return c.json({ error: 'Message invalide' }, 400);
     const parts = await validateMessageParts(message.parts);
+    if (typeof body.editOf === 'string' && body.editOf) {
+      const text = parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('\n').trim();
+      if (!text) return c.json({ error: 'Le message modifié est vide.' }, 400);
+      return createUIMessageStreamResponse({ stream: (await editChatMessage(row.id, body.editOf.slice(0, 64), text)).stream.readable() });
+    }
     const { stream } = runChatTurn(row.id, { id: String(message.id).slice(0, 64), role: 'user', parts, metadata: {} });
     return createUIMessageStreamResponse({ stream: stream.readable() });
   });
@@ -70,5 +78,20 @@ export function chatRoutes() {
   });
 
   app.post('/:id/stop', async (c) => c.json({ ok: true, stopped: stopChat(c.req.param('id')) }));
+  // Une nouvelle réponse au dernier message ; la précédente reste lisible dans ses versions.
+  app.post('/:id/regenerate', async (c) => {
+    const row = await getChat(c.req.param('id'));
+    if (!row) return c.json({ error: 'Chat introuvable.' }, 404);
+    const { stream } = await regenerateChatTurn(row.id);
+    return createUIMessageStreamResponse({ stream: stream.readable() });
+  });
+  // Modifier un message : la suite de la conversation est mise de côté (conservée, masquée) et une réponse repart.
+  app.post('/:id/edit', bodyLimit({ maxSize: 200_000 }), async (c) => {
+    const row = await getChat(c.req.param('id'));
+    if (!row) return c.json({ error: 'Chat introuvable.' }, 404);
+    const { messageId, text } = z.object({ messageId: z.string().min(1).max(64), text: z.string().min(1).max(50_000) }).strict().parse(await c.req.json());
+    const { stream } = await editChatMessage(row.id, messageId, text);
+    return createUIMessageStreamResponse({ stream: stream.readable() });
+  });
   return app;
 }

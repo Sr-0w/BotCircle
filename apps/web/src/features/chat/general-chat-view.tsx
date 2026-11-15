@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FloatingComposer } from '@/components/floating-composer';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { AlertCircleIcon, MessagesSquareIcon, SparklesIcon } from 'lucide-react';
+import { AlertCircleIcon } from 'lucide-react';
 import type { ChatDTO } from '@opendots/shared';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Shimmer } from '@/components/ai-elements/shimmer';
@@ -13,6 +13,20 @@ import { t } from '@/lib/i18n';
 import { ChatActionsContext } from './cards';
 import { Composer, isChatImage } from './composer';
 import { liveStep, MessageView } from './message-parts';
+import { ChatControls } from './chat-controls';
+import { ThinkingOrb, type OrbState } from '@/components/thinking-orb';
+
+/** The orb follows what the request is really doing, read from the streamed parts, never from the text. */
+function orbState(status: string, last: ODMessage | undefined): OrbState {
+  if (status === 'submitted' || last?.role !== 'assistant') return 'working';
+  const part = last.parts.at(-1) as { type: string; state?: string } | undefined;
+  if (!part) return 'working';
+  if (/^tool-web_(search|fetch)$/.test(part.type) && part.state !== 'output-available') return 'searching';
+  if (/^tool-(invoke_agent|task_)/.test(part.type) && part.state !== 'output-available') return 'connecting';
+  if (part.type.startsWith('tool-') && part.state !== 'output-available') return 'working';
+  if (part.type === 'reasoning') return 'solving';
+  return 'composing';
+}
 
 /**
  * Un chat général : un fil sans compagnon propriétaire, tenu par un assistant au modèle choisi.
@@ -37,7 +51,8 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
   const transport = useMemo(() => new DefaultChatTransport<ODMessage>({
     api: `/api/chats/${info.id}/chat`,
     headers: { 'x-opendots-client': '1' },
-    prepareSendMessagesRequest: ({ messages }) => ({ body: { message: messages[messages.length - 1] } }),
+    // A regeneration and an edit go through the same live stream as a new message.
+    prepareSendMessagesRequest: ({ messages, trigger, body }) => (trigger === 'regenerate-message' ? { body: { regenerate: true } } : { body: { message: messages[messages.length - 1], ...(body?.editOf ? { editOf: body.editOf } : {}) } }),
     prepareReconnectToStreamRequest: () => ({ api: `/api/chats/${info.id}/stream` }),
   }), [info.id]);
   const chat = useChat<ODMessage>({ id: info.id, messages: initial, transport, resume: true });
@@ -68,17 +83,19 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
-                <div className="flex size-16 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-7 text-muted-foreground" /></div>
+                <ThinkingOrb state="breathing" size={64} label={t('Nouveau chat')} />
                 <div className="space-y-1.5">
                   <h2 className="font-semibold text-xl tracking-tight">{t('Nouveau chat')}</h2>
                   <p className="mx-auto max-w-sm text-balance text-muted-foreground text-sm">{t('Un fil libre, sans compagnon attitré. Écris @ suivi d’un nom pour faire intervenir un compagnon : il répond ici, sous son nom.')}</p>
                 </div>
               </div>
             )}
-            {messages.map((message, index) => <MessageView key={message.id} message={message} attribution streaming={busy && index === messages.length - 1 && message.role === 'assistant'} />)}
+            {messages.map((message, index) => <MessageView key={message.id} message={message} attribution streaming={busy && index === messages.length - 1 && message.role === 'assistant'}
+              onEdit={busy ? undefined : (id, text) => void sendMessage({ text, messageId: id }, { body: { editOf: id } })}
+              onRegenerate={!busy && index === messages.length - 1 && message.role === 'assistant' && !message.metadata?.agentId ? () => void chat.regenerate() : undefined} />)}
             {busy && (
               <button type="button" onClick={openWorkPanel} title={t('Voir le travail en cours')} className="flex w-fit max-w-full items-center gap-2 rounded-full py-1 pr-2 text-left text-sm" data-live-status>
-                <SparklesIcon className="size-4 animate-pulse" />
+                <ThinkingOrb state={orbState(status, last)} label={step?.title ?? t('En réflexion…')} />
                 <span className="min-w-0 truncate"><Shimmer>{step?.title ?? t('En réflexion…')}</Shimmer></span>
               </button>
             )}
@@ -97,6 +114,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             busy={busy}
             autoFocus
             mentions={mentions}
+            tools={<ChatControls chat={info} />}
             placeholder={t('Écrire un message, @ pour un compagnon…')}
             onSubmit={async (text, attachments) => {
               if (busy) await chat.stop();

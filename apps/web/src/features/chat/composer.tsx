@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpIcon, SquareIcon, PlusIcon, XIcon, LoaderIcon, FileIcon, AtSignIcon } from 'lucide-react';
 import { DotAvatar } from '../dot-avatar';
 import { ARTIFACT_MAX_BYTES, IMAGE_MAX_BYTES } from '@opendots/shared';
@@ -18,9 +18,11 @@ export type MentionTarget = { id: string; name: string; color?: string; descript
  * File picker, drag-and-drop and paste share one draft. Images keep their preview; any other file is listed
  * with its name and size and sent unchanged. `mentions` enables @companion completion.
  */
-export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions }: {
+export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools }: {
   onSubmit: (text: string, files: File[]) => void | Promise<void>;
   onStop: () => void; busy: boolean; placeholder: string; autoFocus?: boolean;
+  /** The conversation's own controls (model, effort, web…), under the text. */
+  tools?: ReactNode;
   reply?: { preview: string } | null;
   onClearReply?: () => void;
   mentions?: MentionTarget[];
@@ -117,5 +119,6 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
       {busy && <Button type="button" size="icon" variant="secondary" className="size-9 rounded-full" onClick={onStop} aria-label={t('Arrêter')}><SquareIcon className="size-3.5 fill-current" /></Button>}
       <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full" disabled={uploading || (!value.trim() && !files.length)} aria-label={t('Envoyer')}>{uploading ? <LoaderIcon className="animate-spin" /> : <ArrowUpIcon />}</Button>
     </div>
+    {tools && <div className="-mt-1 flex items-center pl-10">{tools}</div>}
   </form>;
 }

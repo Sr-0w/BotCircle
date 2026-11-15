@@ -215,6 +215,12 @@ export interface MessageMetadata {
   answer?: { requestId: string; answers: Record<string, unknown> };
   /** Message auquel celui-ci répond. */
   replyTo?: MessageReplyRef;
+  /** Réponses précédentes remplacées par une régénération, gardées pour être relues. */
+  previous?: { id: string; text: string; model?: string; createdAt?: string }[];
+  /** Message modifié : son texte d'avant et combien de messages suivants ont été mis de côté (conservés, masqués). */
+  edited?: { previousText: string; setAside: number; at: string };
+  /** Le chat avait la recherche web coupée pour cette réponse. */
+  webSearch?: boolean;
   /** Réactions (tapbacks), jointes à la lecture. */
   reactions?: MessageReaction[];
   /** Durée du tour, une fois terminé, pour le panneau « A travaillé ». */
@@ -481,6 +487,9 @@ export interface ChatDTO {
   /** Modèle propre au chat ; null = modèle par défaut. */
   model: ModelConfig | null;
   effectiveModel: ModelConfig;
+  /** Recherche web autorisée dans ce chat (les outils web ne sont pas donnés au modèle sinon). */
+  webSearch: boolean;
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
   lastMessagePreview: string | null;

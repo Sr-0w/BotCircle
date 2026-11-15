@@ -1,15 +1,8 @@
 import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store";
-import { useEffect, useMemo, useState } from "react";
-import {
-  MenuIcon,
-  MessagesSquareIcon,
-  PanelRightIcon,
-  PlusIcon,
-  SearchIcon,
-  PauseCircleIcon,
-  SettingsIcon,
-  WifiOffIcon,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+/** Shown in shortcut hints. */
+const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+import { MenuIcon, MessagesSquareIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
 import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -103,6 +96,18 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
     return () => { active = false; window.clearTimeout(timer); };
   }, [query, chats]);
   const shown = found ?? chats;
+  const searchRef = useRef<HTMLInputElement>(null);
+  // Keyboard: new chat, search the chats, back to the message field.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.shiftKey && event.key.toLowerCase() === 'o') { event.preventDefault(); newChat(); }
+      else if (mod && !event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); searchRef.current?.focus(); }
+      else if (event.shiftKey && event.key === 'Escape') { event.preventDefault(); document.querySelector<HTMLTextAreaElement>('[data-floating-composer] textarea')?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const newChat = () => void api.createChat().then((chat) => { setStoreChats([chat, ...chats.filter((c) => c.id !== chat.id)]); go({ view: "chat", id: chat.id }); }).catch((e) => toast.error(e.message));
 
   return (
@@ -136,22 +141,29 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           <span className="flex-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Chats")}</span>
           <button type="button" aria-label={t("Nouveau chat")} title={t("Nouveau chat")} onClick={newChat} className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><PlusIcon className="size-4" /></button>
         </div>
-        {chats.length > 6 && (
+        {chats.length > 0 && (
           <div className="relative mx-2 mb-1">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Rechercher un chat…")} aria-label={t("Rechercher un chat…")} className="h-8 w-full rounded-lg border bg-transparent pr-2 pl-8 text-xs outline-none focus:border-ring" />
+            <input ref={searchRef} title={`${t("Rechercher un chat…")} (${MOD}+K)`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Rechercher un chat…")} aria-label={t("Rechercher un chat…")} className="h-8 w-full rounded-lg border bg-transparent pr-2 pl-8 text-xs outline-none focus:border-ring" />
           </div>
         )}
         <nav className="space-y-0.5 px-2 pb-2" aria-label={t("Chats")}>
           {shown.length === 0 && <button type="button" onClick={newChat} className="w-full rounded-xl border border-dashed px-3 py-2.5 text-left text-muted-foreground text-xs hover:bg-accent/60">{query ? t("Aucun chat trouvé.") : t("Un fil libre, sans compagnon attitré. Commence un chat.")}</button>}
           {shown.map((chat) => (
-            <button key={chat.id} onClick={() => go({ view: "chat", id: chat.id })} className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-accent/70", route.view === "chat" && route.id === chat.id && "bg-accent")}>
+            <div key={chat.id} className="group/chat relative">
+            <button onClick={() => go({ view: "chat", id: chat.id })} data-chat-row={chat.id} className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-accent/70", route.view === "chat" && route.id === chat.id && "bg-accent")}>
               <span className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-4 text-muted-foreground" /></span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2"><span className="truncate font-medium text-sm">{chat.title}</span><span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{relativeTime(chat.updatedAt)}</span></span>
-                <span className="block truncate text-muted-foreground text-xs">{plainPreview(chat.lastMessagePreview) || t("Chat vide")}</span>
+                <span className="block truncate text-muted-foreground text-xs">{chat.pinned && <PinIcon className="mr-1 inline size-3" aria-label={t("Épinglé")} />}{plainPreview(chat.lastMessagePreview) || t("Chat vide")}</span>
               </span>
             </button>
+            <button type="button" onClick={() => void api.updateChat(chat.id, { pinned: !chat.pinned }).then((updated) => setStoreChats(chats.map((c) => (c.id === updated.id ? updated : c)).sort((a, b) => Number(b.pinned) - Number(a.pinned)))).catch((e) => toast.error(e.message))}
+              aria-label={chat.pinned ? t("Désépingler {v0}", { v0: chat.title }) : t("Épingler {v0}", { v0: chat.title })} title={chat.pinned ? t("Désépingler") : t("Épingler")}
+              className="absolute top-1.5 right-1.5 rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/chat:opacity-100">
+              {chat.pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
+            </button>
+            </div>
           ))}
         </nav>
       </div>

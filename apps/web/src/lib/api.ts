@@ -181,7 +181,7 @@ export const api = {
 
   chats: (q?: string) => request<ChatDTO[]>('GET', `/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createChat: (input: { title?: string; model?: ModelConfig | null } = {}) => request<ChatDTO>('POST', '/chats', input),
-  updateChat: (id: string, patch: { title?: string; model?: ModelConfig | null }) => request<ChatDTO>('PATCH', `/chats/${id}`, patch),
+  updateChat: (id: string, patch: { title?: string; model?: ModelConfig | null; webSearch?: boolean; pinned?: boolean }) => request<ChatDTO>('PATCH', `/chats/${id}`, patch),
   deleteChat: (id: string) => request<{ ok: boolean }>('DELETE', `/chats/${id}`),
   chatMessages: (id: string) => request<{ conversationId: string; messages: ODMessage[]; cursor: number | null; active: boolean; tasks: TaskDTO[] }>('GET', `/chats/${id}/messages`),
   stopChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/stop`),

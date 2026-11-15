@@ -334,6 +334,19 @@ try {
   await page.getByRole('button', { name: 'Nouveau chat' }).click();
   await page.waitForURL(/#\/chat\//);
   const chatBox = page.getByRole('textbox', { name: 'Écrire un message, @ pour un compagnon…' });
+  // #38 : un vrai chat IA. Nouveau chat : l'orbe au repos ; dans le champ, le modèle du chat et la recherche web,
+  // coupée côté serveur (les outils web ne sont plus donnés au modèle).
+  await page.locator('[data-general-chat] canvas[data-orb="breathing"]').waitFor();
+  await page.locator('[data-chat-model]').waitFor();
+  const web = page.locator('[data-chat-web]');
+  assert.equal(await web.getAttribute('data-chat-web'), 'on');
+  await web.click();
+  await page.locator('[data-chat-web="off"]').waitFor();
+  const chatId = page.url().split('/').pop()!;
+  assert.equal((await (await context.request.get(`${origin}/api/chats/${chatId}`)).json()).webSearch, false);
+  await page.locator('[data-chat-web]').click();
+  await page.locator('[data-chat-web="on"]').waitFor();
+  await shot('15-chat-controls');
   await chatBox.fill('@D');
   await page.getByRole('option', { name: '@Dev' }).waitFor();
   assert.equal(await page.getByRole('option').count(), 1);
@@ -360,6 +373,20 @@ try {
   await page.getByRole('navigation', { name: 'Chats' }).getByText('Réunion de vendredi', { exact: true }).waitFor();
   await page.locator('header').getByText('Réunion de vendredi', { exact: true }).waitFor();
   await shot('7-chat-settings');
+  // Modifier un message : la suite est mise de côté (conservée), le message dit qu'il a été modifié.
+  await page.getByRole('tab', { name: /Travail|Interventions/ }).first().click().catch(() => {});
+  const mine = page.locator('[data-general-chat] [id^="message-"]').filter({ hasText: 'résume la réunion de vendredi' }).first();
+  await mine.hover();
+  await mine.getByRole('button', { name: 'Modifier' }).click();
+  await page.getByRole('textbox', { name: 'Modifier le message' }).fill('@Dev résume la réunion de vendredi en trois points');
+  await page.getByRole('button', { name: 'Envoyer la modification' }).click();
+  await page.locator('[data-general-chat] [data-edited]').getByText(/Modifié/).waitFor({ timeout: 30_000 });
+  await page.locator('[data-general-chat] [id^="message-"] p.whitespace-pre-wrap').getByText('@Dev résume la réunion de vendredi en trois points').first().waitFor();
+  // Épingler : le chat reste en tête de liste.
+  const row = page.getByRole('navigation', { name: 'Chats' }).locator('.group\\/chat').first();
+  await row.hover();
+  await row.getByRole('button', { name: /^Épingler/ }).click();
+  await row.getByRole('button', { name: /^Désépingler/ }).waitFor();
   // Quiet UI : trois thèmes complets, valeurs exactes du design language.
   for (const [theme, background] of [['light', 'rgb(255, 255, 255)'], ['dark', 'rgb(13, 13, 14)'], ['oled', 'rgb(0, 0, 0)']] as const) {
     await page.evaluate((value) => localStorage.setItem('od-theme', value), theme);

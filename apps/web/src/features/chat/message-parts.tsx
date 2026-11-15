@@ -1,24 +1,5 @@
-import { lazy, Suspense, type ReactNode } from "react";
-import {
-  BellRingIcon,
-  BotIcon,
-  BrainIcon,
-  CalendarClockIcon,
-  ClockIcon,
-  SearchIcon,
-  TerminalIcon,
-  ClipboardListIcon,
-  FileTextIcon,
-  MailIcon,
-  PlugIcon,
-  EyeIcon,
-  GlobeIcon,
-  KeyRoundIcon,
-  MessagesSquareIcon,
-  SparklesIcon,
-  UserCogIcon,
-  WebhookIcon,
-} from "lucide-react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { BellRingIcon, BotIcon, BrainIcon, CalendarClockIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardListIcon, ClockIcon, EyeIcon, FileTextIcon, GlobeIcon, KeyRoundIcon, MailIcon, MessagesSquareIcon, PlugIcon, SearchIcon, SparklesIcon, TerminalIcon, UserCogIcon, WebhookIcon } from "lucide-react";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import { artifactIdFromUrl, isActionToolPart, presentAssistantTurn, type PresentedFile } from "@opendots/shared";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
@@ -293,7 +274,7 @@ function isToolPart(part: { type: string }): part is AnyTool {
   return part.type === 'dynamic-tool' || part.type.startsWith('tool-');
 }
 
-export function MessageView({ message, streaming, agentId, onReply, onReact, attribution }: {
+export function MessageView({ message, streaming, agentId, onReply, onReact, attribution, onEdit, onRegenerate }: {
   /** Dans un chat général : signe chaque réponse (assistant ou compagnon intervenu). */
   attribution?: boolean;
   message: ODMessage;
@@ -301,6 +282,10 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
   agentId?: string;
   onReply?: (target: { messageId: string; preview: string; role: 'user' | 'assistant' }) => void;
   onReact?: (messageId: string, emoji: string) => void;
+  /** General chats: edit one of the user's messages (the rest of the thread is set aside, kept). */
+  onEdit?: (messageId: string, text: string) => void;
+  /** General chats: a new answer to the latest message; the previous one stays readable. */
+  onRegenerate?: () => void;
 }) {
   if (message.metadata?.kind === "event") return <EventChip message={message} agentId={agentId} />;
   const reply = (preview: string) => onReply?.({ messageId: message.id, preview: preview.slice(0, 180), role: message.role === 'assistant' ? 'assistant' : 'user' });
@@ -313,7 +298,8 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
     const files = message.parts.filter((part): part is Extract<ODMessage['parts'][number], { type: 'file' }> => part.type === 'file');
     return (
       <div id={`message-${message.id}`} className="scroll-mt-24 rounded-2xl [&[data-flash]]:ring-2 [&[data-flash]]:ring-ring">
-        <MessageActions text={text} align="end" onReply={() => reply(text)} onReact={react}>
+        <UserMessage message={message} text={text} onEdit={onEdit}>
+        <MessageActions text={text} align="end" onReply={() => reply(text)} onReact={react} onEdit={onEdit && text ? () => window.dispatchEvent(new CustomEvent('od:edit-message', { detail: message.id })) : undefined}>
           <Message from="user">
             <MessageContent>
               {quote && <MessageQuote reply={quote} />}
@@ -323,6 +309,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
             </MessageContent>
           </Message>
         </MessageActions>
+        </UserMessage>
         <div className="flex justify-end"><ReactionPills reactions={reactions} onToggle={react} /></div>
       </div>
     );
@@ -343,7 +330,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
       {groupFiles(view.bubbles).map((bubble) => 'files' in bubble ? (
         <div key={bubble.key} data-bubble={bubble.key}><FileGroup files={bubble.files} /></div>
       ) : 'text' in bubble ? (
-        <MessageActions key={bubble.key} text={bubble.text} onReply={() => reply(bubble.text)} onReact={react}>
+        <MessageActions key={bubble.key} text={bubble.text} onReply={() => reply(bubble.text)} onReact={react} onRegenerate={onRegenerate && bubble.key === lastText?.key ? onRegenerate : undefined}>
           <Message from="assistant" data-bubble={bubble.key} className="max-w-[min(100%,36rem)]">
             <MessageContent className="w-fit rounded-2xl rounded-bl-md bg-muted px-3.5 py-2">
               {quote && bubble.key === textBubbles[0]?.key && <MessageQuote reply={quote} />}
@@ -364,6 +351,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
       {!textBubbles.length && (view.work.length > 0 || view.actions.length > 0) && (
         <MessageActions text="" onReply={() => reply(t('Travail'))} onReact={react}><span className="sr-only">{t('Actions du message')}</span></MessageActions>
       )}
+      {(message.metadata?.previous?.length ?? 0) > 0 && <PreviousVersions previous={message.metadata!.previous!} />}
       <ReactionPills reactions={reactions} onToggle={react} />
     </div>
   );
@@ -393,6 +381,56 @@ function groupFiles<T extends { key: string }>(bubbles: (T | (T & { file: Presen
     } else out.push(bubble as Exclude<T, { file: PresentedFile }>);
   }
   return out;
+}
+
+/** Answers replaced by a regeneration: still there to read, one at a time. */
+function PreviousVersions({ previous }: { previous: NonNullable<NonNullable<ODMessage['metadata']>['previous']> }) {
+  const [index, setIndex] = useState<number | null>(null);
+  const total = previous.length + 1;
+  const current = index ?? total - 1;
+  return (
+    <div className="space-y-1.5" data-versions={total}>
+      <div className="flex items-center gap-1 text-muted-foreground text-xs">
+        <button type="button" className="rounded p-0.5 hover:bg-accent disabled:opacity-40" disabled={current === 0} aria-label={t('Version précédente')} onClick={() => setIndex(current - 1)}><ChevronLeftIcon className="size-3.5" /></button>
+        <span className="tabular-nums">{current + 1}/{total}</span>
+        <button type="button" className="rounded p-0.5 hover:bg-accent disabled:opacity-40" disabled={current === total - 1} aria-label={t('Version suivante')} onClick={() => setIndex(current + 1 === total - 1 ? null : current + 1)}><ChevronRightIcon className="size-3.5" /></button>
+        {index !== null && <span>· {t('version remplacée')}{previous[index].model ? ` · ${previous[index].model}` : ''}</span>}
+      </div>
+      {index !== null && <div className="w-fit max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-dashed bg-muted/40 px-3.5 py-2 text-sm" data-previous-version><MessageResponse>{previous[index].text}</MessageResponse></div>}
+    </div>
+  );
+}
+
+/** A user message, editable in place in a general chat; an edited one says so and keeps what it replaced. */
+function UserMessage({ message, text, onEdit, children }: { message: ODMessage; text: string; onEdit?: (messageId: string, text: string) => void; children: ReactNode }) {
+  const [editing, setEditing] = useState(false), [draft, setDraft] = useState(text), [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => {
+    const listener = (event: Event) => { if ((event as CustomEvent).detail === message.id) { setDraft(text); setEditing(true); } };
+    window.addEventListener('od:edit-message', listener);
+    return () => window.removeEventListener('od:edit-message', listener);
+  }, [message.id, text]);
+  const edited = message.metadata?.edited;
+  if (editing && onEdit) return (
+    <div className="ml-auto w-full max-w-[min(100%,36rem)] space-y-2 rounded-2xl border bg-card p-2" data-editing>
+      <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} rows={Math.min(8, draft.split('\n').length + 1)} aria-label={t('Modifier le message')} className="w-full resize-none bg-transparent px-2 py-1 text-sm outline-none" />
+      <p className="px-2 text-muted-foreground text-xs">{t('La suite de la conversation sera mise de côté (conservée) et une nouvelle réponse partira de ce message.')}</p>
+      <div className="flex justify-end gap-2">
+        <button type="button" className="rounded-full px-3 py-1 text-sm hover:bg-accent" onClick={() => setEditing(false)}>{t('Annuler')}</button>
+        <button type="button" className="rounded-full bg-primary px-3 py-1 text-primary-foreground text-sm disabled:opacity-50" disabled={!draft.trim() || draft.trim() === text} onClick={() => { setEditing(false); onEdit(message.id, draft.trim()); }}>{t('Envoyer la modification')}</button>
+      </div>
+    </div>
+  );
+  return (
+    <>
+      {children}
+      {edited && (
+        <div className="mt-1 text-right text-muted-foreground text-xs" data-edited>
+          <button type="button" className="hover:text-foreground" onClick={() => setShowOriginal(!showOriginal)}>{t('Modifié')}{edited.setAside > 0 ? ` · ${t('{count} messages mis de côté', { count: edited.setAside })}` : ''}</button>
+          {showOriginal && <p className="mt-1 ml-auto w-fit max-w-[min(100%,36rem)] whitespace-pre-wrap rounded-xl border border-dashed px-3 py-1.5 text-left">{edited.previousText}</p>}
+        </div>
+      )}
+    </>
+  );
 }
 
 /** Signature d'une réponse dans un chat général : le compagnon intervenu, sinon l'assistant et son modèle. */
