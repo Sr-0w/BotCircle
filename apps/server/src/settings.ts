@@ -12,6 +12,8 @@ interface SettingsShape {
   'models.default': ModelConfig;
   /** Favourite models, shown first in every model picker. */
   'models.favorites': { provider: string; model: string }[];
+  /** #54: the user's first and last name, used as trusted context by every agent. */
+  'user.profile': { firstName: string | null; lastName: string | null };
   /** The user's primary Circle (#47, #59): its avatar stands for Circles in the navigation. */
   'agents.primary': string;
   'ollama.url': string;

@@ -236,6 +236,8 @@ export const api = {
     request<AgentDTO>("PATCH", `/agents/${id}`, patch),
   archiveAgent: (id: string) => request<{ ok: boolean }>("DELETE", `/agents/${id}`),
   /** /clear, after the user's confirmation: the current thread is set aside (kept) and a blank one starts. */
+  profile: () => request<{ firstName: string | null; lastName: string | null }>('GET', '/profile'),
+  setProfile: (body: { firstName: string | null; lastName: string | null }) => request<{ firstName: string | null; lastName: string | null }>('PUT', '/profile', body),
   archives: (id: string) => request<{ id: string; createdAt: string; archivedAt: string }[]>("GET", `/agents/${id}/archives`),
   clearConversation: (id: string, conversationId: string) => request<{ conversationId: string; archivedId: string | null }>("POST", `/agents/${id}/clear`, { conversationId }),
   markRead: (id: string) => request<{ ok: boolean }>("POST", `/agents/${id}/read`),

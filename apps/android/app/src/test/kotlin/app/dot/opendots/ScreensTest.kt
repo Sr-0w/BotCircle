@@ -121,6 +121,8 @@ class ScreensTest {
                 return when {
                     path == "/auth/me" -> json(if (signedIn) """{"account":{"id":"usr_1","email":"robin@example.com","role":"admin"},"registrationOpen":true}""" else """{"account":null,"registrationOpen":true}""")
                     path == "/auth/login" -> { signedIn = true; MockResponse.Builder().code(200).addHeader("Set-Cookie", "opendots_session=tok123; Path=/; HttpOnly").body("""{"account":{"id":"usr_1","email":"robin@example.com","role":"admin"}}""").build() }
+                    path == "/profile" && request.method == "PUT" -> json(request.body?.utf8() ?: "{}")
+                    path == "/profile" -> json("""{"firstName":null,"lastName":null}""")
                     path == "/bootstrap" -> json("""{"onboarded":$onboarded,"openrouterConfigured":true,"paused":false}""")
                     path == "/agents" -> json(agents)
                     path == "/approvals" -> json(approvals)
@@ -286,6 +288,23 @@ class ScreensTest {
         compose.waitUntil(10_000) { posts.any { it.first == "/agents/a1/clear" } }
         assertEquals("""{"conversationId":"c1"}""", posts.first { it.first == "/agents/a1/clear" }.second)
         assertTrue(posts.none { it.first == "/agents/a1/chat" })
+    }
+
+    /** #54: the profile card asks for a name (never guessed from the email) and saves it for every Circle. */
+    @Test fun theProfileCardSetsTheNameCirclesUse() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Settings")
+        waitFor("Add your name")
+        compose.onNodeWithContentDescription("Edit your name").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("profile-edit")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("profile-edit")))[0].performTextInput("Robin")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/profile" } }
+        assertEquals("""{"firstName":"Robin","lastName":null}""", posts.first { it.first == "/profile" }.second)
+        waitFor("Robin")
+        shoot("settings-profile-dark")
     }
 
     @Test fun workStaysOutOfTheThreadAndOpensInItsPanel() {

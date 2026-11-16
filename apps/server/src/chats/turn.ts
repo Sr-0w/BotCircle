@@ -15,6 +15,7 @@ import { webSearch } from '../tools/search.ts';
 import { fetchPage } from '../tools/web.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
 import { ChatError, getChat, titleFromFirstMessage } from './repo.ts';
+import { getUserProfile, userContext } from '../profile.ts';
 import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/client.ts';
 
@@ -245,7 +246,7 @@ export function runChatTurn(chatId: string, message: OpenDotsUIMessage, opts: { 
       let finalMessage: OpenDotsUIMessage | null = null;
       const result = streamText({
         model: resolved.model,
-        instructions: systemPrompt(agents, await getTimezone(), chat.webSearch) + (opts.resume ? RESUME_NOTE : ''),
+        instructions: systemPrompt(agents, await getTimezone(), chat.webSearch) + `\n\n${userContext(await getUserProfile())}` + (opts.resume ? RESUME_NOTE : ''),
         messages: await convertToModelMessages(await hydrateMessageImages(historyForAssistant(stored, names)), { ignoreIncompleteToolCalls: true, tools }),
         tools,
         stopWhen: [isStepCount(12)],

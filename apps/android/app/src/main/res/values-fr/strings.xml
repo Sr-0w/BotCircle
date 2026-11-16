@@ -352,6 +352,12 @@
     <string name="preview_truncated">Fichier long : seuls les 2 premiers Mo sont affichés. Enregistre-le pour tout voir.</string>
     <string name="previous">Précédent</string>
     <string name="previous_version">Version précédente</string>
+    <string name="profile_add_name">Ajoute ton prénom</string>
+    <string name="profile_edit_name">Modifier ton nom</string>
+    <string name="profile_first_name">Prénom</string>
+    <string name="profile_last_name">Nom (facultatif)</string>
+    <string name="profile_name_body">Tes Circles et tes chats t’appelleront par ton prénom. Laisse vide si tu préfères ne pas le donner.</string>
+    <string name="profile_name_title">Ton nom</string>
     <string name="provider_api_key">Clé API</string>
     <string name="provider_checking">Vérification…</string>
     <string name="provider_connect">Connecter</string>

@@ -23,6 +23,7 @@ import { listActivities } from '../activities/repo.ts';
 import { getConversation, loadMessages, finalText, messageText, resolveReply, saveMessage, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import { effectiveModel, getAgent, listAgentRows, mainConversationId, setAgentState, type AgentRow } from './repo.ts';
 import { buildSystemPrompt, type TurnMode } from './prompt.ts';
+import { getUserProfile, userContext } from '../profile.ts';
 import { buildTools, toolActivityLabel } from './tools.ts';
 import { buildCapabilityTools } from './capability-tools.ts';
 import { activeToolNames } from './lazy-tools.ts';
@@ -580,6 +581,7 @@ async function executeTurn(
     mode,
     tz,
     now: new Date(),
+    user: userContext(await getUserProfile()),
     toolNames: activeToolNames(tools, capabilities.lazy),
     tasks: taskId ? [] : (await listTasks({ agentId, active: true, limit: 8 })).map((t) => ({ id: t.id, title: t.title, status: t.status, phase: t.phase, currentAction: t.currentAction, completedSteps: t.completedSteps, blocker: t.blocker })),
     background: runSlot(live.key).background.filter((turn) => turn !== live).map((turn) => ({ task: turn.hint, progress: turn.notes.slice(-4) })),

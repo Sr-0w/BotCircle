@@ -54,6 +54,8 @@ data class AppUiState(
     val stage: Stage = Stage.Starting,
     val serverUrl: String = "",
     val account: Account? = null,
+    /** #54: the user's name as their Circles use it (null until loaded). */
+    val profile: app.dot.opendots.data.UserProfile? = null,
     val agents: List<Agent> = emptyList(),
     val currentAgentId: String? = null,
     val approvals: Map<String, Approval> = emptyMap(),
@@ -393,6 +395,14 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     }
 
     // --- Scheduled tasks ----------------------------------------------------------------------
+
+    fun loadProfile() { viewModelScope.launch { runCatching { client.profile() }.onSuccess { p -> _state.update { it.copy(profile = p) } } } }
+
+    fun saveProfile(firstName: String, lastName: String, onDone: () -> Unit = {}) = act {
+        val p = client.setProfile(firstName.trim().ifBlank { null }, lastName.trim().ifBlank { null })
+        _state.update { it.copy(profile = p) }
+        onDone()
+    }
 
     fun loadActivities() {
         viewModelScope.launch { runCatching { client.activities() }.onSuccess { list -> _state.update { it.copy(activities = list) } }.onFailure { _notices.tryEmit(it.message ?: FAILED) } }

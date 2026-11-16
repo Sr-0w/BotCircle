@@ -246,6 +246,12 @@ S = {
  "code_by_chat": ("From a chat", "Depuis un chat"),
  "code_auto_resume": ("Auto-resume", "Reprise auto"),
  "code_resume_now": ("Resume now", "Reprendre maintenant"),
+ "profile_add_name": ("Add your name", "Ajoute ton prénom"),
+ "profile_edit_name": ("Edit your name", "Modifier ton nom"),
+ "profile_name_title": ("Your name", "Ton nom"),
+ "profile_name_body": ("Your Circles and chats will call you by your first name. Leave it empty if you prefer not to give it.", "Tes Circles et tes chats t’appelleront par ton prénom. Laisse vide si tu préfères ne pas le donner."),
+ "profile_first_name": ("First name", "Prénom"),
+ "profile_last_name": ("Last name (optional)", "Nom (facultatif)"),
  "steering_status": ("Taking your message into the work in progress…", "Prend ton message en compte dans le travail en cours…"),
  "clear_busy": ("An answer is running: stop it or wait before resetting.", "Une réponse est en cours : arrête-la ou attends la fin avant de réinitialiser."),
 

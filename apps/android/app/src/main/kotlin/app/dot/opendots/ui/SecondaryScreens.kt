@@ -1,5 +1,11 @@
 package app.dot.opendots.ui
 
+import app.dot.design.DotShapes
+import androidx.compose.foundation.border
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.outlined.Edit
+import app.dot.design.components.DotTextField
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Inbox
 import app.dot.design.components.UnreadDot
@@ -256,7 +262,47 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState, onBack: (() -> Unit)? = null)
 @Composable
 fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}, onOpenTeam: () -> Unit = {}, onBack: (() -> Unit)? = null) {
     var confirmSignOut by remember { mutableStateOf(false) }
+    var editingName by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { app.loadProfile() }
     QuietPage(stringResource(R.string.settings), onBack = onBack, inTabs = onBack == null) {
+        // #54: one compact profile card first: the name every Circle uses, the account, sign out.
+        item(key = "profile") {
+            val name = ui.profile?.display.orEmpty()
+            Row(
+                Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).fillMaxWidth().clip(DotShapes.large).border(DotSpacing.hairline * 2, Dot.colors.border, DotShapes.large).padding(DotSpacing.l).testTag("profile-card"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(Dot.colors.accentSoft), contentAlignment = Alignment.Center) {
+                    Text((ui.profile?.firstName ?: ui.account?.email ?: "?").take(1).uppercase(), style = Dot.type.title, color = Dot.colors.accent)
+                }
+                Spacer(Modifier.width(DotSpacing.m))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(name.ifBlank { stringResource(R.string.profile_add_name) }, style = Dot.type.body, color = if (name.isBlank()) Dot.colors.textSecondary else Dot.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        DotIconButton(Icons.Outlined.Edit, stringResource(R.string.profile_edit_name), onClick = { editingName = true })
+                    }
+                    Text(ui.account?.email.orEmpty(), style = Dot.type.caption, color = Dot.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                DotButton(stringResource(R.string.sign_out), { confirmSignOut = true }, style = ButtonStyle.Secondary, compact = true)
+            }
+            // Inline edit: two fields under the card, no separate account page.
+            if (editingName) {
+                var first by remember { mutableStateOf(ui.profile?.firstName.orEmpty()) }
+                var last by remember { mutableStateOf(ui.profile?.lastName.orEmpty()) }
+                Column(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).testTag("profile-edit")) {
+                    Text(stringResource(R.string.profile_name_body), style = Dot.type.caption, color = Dot.colors.textSecondary)
+                    Spacer(Modifier.height(DotSpacing.s))
+                    DotTextField(first, { first = it.take(60) }, label = stringResource(R.string.profile_first_name))
+                    Spacer(Modifier.height(DotSpacing.s))
+                    DotTextField(last, { last = it.take(60) }, label = stringResource(R.string.profile_last_name), imeAction = androidx.compose.ui.text.input.ImeAction.Done)
+                    Row(Modifier.fillMaxWidth().padding(top = DotSpacing.s), horizontalArrangement = Arrangement.End) {
+                        DotButton(stringResource(R.string.cancel), { editingName = false }, style = ButtonStyle.Ghost, compact = true)
+                        Spacer(Modifier.width(DotSpacing.s))
+                        DotButton(stringResource(R.string.save), { app.saveProfile(first, last) { editingName = false } }, compact = true)
+                    }
+                }
+            }
+        }
         item {
             SectionLabel(stringResource(R.string.appearance))
             FlowRow(Modifier.padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
@@ -286,14 +332,6 @@ fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onO
             SectionLabel(stringResource(R.string.engine), Modifier.padding(top = DotSpacing.l))
             ListRow(stringResource(R.string.server), subtitle = ui.serverUrl, onClick = onOpenWeb)
             ListRow(stringResource(R.string.open_web_app), subtitle = stringResource(R.string.open_web_app_note), onClick = onOpenWeb)
-            Hairline(Modifier.padding(top = DotSpacing.s))
-        }
-        item {
-            SectionLabel(stringResource(R.string.account), Modifier.padding(top = DotSpacing.l))
-            ListRow(ui.account?.email.orEmpty(), subtitle = stringResource(R.string.signed_in))
-            Box(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s)) {
-                DotButton(stringResource(R.string.sign_out), { confirmSignOut = true }, style = ButtonStyle.Danger)
-            }
             Hairline(Modifier.padding(top = DotSpacing.s))
         }
         item {

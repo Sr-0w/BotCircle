@@ -22,6 +22,8 @@ export interface PromptInput {
   tz: string;
   now: Date;
   toolNames: string[];
+  /** #54: trusted line about how to address the user (see profile.ts). */
+  user?: string;
   /** Tâches déjà lancées qui continuent pendant que ce tour répond. */
   background?: { task: string; progress: string[] }[];
   /** Tâches de ce compagnon en file, en cours, en pause ou en attente de l'utilisateur. */
@@ -50,6 +52,7 @@ export function buildSystemPrompt(p: PromptInput): string {
   if (agent.description) identity.push(`- Responsibilities: ${agent.description}`);
   if (agent.instructions) identity.push(`- Standing instructions from the user:\n${agent.instructions}`);
   out.push(section('Identity', identity.join('\n')));
+  if (p.user) out.push(section('The user', p.user));
 
   if (!agent.named && (p.mode.kind === 'user' || p.mode.kind === 'onboarding')) {
     out.push(

@@ -469,6 +469,13 @@ data class SecureLogin(
 // --- OpenCode: see packages/shared -----------------------------------------------------------------------------
 
 /** What a coding session really changed, read from OpenCode's diff. `files == 0`: verified, nothing changed. */
+/** #54: how the user wants to be called by their Circles and chats. */
+@Immutable
+@Serializable
+data class UserProfile(val firstName: String? = null, val lastName: String? = null) {
+    val display: String get() = listOfNotNull(firstName, lastName).joinToString(" ")
+}
+
 @Immutable
 @Serializable
 data class CodeChanges(val files: Int = 0, val additions: Int = 0, val deletions: Int = 0)

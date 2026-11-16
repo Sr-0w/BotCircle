@@ -352,6 +352,12 @@
     <string name="preview_truncated">Long file: only the first 2 MB are shown. Save it to see everything.</string>
     <string name="previous">Previous</string>
     <string name="previous_version">Previous version</string>
+    <string name="profile_add_name">Add your name</string>
+    <string name="profile_edit_name">Edit your name</string>
+    <string name="profile_first_name">First name</string>
+    <string name="profile_last_name">Last name (optional)</string>
+    <string name="profile_name_body">Your Circles and chats will call you by your first name. Leave it empty if you prefer not to give it.</string>
+    <string name="profile_name_title">Your name</string>
     <string name="provider_api_key">API key</string>
     <string name="provider_checking">Checking…</string>
     <string name="provider_connect">Connect</string>

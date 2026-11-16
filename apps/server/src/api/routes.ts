@@ -23,6 +23,7 @@ import type { BootstrapDTO, ModelConfig } from '@opendots/shared';
 import { subscribe } from '../bus.ts';
 import { archivedConversations, createAgent, getAgent, listAgentRows, listAgents, mainConversationId, resetMainConversation, toAgentDTO, updateAgent } from '../agents/repo.ts';
 import { runTurn, stopAgent } from '../agents/turn.ts';
+import { getUserProfile, setUserProfile } from '../profile.ts';
 import { getActiveStream } from '../agents/streams.ts';
 import { getConversation, listTeamThreads, pairConversationId, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import {
@@ -189,6 +190,15 @@ export function createApi() {
   });
 
   // --- Paramètres ------------------------------------------------------------
+
+  // #54: how the user wants to be called; read by every agent on its next run.
+  api.get('/profile', async (c) => c.json(await getUserProfile()));
+  api.put('/profile', async (c) => {
+    const body = z.object({ firstName: z.string().max(200).nullable().optional(), lastName: z.string().max(200).nullable().optional() }).strict().parse(await c.req.json());
+    const profile = await setUserProfile(body);
+    publish({ type: 'settings.changed' });
+    return c.json(profile);
+  });
 
   api.get('/settings', async (c) => {
     const key = await getOpenRouterKey();

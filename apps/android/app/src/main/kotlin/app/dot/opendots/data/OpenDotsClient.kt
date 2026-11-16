@@ -122,6 +122,8 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     }
 
     suspend fun me(): MeResponse = get("/auth/me")
+    suspend fun profile(): UserProfile = get("/profile")
+    suspend fun setProfile(firstName: String?, lastName: String?): UserProfile = OdJson.decodeFromJsonElement(json("PUT", "/profile", buildJsonObject { put("firstName", firstName); put("lastName", lastName) }))
 
     suspend fun signIn(email: String, password: String, register: Boolean): Account {
         val body = buildJsonObject { put("email", email.trim()); put("password", password) }
