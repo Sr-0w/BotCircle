@@ -58,10 +58,10 @@ export function ToolsSettings({ settings, update, busy }: { settings: SettingsDT
 
       <section className="space-y-3">
         <h3 className="flex items-center gap-2 font-medium text-sm">
-          <MonitorIcon className="size-4" /> {t("Ordinateur des compagnons")}
+          <MonitorIcon className="size-4" /> {t("Ordinateur des Circles")}
         </h3>
         <p className="text-muted-foreground text-xs">
-          {t("Un shell Linux partagé : chaque compagnon a son utilisateur et son dossier, plus un dossier commun. Docker est nécessaire : les comptes utilisent des conteneurs distincts.")}
+          {t("Un shell Linux partagé : chaque Circle a son utilisateur et son dossier, plus un dossier commun. Docker est nécessaire : les comptes utilisent des conteneurs distincts.")}
         </p>
         {status && (
           <div className="rounded-xl border p-3 text-xs">
@@ -122,7 +122,7 @@ export function ToolsSettings({ settings, update, busy }: { settings: SettingsDT
         <label className="flex items-center justify-between gap-4">
           <div>
             <p className="font-medium text-sm">{t("Autoriser l’administration (sudo)")}</p>
-            <p className="text-muted-foreground text-xs">{t("Chaque compagnon pourra installer des applications avec sudo dans son propre ordinateur.")}</p>
+            <p className="text-muted-foreground text-xs">{t("Chaque Circle pourra installer des applications avec sudo dans son propre ordinateur.")}</p>
           </div>
           <Switch checked={shell.sudo} onCheckedChange={(sudo) => update({ shell: { sudo } })} />
         </label>
@@ -137,7 +137,7 @@ export function ToolsSettings({ settings, update, busy }: { settings: SettingsDT
             size="sm"
             variant="ghost"
             onClick={async () => {
-              if (!confirm(t("Réinitialiser le conteneur ? Les programmes installés seront perdus, les dossiers des compagnons sont conservés."))) return;
+              if (!confirm(t("Réinitialiser le conteneur ? Les programmes installés seront perdus, les dossiers des Circles sont conservés."))) return;
               try {
                 setStatus(await api.resetComputer());
                 toast.success(t("Ordinateur réinitialisé"));

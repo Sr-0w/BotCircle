@@ -28,13 +28,13 @@ const sections = [
   { id: 'providers', label: 'Fournisseurs de modèles', icon: KeyRoundIcon, group: 'IA et modèles', description: 'OpenRouter, ChatGPT / Codex et Ollama : leur connexion et leur état, au même endroit.' },
   { id: 'models', label: 'Modèle par défaut', icon: CpuIcon, group: 'IA et modèles', description: 'Le modèle par défaut, son raisonnement et son routage.' },
   { id: 'agents', label: 'Comportement des agents', icon: BotIcon, group: 'IA et modèles', description: 'Limites de travail, autonomie et fuseau horaire.' },
-  { id: 'skills', label: 'Skills', icon: SparklesIcon, group: 'IA et modèles', description: 'Savoir-faire réutilisables par tous les compagnons.' },
-  { id: 'opencode', label: 'OpenCode', icon: OpencodeNavIcon, group: 'Connexions', description: 'Les machines de développement où tes compagnons délèguent du code.' },
-  { id: 'connectors', label: 'Connecteurs et services', icon: PlugIcon, group: 'Connexions', description: 'Mail, MCP et services externes que les compagnons peuvent utiliser.' },
-  { id: 'computer', label: 'Ordinateur', icon: MonitorIcon, group: 'Connexions', description: 'Le bureau et le navigateur privés des compagnons.' },
+  { id: 'skills', label: 'Skills', icon: SparklesIcon, group: 'IA et modèles', description: 'Savoir-faire réutilisables par tous les Circles.' },
+  { id: 'opencode', label: 'OpenCode', icon: OpencodeNavIcon, group: 'Connexions', description: 'Les machines de développement où tes Circles délèguent du code.' },
+  { id: 'connectors', label: 'Connecteurs et services', icon: PlugIcon, group: 'Connexions', description: 'Mail, MCP et services externes que les Circles peuvent utiliser.' },
+  { id: 'computer', label: 'Ordinateur', icon: MonitorIcon, group: 'Connexions', description: 'Le bureau et le navigateur privés des Circles.' },
   { id: 'tools', label: 'Recherche et outils', icon: SearchIcon, group: 'Connexions', description: 'La recherche web et l’environnement d’exécution.' },
   { id: 'tasks', label: 'Tâches planifiées', icon: CalendarClockIcon, group: 'Activité', description: 'Planifications, surveillances et webhooks.' },
-  { id: 'team', label: 'Échanges de l’équipe', icon: UsersIcon, group: 'Activité', description: 'Ce que les compagnons se disent entre eux.' },
+  { id: 'team', label: 'Échanges de l’équipe', icon: UsersIcon, group: 'Activité', description: 'Ce que les Circles se disent entre eux.' },
   { id: 'approvals', label: 'Validations', icon: ShieldCheckIcon, group: 'Activité', description: 'Les actions en attente de ton accord et les dernières décisions.' },
 ] as const;
 

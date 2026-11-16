@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { ODMessage } from "./api";
 
 /**
- * Le travail d'un compagnon (raisonnement, appels d'outils) ne s'affiche plus
+ * Le travail d'un Circle (raisonnement, appels d'outils) ne s'affiche plus
  * dans le fil : la conversation le publie ici et le panneau latéral le lit.
  */
 interface WorkState {

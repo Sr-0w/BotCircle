@@ -33,7 +33,7 @@ export function CodeSessions({ instances }: { instances: OpencodeInstanceDTO[] }
   }, [instanceId, instance?.defaultDirectory]);
   const sessions = useMemo(() => tasks.filter((task) => task.provider === 'opencode').sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [tasks]);
   const outside = machines.flatMap((m) => m.sessions.filter((s) => !s.taskId).map((s) => ({ machine: m, session: s })));
-  const by = (task: TaskDTO) => task.requestedBy === 'user' ? t('Par toi') : task.requestedBy === 'opencode' ? t('Depuis OpenCode') : t('Par {v0}', { v0: agents.find((a) => a.id === task.agentId)?.name ?? t('un compagnon') });
+  const by = (task: TaskDTO) => task.requestedBy === 'user' ? t('Par toi') : task.requestedBy === 'opencode' ? t('Depuis OpenCode') : t('Par {v0}', { v0: agents.find((a) => a.id === task.agentId)?.name ?? t('un Circle') });
 
   async function start() {
     if (!instanceId || !instruction.trim()) return;

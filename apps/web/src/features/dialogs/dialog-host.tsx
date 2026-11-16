@@ -73,14 +73,14 @@ function SkillDialog({ skill, onClose }: { skill?: SkillDTO; onClose: () => void
         <DialogHeader>
           <DialogTitle>{skill ? t("Modifier le skill") : t("Nouveau skill")}</DialogTitle>
           <DialogDescription>
-            {t("Un savoir-faire réutilisable par tous les compagnons. Tu peux aussi dire « enregistre ça comme skill » dans une conversation.")}
+            {t("Un savoir-faire réutilisable par tous les Circles. Tu peux aussi dire « enregistre ça comme skill » dans une conversation.")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <Field label={t("Nom")}>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Compte rendu de réunion")} autoFocus />
           </Field>
-          <Field label={t("Quand l’utiliser")} hint={t("C’est ce que les compagnons voient pour décider de charger le skill.")}>
+          <Field label={t("Quand l’utiliser")} hint={t("C’est ce que les Circles voient pour décider de charger le skill.")}>
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("Quand on me demande de résumer une réunion")} />
           </Field>
           <Field label={t("Instructions")}>

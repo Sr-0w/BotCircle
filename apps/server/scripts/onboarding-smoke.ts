@@ -56,7 +56,7 @@ try {
   await page.getByPlaceholder('sk-or-v1-…').fill('fixture-personal-key');
   await page.getByRole('button', { name: 'Continuer', exact: true }).click();
   await page.getByRole('button', { name: /Modèle de test/ }).click();
-  await page.getByRole('button', { name: 'Rencontrer mon compagnon', exact: true }).click();
+  await page.getByRole('button', { name: 'Rencontrer mon Circle', exact: true }).click();
   await page.getByRole('log').getByText(greeting, { exact: true }).waitFor();
   assert.equal(await page.locator('textarea').inputValue(), '');
   const suggestions = ['Salut !', 'Comment devrais-je t’appeler ?', 'Qu’est-ce que tu sais faire ?', 'Tous les matins à 8 h, fais-moi un point sur ma journée', 'Souviens-toi que je préfère des réponses courtes', 'Crée un compagnon pour m’aider avec mes projets'];

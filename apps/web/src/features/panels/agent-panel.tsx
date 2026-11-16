@@ -124,7 +124,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
       </TabsList>
 
       <TabsContent value="work" className="min-h-0 flex-1 overflow-y-auto p-3">
-        <WorkTab id={agent.id} name={agent.named ? agent.name : t("ton compagnon")} />
+        <WorkTab id={agent.id} name={agent.named ? agent.name : t("ton Circle")} />
       </TabsContent>
 
       <TabsContent value="tasks" className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -139,7 +139,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
         {activities?.length === 0 && (
           <Empty
             title={t("Aucune activité")}
-            text={t("Demande simplement à {v0} : « Tous les vendredis, fais-moi un résumé de mes projets » ou « Préviens-moi si cette page change ».", { v0: agent.named ? agent.name : "ton compagnon" })}
+            text={t("Demande simplement à {v0} : « Tous les vendredis, fais-moi un résumé de mes projets » ou « Préviens-moi si cette page change ».", { v0: agent.named ? agent.name : "ton Circle" })}
           />
         )}
         {activities?.map((a) => <ActivityItem key={a.id} activity={a} />)}
@@ -149,7 +149,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
       </TabsContent>
 
       <TabsContent value="memory" className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
-        {memories?.length === 0 && <Empty title={t("Mémoire vide")} text={t("Dis « Souviens-toi que… » et {v0} le retiendra.", { v0: agent.named ? agent.name : "ton compagnon" })} />}
+        {memories?.length === 0 && <Empty title={t("Mémoire vide")} text={t("Dis « Souviens-toi que… » et {v0} le retiendra.", { v0: agent.named ? agent.name : "ton Circle" })} />}
         {memories?.map((m) => (
           <div key={m.id} className="group flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-accent/60">
             <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-foreground/40" />

@@ -479,7 +479,7 @@ import os
   assert.equal(await canvas.evaluate((element: HTMLCanvasElement) => element.width), 1280);
   await asA(() => assert.rejects(screenshot, /pris la main/));
   await page.getByRole('button', { name: 'Rendre la main aux modèles', exact: true }).click();
-  await page.getByText('Vue seule. Les modèles agissent selon les permissions de chaque compagnon.', { exact: true }).waitFor();
+  await page.getByText('Vue seule. Les modèles agissent selon les permissions de chaque Circle.', { exact: true }).waitFor();
   // Verify actual RFB shape + PointerPos are visible even in view-only mode.
   await asA(() => desktopAction({ action: 'move', x: 100, y: 400 }));
   const vncCursor = JSON.parse((await asA(() => desktopExec(['python3', '-c', cursorFixture, 'set']))).toString()).window;
@@ -534,7 +534,7 @@ import os
   await selector.click(); await page.getByRole('option', { name: 'Toujours autoriser', exact: true }).click();
   await until(async () => Object.values(await (await request('/computer/desktop/permissions')).json()) as any[], (policies) => policies.some((p) => p.mode === 'auto'));
   console.log('PASS panneau permissions dans Chromium : trois modes, réglage détaillé, sauvegarde et rechargement.');
-  const botPicker = page.getByRole('combobox', { name: 'Bureau du compagnon', exact: true });
+  const botPicker = page.getByRole('combobox', { name: 'Bureau du Circle', exact: true });
   await botPicker.click(); await page.getByRole('option', { name: 'Second', exact: true }).click();
   await canvas.waitFor();
   await page.getByRole('button', { name: 'Prendre la main', exact: true }).click();

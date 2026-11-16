@@ -69,8 +69,8 @@ export function Onboarding({ keyConfigured, onDone }: { keyConfigured: boolean; 
             <h1 className="font-semibold text-2xl tracking-tight">{t("Bienvenue dans BotCircle")}</h1>
             <p className="text-balance text-muted-foreground text-sm">
               {step === "key"
-                ? t("Deux réglages et ton premier compagnon est prêt. Le reste, tu le lui diras simplement.")
-                : t("Choisis le modèle qui fera réfléchir ton premier compagnon. Tu pourras en changer à tout moment.")}
+                ? t("Deux réglages et ton premier Circle est prêt. Le reste, tu le lui diras simplement.")
+                : t("Choisis le modèle qui fera réfléchir ton premier Circle. Tu pourras en changer à tout moment.")}
             </p>
           </div>
         </div>
@@ -130,11 +130,11 @@ export function Onboarding({ keyConfigured, onDone }: { keyConfigured: boolean; 
             </div>
             <ModelPicker key={provider} provider={provider} value={model?.id ?? null} onChange={setModel} className="h-80" />
             {model && !model.tools && (
-              <p className="text-foreground font-medium text-xs">{t("Ce modèle ne sait pas utiliser d’outils : ton compagnon pourra parler, mais pas agir.")}</p>
+              <p className="text-foreground font-medium text-xs">{t("Ce modèle ne sait pas utiliser d’outils : ton Circle pourra parler, mais pas agir.")}</p>
             )}
             {error && <p className="text-destructive text-sm">{error}</p>}
             <Button size="lg" onClick={finish} disabled={busy || !model || model.provider !== provider}>
-              {busy ? <LoaderIcon className="animate-spin" /> : <>{t("Rencontrer mon compagnon")} <ArrowRightIcon /></>}
+              {busy ? <LoaderIcon className="animate-spin" /> : <>{t("Rencontrer mon Circle")} <ArrowRightIcon /></>}
             </Button>
           </div>
         )}

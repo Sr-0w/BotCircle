@@ -158,7 +158,7 @@ try {
   await access.locator('[data-artifact-history]').getByText(/Créé/).waitFor();
   await shot('2-file-access');
   await access.getByRole('button', { name: 'Retirer' }).click();
-  await access.getByText('Aucun compagnon ne peut lire ce fichier.').waitFor();
+  await access.getByText('Aucun Circle ne peut lire ce fichier.').waitFor();
   await access.getByRole('button', { name: 'Donner à Dev' }).click();
   await access.locator('[data-grant]').filter({ hasText: 'Dev' }).waitFor();
   await access.locator('[data-artifact-history]').getByText(/Accès retiré.*Ari/).waitFor();
@@ -333,7 +333,7 @@ try {
   // --- Chats (#29) : destination distincte, @mention, intervention signée, renommage, suppression.
   await page.getByRole('button', { name: 'Nouveau chat' }).click();
   await page.waitForURL(/#\/chat\//);
-  const chatBox = page.getByRole('textbox', { name: 'Écrire un message, @ pour un compagnon…' });
+  const chatBox = page.getByRole('textbox', { name: 'Écrire un message, @ pour un Circle…' });
   // #38 : un vrai chat IA. Nouveau chat : l'orbe au repos ; dans le champ, le modèle du chat et la recherche web,
   // coupée côté serveur (les outils web ne sont plus donnés au modèle).
   await page.locator('[data-general-chat] canvas[data-orb="breathing"]').waitFor();
@@ -348,9 +348,9 @@ try {
   await page.locator('[data-chat-web="on"]').waitFor();
   await shot('15-chat-controls');
   // "+" holds "ask a companion" (no separate @ button); the model picker lists the configured providers, favourites first.
-  assert.equal(await page.getByRole('button', { name: 'Demander à un compagnon' }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Demander à un Circle' }).count(), 0);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Demander à un compagnon' }).click();
+  await page.getByRole('menuitem', { name: 'Demander à un Circle' }).click();
   assert.equal(await chatBox.inputValue(), '@');
   await chatBox.fill('');
   await page.locator('[data-chat-model]').click();

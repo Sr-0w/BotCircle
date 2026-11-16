@@ -42,10 +42,10 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
             {me && <DotAvatar color={me.color} size={20} />}
             {peer && <DotAvatar color={peer.color} size={20} />}
             <span>
-              {me?.name ?? t("Compagnon")} ↔ {peer?.name ?? t("Compagnon")}
+              {me?.name ?? t("Circle")} ↔ {peer?.name ?? t("Circle")}
             </span>
           </DialogTitle>
-          <DialogDescription>{t("Échange avec {v0}", { v0: peer?.name ?? t("un compagnon") })}</DialogDescription>
+          <DialogDescription>{t("Échange avec {v0}", { v0: peer?.name ?? t("un Circle") })}</DialogDescription>
         </DialogHeader>
         {error ? (
           <div className="p-6 text-destructive text-sm">{error}</div>
@@ -65,7 +65,7 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
                   <div key={m.id} className={cn("flex flex-col gap-1.5", mine ? "items-end" : "items-start")}>
                     <div className={cn("flex items-center gap-2 text-muted-foreground text-xs", mine && "flex-row-reverse")}>
                       <DotAvatar color={author?.color ?? "#999"} size={20} />
-                      <span className="font-medium text-foreground">{author?.name ?? t("Compagnon")}</span>
+                      <span className="font-medium text-foreground">{author?.name ?? t("Circle")}</span>
                       <span className="opacity-60">{formatDateTime(m.metadata?.createdAt)}</span>
                     </div>
                     <Message from={mine ? "user" : "assistant"} className={cn(!mine && "max-w-full")}>

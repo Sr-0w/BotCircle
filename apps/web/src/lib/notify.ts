@@ -42,7 +42,7 @@ function show(title: string, body: string, agentId?: string) {
 
 export function notifyFromEvent(e: ServerEvent) {
   if (!notificationsEnabled() || document.visibilityState === "visible") return;
-  const agentName = (id?: string | null) => getState().agents.find((a) => a.id === id)?.name ?? t("Un compagnon");
+  const agentName = (id?: string | null) => getState().agents.find((a) => a.id === id)?.name ?? t("Un Circle");
   if (e.type === "message.created" && e.author === "agent" && !e.hidden && e.agentId) {
     const agent = getState().agents.find((a) => a.mainConversationId === e.conversationId);
     if (agent) show(agent.name, e.preview.replace(/[*_`#]/g, "").slice(0, 140), agent.id);

@@ -42,7 +42,7 @@ export function OpencodePage() {
       <div className="mx-auto max-w-3xl space-y-5 p-5 sm:p-8">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><OpencodeLogo size={20} />OpenCode</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('Connecte une machine de développement : tes compagnons autorisés pourront y déléguer du code à OpenCode, et tu suivras la session en direct.')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('Connecte une machine de développement : tes Circles autorisés pourront y déléguer du code à OpenCode, et tu suivras la session en direct.')}</p>
         </div>
         {instances && <CodeSessions instances={instances} />}
         {!instances ? <LoaderIcon className="animate-spin" /> : instances.length === 0 && !draft ? <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">{t('Aucune instance connectée.')}</div> : null}
@@ -95,7 +95,7 @@ export function OpencodePage() {
             <p className="pt-1 font-medium text-foreground">{t('Sinon : adresse et mot de passe')}</p>
             <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-muted p-2 font-mono focus-visible:outline-2 focus-visible:outline-ring">OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0 --port 4096</pre>
             <p>{t('Le serveur BotCircle doit alors pouvoir joindre cette adresse : réseau privé (Tailscale, WireGuard), tunnel SSH ou reverse proxy HTTPS. N’expose jamais ce port sans mot de passe.')}</p>
-            <p>{t('Ensuite, autorise un compagnon dans son profil : « Déléguer du code à OpenCode ».')}</p>
+            <p>{t('Ensuite, autorise un Circle dans son profil : « Déléguer du code à OpenCode ».')}</p>
           </div>
         </details>
       </div>

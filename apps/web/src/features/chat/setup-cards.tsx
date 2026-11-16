@@ -22,9 +22,9 @@ export function ComputerSetupCard({ agentId, reason }: { agentId: string; reason
     finally { setBusy(false); }
   }
   return <section className={card} aria-label={t('Configurer l’ordinateur')}>
-    <div className="flex items-center gap-2"><MonitorIcon className="size-4" /><h3 className="font-medium text-sm">{t('L’ordinateur de ton compagnon')}</h3></div>
+    <div className="flex items-center gap-2"><MonitorIcon className="size-4" /><h3 className="font-medium text-sm">{t('L’ordinateur de ton Circle')}</h3></div>
     <p className="text-xs text-muted-foreground">{reason ?? t('Active son bureau privé pour travailler avec des applications et des fichiers. Le navigateur s’ouvre seulement à la demande.')}</p>
-    <p className="text-xs text-muted-foreground">{t('Ce bouton autorise ce compagnon à utiliser son bureau. Tu peux passer cette étape.')}</p>
+    <p className="text-xs text-muted-foreground">{t('Ce bouton autorise ce Circle à utiliser son bureau. Tu peux passer cette étape.')}</p>
     {status?.running && !status.suspended && <p role="status" className="text-sm">{t('Ordinateur démarré')}</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Button size="sm" disabled={busy || Boolean(status?.running && !status.suspended)} onClick={start}>{busy && <LoaderIcon className="animate-spin" />}{busy ? t('Démarrage…') : status?.running && !status.suspended ? t('Ordinateur démarré') : t('Activer et démarrer l’ordinateur')}</Button>
@@ -40,7 +40,7 @@ export function WelcomeSetupCards({ agentId }: { agentId: string }) {
   return <div className="space-y-3">
     <section className={card} aria-label={t('Connecter tes services')}>
       <div className="flex items-center gap-2"><PlugIcon className="size-4" /><h3 className="font-medium text-sm">{t('Connecter tes services')}</h3></div>
-      <p className="text-xs text-muted-foreground">{t('Choisis les services utiles et leurs accès. Tu peux aussi le faire plus tard, en discutant avec ton compagnon.')}</p>
+      <p className="text-xs text-muted-foreground">{t('Choisis les services utiles et leurs accès. Tu peux aussi le faire plus tard, en discutant avec ton Circle.')}</p>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {!catalog && !error && <LoaderIcon className="size-4 animate-spin" />}
       <div className="divide-y">{catalog?.entries.map(entry => {

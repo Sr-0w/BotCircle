@@ -215,7 +215,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           commands={commands}
           mentions={services}
           mentionLabel={t('Services')}
-          placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
+          placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton Circle…")}
           onSubmit={async (text, attachments) => {
             // Sent while the companion works: the message steers the work in progress (#55). Only this client stops
             // following the earlier stream; the turn itself goes on, with the message, on the server.
@@ -255,7 +255,7 @@ function EmptyState({ agent }: { agent: AgentDTO }) {
       <DotAvatar color={agent.color} size={72} state={agent.state} named={agent.named} />
       <div className="space-y-1.5">
         <h2 className="font-semibold text-xl tracking-tight">
-          {agent.named ? t("{v0} est là", { v0: agent.name }) : t("Ton premier compagnon est prêt")}
+          {agent.named ? t("{v0} est là", { v0: agent.name }) : t("Ton premier Circle est prêt")}
         </h2>
         <p className="mx-auto max-w-sm text-balance text-muted-foreground text-sm">
           {agent.named

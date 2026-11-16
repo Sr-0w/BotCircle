@@ -84,7 +84,7 @@ function TakeoverDialog({ login, busy, onClose, onResolve }: { login: SecureLogi
       <DialogContent className="flex h-[92vh] w-[96vw] max-w-6xl flex-col gap-3 p-4 sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><LockIcon className="size-4" />{t('Se connecter à {host}', { host: new URL(login.url).host })}</DialogTitle>
-          <DialogDescription>{t('Vérifie l’adresse affichée dans le navigateur avant de saisir quoi que ce soit. Le compagnon ne voit rien pendant que tu as la main.')}</DialogDescription>
+          <DialogDescription>{t('Vérifie l’adresse affichée dans le navigateur avant de saisir quoi que ce soit. Le Circle ne voit rien pendant que tu as la main.')}</DialogDescription>
         </DialogHeader>
         <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border bg-black">
           <div ref={target} className="size-full" data-secure-desktop />

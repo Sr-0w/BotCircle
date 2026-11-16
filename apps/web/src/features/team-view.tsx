@@ -33,13 +33,13 @@ export function TeamView() {
       <div className={cn("flex w-full flex-col border-r md:w-72", selected && "hidden md:flex")}>
         <div className="px-4 pt-5 pb-3">
           <h2 className="font-semibold">{t("Échanges de l’équipe")}</h2>
-          <p className="text-muted-foreground text-xs">{t("Ce que les compagnons se disent entre eux.")}</p>
+          <p className="text-muted-foreground text-xs">{t("Ce que les Circles se disent entre eux.")}</p>
         </div>
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
           <OpencodeExchanges />
           {threads?.length === 0 && (
             <p className="px-2 py-6 text-center text-muted-foreground text-sm">
-              {t("Aucun échange pour l’instant. Demande par exemple à un compagnon de consulter un autre.")}
+              {t("Aucun échange pour l’instant. Demande par exemple à un Circle de consulter un autre.")}
             </p>
           )}
           {threads?.map((t) => {
@@ -112,7 +112,7 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
                 <DotAvatar color={author?.color ?? "#999"} size={28} />
                 <div className={cn("min-w-0 max-w-[80%] space-y-1", right && "items-end text-right")}>
                   <p className="text-muted-foreground text-xs">
-                    {author?.name ?? t("Compagnon")} · {relativeTime(m.metadata?.createdAt)}
+                    {author?.name ?? t("Circle")} · {relativeTime(m.metadata?.createdAt)}
                     {tools > 0 && ` · ${t(tools > 1 ? "{n} actions" : "{n} action", { n: tools })}`}
                   </p>
                   {text && (
@@ -146,7 +146,7 @@ function OpencodeExchanges() {
       <p className="px-2 pt-1 pb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">OpenCode</p>
       {[...byTask.entries()].reverse().map(([taskId, list]) => {
         const first = list[0], last = list[list.length - 1];
-        const from = first.author === "user" ? t("Toi") : agents.find((a) => a.id === first.agentId)?.name ?? t("Un compagnon");
+        const from = first.author === "user" ? t("Toi") : agents.find((a) => a.id === first.agentId)?.name ?? t("Un Circle");
         return (
           <button key={taskId} type="button" onClick={() => openCodeWorkspace(taskId)} className="flex w-full flex-col gap-0.5 rounded-xl px-2.5 py-2 text-left hover:bg-accent/70">
             <span className="flex items-center gap-2 text-sm"><span className="truncate font-medium">{from} ↔ OpenCode</span><span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{relativeTime(last.createdAt)}</span></span>

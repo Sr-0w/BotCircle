@@ -31,7 +31,7 @@ const PERM_GROUPS: { title: string; perms: { key: Exclude<keyof AgentPermissions
   { title: t("Autonomie et collaboration"), perms: [
     { key: "manageMemory", label: t("Gérer sa mémoire") },
     { key: "manageActivities", label: t("Créer des planifications et surveillances") },
-    { key: "messageAgents", label: t("Échanger avec les autres compagnons") },
+    { key: "messageAgents", label: t("Échanger avec les autres Circles") },
   ] },
 ];
 
@@ -75,7 +75,7 @@ export function AgentSettings({ agent, onOpenTab, request }: { agent: AgentDTO; 
           ))}
           {group.title === t("Autonomie et collaboration") && (
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span>{t("Créer des compagnons")}</span>
+              <span>{t("Créer des Circles")}</span>
               <Select value={agent.permissions.createAgents} onValueChange={(v) => void save({ permissions: { ...agent.permissions, createAgents: v as AgentPermissions["createAgents"] } }).catch(() => {})}>
                 <SelectTrigger size="sm" className="w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -112,7 +112,7 @@ export function AgentSettings({ agent, onOpenTab, request }: { agent: AgentDTO; 
       {agent.description && <p className="mt-1 text-muted-foreground text-sm">{agent.description}</p>}
       <div className="mt-4 border-t">
         <button className={row} onClick={() => setView("advanced")}>
-          <span className="min-w-0 flex-1"><span className="block text-sm">{t("Modèle")}</span><span className="block truncate text-muted-foreground text-xs">{agent.effectiveModel.model} · {agent.model ? t("propre à ce compagnon") : t("modèle par défaut")}</span></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm">{t("Modèle")}</span><span className="block truncate text-muted-foreground text-xs">{agent.effectiveModel.model} · {agent.model ? t("propre à ce Circle") : t("modèle par défaut")}</span></span>
           <ChevronRightIcon className="size-4 text-muted-foreground" />
         </button>
         <button className={row} onClick={() => setView("permissions")}><span className="min-w-0 flex-1"><span className="block text-sm">{t("Permissions")}</span><span className="block text-muted-foreground text-xs">{t("Ce qu’il a le droit de faire")}</span></span><ChevronRightIcon className="size-4 text-muted-foreground" /></button>
@@ -187,7 +187,7 @@ function Advanced({ agent, save, onBack, picking, setPicking }: { agent: AgentDT
       <Button variant="ghost" size="sm" className="w-full text-destructive hover:text-destructive" onClick={async () => {
         if (!confirm(t("Retirer {v0} ? Ses activités seront suspendues.", { v0: agent.name }))) return;
         try { await api.archiveAgent(agent.id); removeAgentLocally(agent.id); } catch (e) { toast.error((e as Error).message); }
-      }}><ArchiveIcon /> {t("Retirer ce compagnon")}</Button>
+      }}><ArchiveIcon /> {t("Retirer ce Circle")}</Button>
       <Dialog open={picking} onOpenChange={setPicking}>
         <DialogContent className="flex h-[70vh] max-w-lg flex-col">
           <DialogHeader><DialogTitle>{t("Modèle de {name}", { name: agent.name })}</DialogTitle></DialogHeader>

@@ -31,7 +31,7 @@ export function ConnectorsPage() {
     <PageShell
       wide
       title={t("Magasin de connecteurs")}
-      description={t("Les services que tes compagnons peuvent utiliser. Partagés par toute l’équipe ; les actions sensibles demandent toujours ta validation.")}
+      description={t("Les services que tes Circles peuvent utiliser. Partagés par toute l’équipe ; les actions sensibles demandent toujours ta validation.")}
     >
       <IntegrationCatalog connectors={connectors ?? []} />
       <details className="rounded-2xl border p-5"><summary className="cursor-pointer text-sm font-medium">{t('Connexions personnalisées et plugins')}</summary><div className="pt-6">

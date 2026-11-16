@@ -48,7 +48,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
     catch (e) { toast.error((e as Error).message); } finally { setSending(false); }
   }
   const task = data?.task;
-  const who = (author: string, agentId: string | null) => author === 'user' ? t('Toi') : author === 'opencode' ? 'OpenCode' : agents.find((a) => a.id === agentId)?.name ?? t('Un compagnon');
+  const who = (author: string, agentId: string | null) => author === 'user' ? t('Toi') : author === 'opencode' ? 'OpenCode' : agents.find((a) => a.id === agentId)?.name ?? t('Un Circle');
   const project = task?.external?.directory?.replace(/\/+$/, '').split('/').pop();
   const titles: Record<View, string> = { session: task?.title ?? t('Espace de code'), changes: t('Changements'), files: t('Fichiers'), exchanges: t('Échanges') };
   const add = data?.diffs.reduce((n, d) => n + d.additions, 0) ?? 0, del = data?.diffs.reduce((n, d) => n + d.deletions, 0) ?? 0;
@@ -125,7 +125,7 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {data.exchanges.map((entry) => (
             <div key={entry.seq} className="text-sm" data-exchange={entry.author}>
-              <p className="mb-0.5 text-muted-foreground text-xs"><span className="font-medium text-foreground">{who(entry.author, entry.agentId)}</span> → {entry.author === 'opencode' ? t('compagnon') : 'OpenCode'} · {formatDateTime(entry.createdAt)}</p>
+              <p className="mb-0.5 text-muted-foreground text-xs"><span className="font-medium text-foreground">{who(entry.author, entry.agentId)}</span> → {entry.author === 'opencode' ? t('Circle') : 'OpenCode'} · {formatDateTime(entry.createdAt)}</p>
               <p className="line-clamp-[12] whitespace-pre-wrap">{entry.text}</p>
               {entry.original && <details className="mt-1 text-muted-foreground text-xs"><summary className="cursor-pointer">{t('Demande d’origine')}</summary><p className="mt-1 whitespace-pre-wrap">{entry.original}</p></details>}
             </div>

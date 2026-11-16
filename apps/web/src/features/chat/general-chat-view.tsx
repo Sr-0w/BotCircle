@@ -116,7 +116,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
                 <ThinkingOrb state="breathing" size={64} label={t('Nouveau chat')} />
                 <div className="space-y-1.5">
                   <h2 className="font-semibold text-xl tracking-tight">{t('Nouveau chat')}</h2>
-                  <p className="mx-auto max-w-sm text-balance text-muted-foreground text-sm">{t('Un fil libre, sans compagnon attitré. Écris @ suivi d’un nom pour faire intervenir un compagnon : il répond ici, sous son nom.')}</p>
+                  <p className="mx-auto max-w-sm text-balance text-muted-foreground text-sm">{t('Un fil libre, sans Circle attitré. Écris @ suivi d’un nom pour faire intervenir un Circle : il répond ici, sous son nom.')}</p>
                 </div>
               </div>
             )}
@@ -146,7 +146,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             mentions={mentions}
             tools={<ChatControls chat={info} pickerRequest={modelRequest} />}
             commands={commands}
-            placeholder={t('Écrire un message, @ pour un compagnon…')}
+            placeholder={t('Écrire un message, @ pour un Circle…')}
             onSubmit={async (text, attachments) => {
               if (busy) await chat.stop();
               const files = [];

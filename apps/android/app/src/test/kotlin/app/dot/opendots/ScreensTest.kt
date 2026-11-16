@@ -297,7 +297,7 @@ class ScreensTest {
     @Test fun theProfileCardSetsTheNameCirclesUse() {
         launch(ThemeMode.DARK)
         waitFor("12,418 lines")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         tab("Settings")
         waitFor("Add your name")
         compose.onNodeWithContentDescription("Edit your name").performClick()
@@ -315,7 +315,7 @@ class ScreensTest {
         paired = true
         launch(ThemeMode.DARK)
         waitFor("12,418 lines")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         tab("Code")
         waitFor("Started in the terminal")
         waitFor("From OpenCode")
@@ -369,10 +369,10 @@ class ScreensTest {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         // Back from a conversation leads to the full-screen Companions page.
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         waitFor("Venty")
         waitFor("Reads an email")
-        shoot("companions-dark")
+        shoot("Circles-dark")
         // #59: the dock, left to right, is exactly Circles · Chat · Code · Settings; only the active one shows its label.
         val dock = compose.onAllNodes(isSelectable()).fetchSemanticsNodes().map { it.config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].first() }
         assertEquals(listOf("Circles", "Chat", "Code", "Settings"), dock)
@@ -406,7 +406,7 @@ class ScreensTest {
         waitFor("Venty")
         compose.onNodeWithText("Ari").performClick()
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companion details").performClick()
+        compose.onNodeWithContentDescription("Circle details").performClick()
         // #53: a short summary — the real model, four entries, no toggles; permissions on their own page.
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("anthropic/claude-sonnet-5.5", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(!compose.onAllNodesWithTextCompat("Read public web pages"))
@@ -427,18 +427,18 @@ class ScreensTest {
     @Test fun aGeneralChatHasItsControlsVersionsEditAndRegenerate() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         tab("Chat")
         waitFor("Friday meeting")
         compose.onNodeWithText("Friday meeting").performClick()
         waitFor("Anything else about that meeting?")
         assertTrue(compose.onAllNodes(hasTestTag("chat-controls"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         shoot("chat-controls-dark")
-        // "+" holds attach and "ask a companion"; there is no separate @ button.
-        assertTrue(!compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Ask a companion")).fetchSemanticsNodes().isNotEmpty())
+        // "+" holds attach and "ask a Circle"; there is no separate @ button.
+        assertTrue(!compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Ask a Circle")).fetchSemanticsNodes().isNotEmpty())
         compose.onNodeWithContentDescription("Add").performClick()
-        waitFor("Ask a companion")
-        compose.onNodeWithText("Ask a companion").performClick()
+        waitFor("Ask a Circle")
+        compose.onNodeWithText("Ask a Circle").performClick()
         // The model picker: every configured provider, favourites first; a star keeps a model on top.
         waitFor("@")
         repeat(3) {
@@ -480,7 +480,7 @@ class ScreensTest {
     @Test fun chatsAreTheirOwnDestinationWithSignedContributions() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         tab("Chat")
         waitFor("Friday meeting")
         shoot("chats-dark")
@@ -498,7 +498,7 @@ class ScreensTest {
         waitFor("meeting notes.md")
         shoot("chat-general-dark")
         // @ completes a companion's name; the message goes to the chat, not to a companion's thread.
-        compose.onNodeWithContentDescription("Message, @ for a companion…").performTextInput("@D")
+        compose.onNodeWithContentDescription("Message, @ for a Circle…").performTextInput("@D")
         compose.onNodeWithText("@Dev").performClick()
         compose.onNodeWithContentDescription("Send").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/chat" } }
@@ -509,7 +509,7 @@ class ScreensTest {
     @Test fun aTaskShowsItsRealStateAndJournal() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         openActivity()
         waitFor("Summarise the Friday meeting")
         waitFor("Finished")
@@ -525,7 +525,7 @@ class ScreensTest {
     @Test fun providersSitTogetherWithTheirStatus() {
         launch(ThemeMode.OLED)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         tab("Settings")
         compose.onNodeWithText("AI & models").performClick()
         waitFor("Model providers")
@@ -545,7 +545,7 @@ class ScreensTest {
     @Test fun aSignInIsATrustedCardWithoutAnyCredentialField() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         waitFor("Venty")
         compose.onNodeWithText("Venty").performClick()
         waitFor("Sign in to service.example")
@@ -565,7 +565,7 @@ class ScreensTest {
     @Test fun anOpenCodeTaskOpensItsOwnLiveSession() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         openActivity()
         // #43: one compact card with the official logo, the real state and what the session really changed.
         waitFor("Refactor the settings")
@@ -634,7 +634,7 @@ class ScreensTest {
     @Test fun filesAreCompactLinesWithAPreviewAndApprovalsAskedTogetherAreGrouped() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         waitFor("Venty")
         compose.onNodeWithText("Venty").performClick()
         waitFor("notepad.py")
@@ -674,7 +674,7 @@ class ScreensTest {
     @Test fun anOpenCodeMachineIsPairedWithTheLinkOfOpencodePair() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         waitFor("Venty")
         tab("Settings")
         compose.onNodeWithText("Connections").performClick()
@@ -693,11 +693,11 @@ class ScreensTest {
     @Test fun aCompanionsMemoryCanBeReadAndForgotten() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companion details").performClick()
+        compose.onNodeWithContentDescription("Circle details").performClick()
         compose.onNodeWithText("Data & connections").performClick()
         waitFor("KNOWLEDGE")
         tapUntil("Memory", "Robin prefers short answers.")
-        waitFor("shared by all companions")
+        waitFor("shared by all Circles")
         compose.onAllNodes(hasText("Forget"))[0].performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/memories/mem1" } }
     }
@@ -705,7 +705,7 @@ class ScreensTest {
     @Test fun teamExchangesOpenTheThreadBetweenTwoCompanions() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         waitFor("Venty")
         // #54: team exchanges are activity, not a setting.
         openActivity()
@@ -723,7 +723,7 @@ class ScreensTest {
         val app = AppState(store, client)
         compose.setContent { DotTheme(ThemeMode.DARK) { OpenDotsRoot(app, app.state.collectAsStateForTest()) } }
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Companions").performClick()
+        compose.onNodeWithContentDescription("Circles").performClick()
         waitFor("Venty")
         tapUntil("Dev", "Here is my desktop.")
         // The shared capture is an image of the thread (not a line of text), and only the one that was really attached.

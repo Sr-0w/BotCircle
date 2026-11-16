@@ -77,7 +77,7 @@ export function AgentModelControl({ agent, pickerRequest = 0 }: { agent: { id: s
   }
   return (
     <>
-      <button type="button" onClick={() => setPicking(!picking)} aria-expanded={picking} className="flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-muted-foreground text-xs hover:bg-accent hover:text-foreground" aria-label={t('Modèle du compagnon')} title={model.model} data-agent-model>
+      <button type="button" onClick={() => setPicking(!picking)} aria-expanded={picking} className="flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-muted-foreground text-xs hover:bg-accent hover:text-foreground" aria-label={t('Modèle du Circle')} title={model.model} data-agent-model>
         <span className="max-w-40 truncate">{info?.name ?? shortName(model.model)}</span><ChevronDownIcon className="size-3 shrink-0" />
       </button>
       {picking && <ModelMenu current={model} onClose={() => setPicking(false)} onPick={(picked) => { void set({ provider: picked.provider, model: picked.id, reasoning: picked.reasoning ? model.reasoning ?? null : null }); setPicking(false); }}

@@ -121,7 +121,7 @@ export function MailDialog({ connector, requestedBy, initialPreset, onClose }: {
           </div>
           <DialogTitle>{connector ? t("Modifier le compte mail") : t("Connecter une boîte mail")}</DialogTitle>
           <DialogDescription>
-            {t("Tes compagnons pourront lire et préparer des réponses. Aucun e-mail n’est envoyé sans ta validation.")}
+            {t("Tes Circles pourront lire et préparer des réponses. Aucun e-mail n’est envoyé sans ta validation.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -273,7 +273,7 @@ export function McpDialog({ connector, requestedBy, onClose }: { connector?: Con
             <PlugIcon className="size-4" />
           </div>
           <DialogTitle>{connector ? t("Modifier le connecteur") : t("Ajouter un connecteur MCP")}</DialogTitle>
-          <DialogDescription>{t("Donne à tous tes compagnons l’accès aux outils d’un serveur MCP.")}</DialogDescription>
+          <DialogDescription>{t("Donne à tous tes Circles l’accès aux outils d’un serveur MCP.")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <Field label={t("Nom")}>

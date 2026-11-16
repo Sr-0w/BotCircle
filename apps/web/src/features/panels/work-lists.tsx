@@ -11,7 +11,7 @@ function Empty({ title, text }: { title: string; text: string }) {
   return <div className="rounded-xl border border-dashed p-4 text-center"><p className="font-medium text-sm">{title}</p><p className="mt-1 text-muted-foreground text-xs">{text}</p></div>;
 }
 
-/** Tâches d'un compagnon ou d'un chat : celles en cours d'abord, puis l'historique. Chaque carte se met à jour sur place. */
+/** Tâches d'un Circle ou d'un chat : celles en cours d'abord, puis l'historique. Chaque carte se met à jour sur place. */
 export function TasksList({ scope }: { scope: Scope }) {
   const [loaded, setLoaded] = useState<TaskDTO[] | null>(null);
   const reload = useCallback(() => { api.tasks(scope).then(setLoaded).catch(() => setLoaded([])); }, [scope.agentId, scope.conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -44,6 +44,6 @@ export function FilesList({ scope }: { scope: Scope }) {
   useEffect(reload, [reload]);
   useServerEvent((e) => (e.type === 'artifact.changed' || e.type === 'task.changed' || e.type === 'turn.finished' || e.type === 'chat.changed') && reload(), [reload]);
   if (!files) return null;
-  if (!files.length) return <Empty title={t('Aucun fichier')} text={t('Les fichiers que tu joins et ceux que les compagnons produisent apparaissent ici.')} />;
+  if (!files.length) return <Empty title={t('Aucun fichier')} text={t('Les fichiers que tu joins et ceux que les Circles produisent apparaissent ici.')} />;
   return <div className="space-y-2" data-files-list>{files.map((file) => <FileCard key={file.id} file={{ url: file.url, filename: file.name, mediaType: file.mediaType, size: file.size, artifactId: file.id }} />)}</div>;
 }

@@ -159,14 +159,14 @@ export function ActivityDialog({
         <DialogHeader>
           <DialogTitle>{activity ? t("Modifier la tâche") : t("Nouvelle tâche planifiée")}</DialogTitle>
           <DialogDescription>
-            {activity ? t("Ajustement manuel — tu peux aussi le demander au compagnon.") : t("Le plus simple reste de le demander au compagnon, mais tu peux aussi la créer ici.")}
+            {activity ? t("Ajustement manuel — tu peux aussi le demander au Circle.") : t("Le plus simple reste de le demander au Circle, mais tu peux aussi la créer ici.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {!activity && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label={t("Compagnon")}>
+              <Field label={t("Circle")}>
                 <Select value={d.agentId} onValueChange={(v) => set({ agentId: v })}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -199,7 +199,7 @@ export function ActivityDialog({
           <Field label={t("Titre")}>
             <Input value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder={t("Point du matin")} />
           </Field>
-          <Field label={t("Instructions pour le compagnon")}>
+          <Field label={t("Instructions pour le Circle")}>
             <Textarea
               rows={4}
               value={d.instructions}
@@ -290,7 +290,7 @@ export function ActivityDialog({
                 )}
               </div>
               <MinutesField label={t("Vérifier toutes les")} value={d.minutes} onChange={(minutes) => set({ minutes })} />
-              <p className="text-muted-foreground text-xs">{t("La vérification ne sollicite pas l’IA : le compagnon n’est réveillé que si la condition est remplie.")}</p>
+              <p className="text-muted-foreground text-xs">{t("La vérification ne sollicite pas l’IA : le Circle n’est réveillé que si la condition est remplie.")}</p>
             </div>
           )}
 

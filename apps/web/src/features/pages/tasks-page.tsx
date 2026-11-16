@@ -84,7 +84,7 @@ export function TasksPage() {
   return (
     <PageShell
       title={t("Tâches planifiées")}
-      description={t("Les responsabilités permanentes de tes compagnons : routines, surveillances et déclencheurs. Elles se créent en leur parlant ; ici tu peux les suspendre ou les ajuster.")}
+      description={t("Les responsabilités permanentes de tes Circles : routines, surveillances et déclencheurs. Elles se créent en leur parlant ; ici tu peux les suspendre ou les ajuster.")}
       action={
         <Button size="sm" onClick={() => openDialog({ kind: "activity" })}>
           <PlusIcon /> {t("Nouvelle tâche")}
@@ -108,7 +108,7 @@ export function TasksPage() {
           <CalendarClockIcon className="mx-auto mb-2 size-6 text-muted-foreground" />
           <p className="font-medium text-sm">{filter === "paused" ? t("Aucune tâche en pause") : filter === "active" ? t("Aucune tâche active") : t("Aucune tâche pour l’instant")}</p>
           <p className="mx-auto mt-1 max-w-sm text-muted-foreground text-xs">
-            {t("Dis par exemple à un compagnon : « Tous les matins à 8 h, fais-moi un point sur mes e-mails importants ».")}
+            {t("Dis par exemple à un Circle : « Tous les matins à 8 h, fais-moi un point sur mes e-mails importants ».")}
           </p>
         </div>
       )}

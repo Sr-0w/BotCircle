@@ -41,7 +41,7 @@ export function TaskDialog({ taskId, onClose }: { taskId: string; onClose: () =>
         {!task ? <LoaderIcon className="m-8 mx-auto animate-spin" /> : (
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
             <section><h3 className="mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Consigne')}</h3><p className="whitespace-pre-wrap">{task.instruction}</p></section>
-            {(task.usedModel || task.model) && <section data-task-model-details><h3 className="mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Modèle')}</h3><p>{task.usedModel ?? `${task.model!.provider}:${task.model!.model}`}{task.model ? ` · ${t('demandé pour cette tâche')}` : ` · ${t('modèle du compagnon')}`}</p></section>}
+            {(task.usedModel || task.model) && <section data-task-model-details><h3 className="mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Modèle')}</h3><p>{task.usedModel ?? `${task.model!.provider}:${task.model!.model}`}{task.model ? ` · ${t('demandé pour cette tâche')}` : ` · ${t('modèle du Circle')}`}</p></section>}
             {(task.blocker || task.error) && <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs"><p className="font-medium">{task.error ? t('Échec') : t('Blocage')}</p><p className="text-muted-foreground">{task.error ?? task.blocker}</p></section>}
             {task.result && <section><h3 className="mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Résultat')}</h3><p className="whitespace-pre-wrap">{task.result}</p></section>}
             {task.artifacts.length > 0 && <section className="space-y-2"><h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Fichiers produits')}</h3>{task.artifacts.map((artifact) => <FileCard key={artifact.id} file={{ url: artifact.url, filename: artifact.name, mediaType: artifact.mediaType, size: artifact.size, artifactId: artifact.id }} />)}</section>}
@@ -86,7 +86,7 @@ export function ArtifactDialog({ artifactId, onClose }: { artifactId: string; on
   const reload = useCallback(() => { api.artifact(artifactId).then(setData).catch((e) => setError(e.message)); }, [artifactId]);
   useEffect(reload, [reload]);
   useServerEvent((e) => e.type === 'artifact.changed' && e.artifactId === artifactId && reload(), [reload, artifactId]);
-  const who = (actor: string | null) => !actor || actor === 'user' ? t('Toi') : agents.find((a) => a.id === actor)?.name ?? (actor.startsWith('task_') ? t('Un worker') : t('Un compagnon'));
+  const who = (actor: string | null) => !actor || actor === 'user' ? t('Toi') : agents.find((a) => a.id === actor)?.name ?? (actor.startsWith('task_') ? t('Un worker') : t('Un Circle'));
   const detail = (entry: ArtifactAccessDTO) => entry.action === 'share' || entry.action === 'revoke' ? agents.reduce((text, agent) => text.replaceAll(agent.id, agent.name), entry.detail ?? '') : '';
   const activeGrants = data?.grants.filter((grant) => !grant.revokedAt) ?? [];
   const others = agents.filter((agent) => !activeGrants.some((grant) => grant.agentId === agent.id));
@@ -101,12 +101,12 @@ export function ArtifactDialog({ artifactId, onClose }: { artifactId: string; on
         {error ? <p className="p-5 text-destructive text-sm">{error}</p> : !data ? <LoaderIcon className="m-8 mx-auto animate-spin" /> : (
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
             <section className="space-y-1.5">
-              <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Compagnons qui y ont accès')}</h3>
-              {activeGrants.length === 0 && <p className="text-muted-foreground text-xs">{t('Aucun compagnon ne peut lire ce fichier.')}</p>}
+              <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Circles qui y ont accès')}</h3>
+              {activeGrants.length === 0 && <p className="text-muted-foreground text-xs">{t('Aucun Circle ne peut lire ce fichier.')}</p>}
               {activeGrants.map((grant) => { const agent = agents.find((a) => a.id === grant.agentId); return (
                 <div key={grant.agentId} className="flex items-center gap-2" data-grant>
                   {agent && <DotAvatar color={agent.color} size={16} />}
-                  <span className="min-w-0 flex-1"><span className="font-medium">{agent?.name ?? t('Un compagnon')}</span> <span className="text-muted-foreground text-xs">· {t('par {v0}', { v0: who(grant.grantedBy) })} · {formatDateTime(grant.createdAt)}</span></span>
+                  <span className="min-w-0 flex-1"><span className="font-medium">{agent?.name ?? t('Un Circle')}</span> <span className="text-muted-foreground text-xs">· {t('par {v0}', { v0: who(grant.grantedBy) })} · {formatDateTime(grant.createdAt)}</span></span>
                   <Button size="sm" variant="ghost" className="h-7 text-destructive text-xs" onClick={() => void apply(api.revokeArtifact(artifactId, grant.agentId))}>{t('Retirer')}</Button>
                 </div>
               ); })}

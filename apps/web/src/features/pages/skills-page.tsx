@@ -23,7 +23,7 @@ export function SkillsPage() {
   return (
     <PageShell
       title={t("Skills")}
-      description={t("Des savoir-faire partagés par tous tes compagnons. Chacun charge un skill quand une demande correspond à sa description.")}
+      description={t("Des savoir-faire partagés par tous tes Circles. Chacun charge un skill quand une demande correspond à sa description.")}
       action={
         <Button size="sm" onClick={() => openDialog({ kind: "skill" })}>
           <PlusIcon /> {t("Nouveau skill")}
@@ -35,7 +35,7 @@ export function SkillsPage() {
           <SparklesIcon className="mx-auto mb-2 size-6 text-muted-foreground" />
           <p className="font-medium text-sm">{t("Aucun skill")}</p>
           <p className="mx-auto mt-1 max-w-sm text-muted-foreground text-xs">
-            {t("Après avoir expliqué une méthode à un compagnon, dis-lui simplement « enregistre ça comme skill ». Ou installe un plugin depuis Connecteurs.")}
+            {t("Après avoir expliqué une méthode à un Circle, dis-lui simplement « enregistre ça comme skill ». Ou installe un plugin depuis Connecteurs.")}
           </p>
         </div>
       )}

@@ -74,7 +74,7 @@ export function SettingsPanel({ section, onOpenSection }: { section: "general" |
               <div className="space-y-1">
                 <Label className="text-xs">{t("Modèle par défaut")}</Label>
                 <p className="font-mono text-sm">{model?.model}</p>
-                <p className="text-muted-foreground text-xs">{t("Utilisé par les chats et par tout compagnon qui n’a pas son propre modèle. Chaque compagnon peut en choisir un autre depuis son profil.")}</p>
+                <p className="text-muted-foreground text-xs">{t("Utilisé par les chats et par tout Circle qui n’a pas son propre modèle. Chaque Circle peut en choisir un autre depuis son profil.")}</p>
               </div>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Fournisseur de modèles")}>
                 {([["openrouter", "OpenRouter"], ["codex", "ChatGPT / Codex"], ["ollama", "Ollama"]] as const).map(([id, label]) => (
@@ -190,7 +190,7 @@ export function SettingsPanel({ section, onOpenSection }: { section: "general" |
               <div className="space-y-1.5">
                 <Label className="text-xs" htmlFor="timezone">{t("Fuseau horaire")}</Label>
                 <Input id="timezone" defaultValue={settings.timezone} onBlur={(e) => e.target.value !== settings.timezone && update({ timezone: e.target.value })} />
-                <p className="text-muted-foreground text-xs">{t("Sert aux planifications et à l’heure que voient les compagnons.")}</p>
+                <p className="text-muted-foreground text-xs">{t("Sert aux planifications et à l’heure que voient les Circles.")}</p>
               </div>
             </section>}
 {section === "general" && <section className="space-y-5 pt-2">
@@ -206,7 +206,7 @@ export function SettingsPanel({ section, onOpenSection }: { section: "general" |
                 <label className="flex items-center justify-between gap-4">
                   <div>
                     <p className="font-medium text-sm">{t("Notifications")}</p>
-                    <p className="text-muted-foreground text-xs">{t("Messages, validations et questions de tes compagnons quand BotCircle est en arrière-plan.")}</p>
+                    <p className="text-muted-foreground text-xs">{t("Messages, validations et questions de tes Circles quand BotCircle est en arrière-plan.")}</p>
                   </div>
                   <Switch checked={notify} onCheckedChange={async (v) => setNotify(await setNotifications(v))} />
                 </label>

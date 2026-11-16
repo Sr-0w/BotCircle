@@ -47,9 +47,9 @@ function describeTool(name: string, input: any, output: any): { title: string; i
     case "agent_list":
       return { title: t("Consulte l’équipe"), icon: <BotIcon className="size-3.5" /> };
     case "agent_create":
-      return { title: i.name ? t("Crée {v0}", { v0: i.name }) : t("Crée un compagnon"), icon: <BotIcon className="size-3.5" /> };
+      return { title: i.name ? t("Crée {v0}", { v0: i.name }) : t("Crée un Circle"), icon: <BotIcon className="size-3.5" /> };
     case "team_send_message":
-      return { title: i.to ? t("Écrit à {v0}", { v0: i.to }) : t("Contacte un compagnon"), icon: <MessagesSquareIcon className="size-3.5" /> };
+      return { title: i.to ? t("Écrit à {v0}", { v0: i.to }) : t("Contacte un Circle"), icon: <MessagesSquareIcon className="size-3.5" /> };
     case "memory_remember":
       return { title: t("Mémorise"), icon: <BrainIcon className="size-3.5" /> };
     case "memory_update":
@@ -109,7 +109,7 @@ function describeTool(name: string, input: any, output: any): { title: string; i
     case "task_pause": return { title: t("Met sa tâche en pause"), icon: <ClipboardListIcon className="size-3.5" /> };
     case "task_resume": return { title: t("Reprend sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
     case "task_cancel": return { title: t("Annule sa tâche"), icon: <ClipboardListIcon className="size-3.5" /> };
-    case "invoke_agent": return { title: i.agent ? t("Sollicite {v0}", { v0: i.agent }) : t("Sollicite un compagnon"), icon: <BotIcon className="size-3.5" /> };
+    case "invoke_agent": return { title: i.agent ? t("Sollicite {v0}", { v0: i.agent }) : t("Sollicite un Circle"), icon: <BotIcon className="size-3.5" /> };
     case "list_agents": return { title: t("Consulte l’équipe"), icon: <BotIcon className="size-3.5" /> };
     case "artifact_list": return { title: t("Consulte ses fichiers"), icon: <FileTextIcon className="size-3.5" /> };
     case "artifact_read": return { title: t("Lit un fichier"), icon: <FileTextIcon className="size-3.5" /> };
@@ -178,7 +178,7 @@ function TeamEventCard({ message, agentId }: { message: ODMessage; agentId: stri
   const text = message.parts.map((p) => (p.type === "text" ? p.text : "")).join("\n");
   // Pour une réponse, le texte de l'événement contient « Sa réponse : … » : on n'affiche que la réponse.
   const preview = event.type === "agent_reply" ? (text.split(/Sa réponse :\n/)[1]?.split(/\n\nPoursuis ta tâche/)[0] ?? text) : text;
-  const name = peer?.name ?? t("un compagnon");
+  const name = peer?.name ?? t("un Circle");
   return (
     <TeamCard
       title={event.type === "agent_reply" ? (event.title?.startsWith("Échec") ? event.title : t("Réponse de {v0}", { v0: name })) : event.title?.match(/^(Message envoyé à|Réponse envoyée à|Message traité)/) ? event.title : t("Message reçu de {v0}", { v0: name })}
@@ -212,7 +212,7 @@ function SentTeamCard({ part, agentId, date }: { part: ToolUIPart; agentId?: str
   const input = (part as any).input ?? {};
   const out = (part as any).output;
   const peer = useStore((s) => s.agents.find((a) => a.id === input.to || a.name.toLowerCase() === String(out?.to ?? input.to ?? "").toLowerCase()));
-  const name = out?.to ?? peer?.name ?? input.to ?? t("un compagnon");
+  const name = out?.to ?? peer?.name ?? input.to ?? t("un Circle");
   return (
     <TeamCard
       title={t("Message envoyé à {v0}", { v0: name })}
@@ -438,13 +438,13 @@ function UserMessage({ message, text, onEdit, children }: { message: ODMessage; 
   );
 }
 
-/** Signature d'une réponse dans un chat général : le compagnon intervenu, sinon l'assistant et son modèle. */
+/** Signature d'une réponse dans un chat général : le Circle intervenu, sinon l'assistant et son modèle. */
 function Author({ agentId, model }: { agentId?: string; model?: string }) {
   const agent = useStore((s) => s.agents.find((a) => a.id === agentId));
   return (
     <p className="flex items-center gap-1.5 text-muted-foreground text-xs" data-author={agent ? agent.id : 'assistant'}>
       {agent ? <DotAvatar color={agent.color} size={14} /> : <SparklesIcon className="size-3.5" />}
-      <span className="font-medium text-foreground">{agent ? agent.name : agentId ? t('Un compagnon') : t('Assistant')}</span>
+      <span className="font-medium text-foreground">{agent ? agent.name : agentId ? t('Un Circle') : t('Assistant')}</span>
       {!agentId && model && <span className="truncate">· {model}</span>}
     </p>
   );

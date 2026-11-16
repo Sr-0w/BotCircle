@@ -61,7 +61,7 @@ function AgentRow({ agent, active, onClick }: { agent: AgentDTO; active: boolean
       <DotAvatar color={agent.color} state={agent.state} size={34} named={agent.named} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate font-medium text-sm">{agent.named ? agent.name : t("Nouveau compagnon")}</span>
+          <span className="truncate font-medium text-sm">{agent.named ? agent.name : t("Nouveau Circle")}</span>
           <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{relativeTime(agent.lastMessageAt)}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -130,8 +130,8 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="px-4 pb-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Compagnons")}</div>
-        <nav className="space-y-0.5 px-2" aria-label={t("Compagnons")}>
+        <div className="px-4 pb-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Circles")}</div>
+        <nav className="space-y-0.5 px-2" aria-label={t("Circles")}>
           {agents.map((a) => (
             <AgentRow key={a.id} agent={a} active={route.view === "agent" && route.id === a.id} onClick={() => go({ view: "agent", id: a.id })} />
           ))}
@@ -148,7 +148,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           </div>
         )}
         <nav className="space-y-0.5 px-2 pb-2" aria-label={t("Chats")}>
-          {shown.length === 0 && <button type="button" onClick={newChat} className="w-full rounded-xl border border-dashed px-3 py-2.5 text-left text-muted-foreground text-xs hover:bg-accent/60">{query ? t("Aucun chat trouvé.") : t("Un fil libre, sans compagnon attitré. Commence un chat.")}</button>}
+          {shown.length === 0 && <button type="button" onClick={newChat} className="w-full rounded-xl border border-dashed px-3 py-2.5 text-left text-muted-foreground text-xs hover:bg-accent/60">{query ? t("Aucun chat trouvé.") : t("Un fil libre, sans Circle attitré. Commence un chat.")}</button>}
           {shown.map((chat) => (
             <div key={chat.id} className="group/chat relative">
             <button onClick={() => go({ view: "chat", id: chat.id })} data-chat-row={chat.id} className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-accent/70", route.view === "chat" && route.id === chat.id && "bg-accent")}>
@@ -293,7 +293,7 @@ export function Shell() {
             <>
               <DotAvatar color={current.color} state={current.state} size={28} named={current.named} />
               <div className="min-w-0 flex-1 leading-tight">
-                <p className="truncate font-medium text-sm">{current.named ? current.name : t("Nouveau compagnon")}</p>
+                <p className="truncate font-medium text-sm">{current.named ? current.name : t("Nouveau Circle")}</p>
                 <p className="truncate text-muted-foreground text-xs">
                   {current.stateDetail && BUSY.includes(current.state) ? current.stateDetail : t(AGENT_STATE_LABELS[current.state])}
                   <span className="hidden sm:inline"> · {current.effectiveModel.model}</span>
@@ -302,7 +302,7 @@ export function Shell() {
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={t("Panneau du compagnon")}
+                aria-label={t("Panneau du Circle")}
                 onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? setPanelOpen((v) => !v) : setMobilePanel(true))}
               >
                 <PanelRightIcon />
