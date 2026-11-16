@@ -90,10 +90,10 @@ export function OpencodePage() {
           <div className="mt-2 space-y-2 text-muted-foreground text-xs">
             <p className="font-medium text-foreground">{t('Le plus simple (OpenCode 2) : le jumelage')}</p>
             <p>{t('Sur la machine de développement, lance :')}</p>
-            <pre className="overflow-x-auto rounded-lg bg-muted p-2 font-mono">opencode pair --remote</pre>
+            <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-muted p-2 font-mono focus-visible:outline-2 focus-visible:outline-ring">opencode pair --remote</pre>
             <p>{t('Il affiche un lien et un QR code, valables 5 minutes et une seule fois. Colle le lien ici (ou scanne le QR code depuis ton téléphone). --remote passe par une adresse OpenTunnel : ça marche depuis n’importe quel réseau, sans ouvrir de port. Le jumelage dure 30 jours ; relance la commande pour le renouveler.')}</p>
             <p className="pt-1 font-medium text-foreground">{t('Sinon : adresse et mot de passe')}</p>
-            <pre className="overflow-x-auto rounded-lg bg-muted p-2 font-mono">OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0 --port 4096</pre>
+            <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-muted p-2 font-mono focus-visible:outline-2 focus-visible:outline-ring">OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0 --port 4096</pre>
             <p>{t('Le serveur BotCircle doit alors pouvoir joindre cette adresse : réseau privé (Tailscale, WireGuard), tunnel SSH ou reverse proxy HTTPS. N’expose jamais ce port sans mot de passe.')}</p>
             <p>{t('Ensuite, autorise un compagnon dans son profil : « Déléguer du code à OpenCode ».')}</p>
           </div>

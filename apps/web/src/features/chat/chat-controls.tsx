@@ -58,7 +58,7 @@ export function ChatControls({ chat, pickerRequest = 0 }: { chat: ChatDTO; picke
       )}
       <button type="button" aria-pressed={chat.webSearch} onClick={() => void patch({ webSearch: !chat.webSearch })} data-chat-web={chat.webSearch ? 'on' : 'off'}
         title={chat.webSearch ? t('Recherche web activée pour ce chat') : t('Recherche web coupée pour ce chat')}
-        className={cn('flex items-center gap-1 rounded-full px-2 py-1 text-xs', chat.webSearch ? 'bg-primary/10 text-primary hover:bg-primary/15' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
+        className={cn('flex items-center gap-1 rounded-full px-2 py-1 text-xs', chat.webSearch ? 'bg-primary/10 text-link hover:bg-primary/15' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
         <GlobeIcon className="size-3.5" />{t('Web')}
       </button>
     </div>

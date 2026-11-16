@@ -44,6 +44,7 @@
     "@types/pg": "^8.23.1",
     "@types/smtp-server": "^3.5.13",
     "@types/ws": "^8.18.2",
+    "axe-core": "4.10.3",
     "drizzle-kit": "^0.31.11",
     "hoodiecrow-imap": "^3.3.1",
     "smtp-server": "^3.20.2",
