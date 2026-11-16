@@ -189,7 +189,7 @@ try {
   await page.waitForFunction(async () => (await (await fetch('/api/settings')).json()).turnStepLimit === null);
   await page.screenshot({ path: '/tmp/opendots-turn-limit-settings.png', fullPage: true });
 
-  await page.getByRole('tab', { name: 'Compte et apparence', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profil et apparence', exact: true }).click();
   await page.getByText('Profil public Gravatar', { exact: true }).waitFor();
   // Trois thèmes complets : le noir OLED met la page à #000000 exactement.
   await page.getByRole('radio', { name: 'Noir OLED', exact: true }).click();
@@ -200,7 +200,7 @@ try {
   await page.goto(`${origin}/#/settings/credentials`); await page.getByRole('heading', { name: 'Fournisseurs de modèles', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Mon compte' }).getByRole('img', { name: 'Camille Martin' }).waitFor();
   await page.waitForFunction(() => { const img = document.querySelector('[aria-label="Mon compte"] img') as HTMLImageElement; return img?.complete && img.naturalWidth > 0; });
-  for (const [tab, heading] of [['Modèles','Modèles'],['Fournisseurs de modèles','Fournisseurs de modèles'],['Recherche et outils','Recherche et outils'],['Tâches planifiées','Tâches planifiées'],['Skills','Skills'],['Ordinateur','Ordinateur'],['Validations','Validations']] as const) {
+  for (const [tab, heading] of [['Modèle par défaut','Modèle par défaut'],['Fournisseurs de modèles','Fournisseurs de modèles'],['Recherche et outils','Recherche et outils'],['Tâches planifiées','Tâches planifiées'],['Skills','Skills'],['Ordinateur','Ordinateur'],['Validations','Validations']] as const) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     if (tab === 'Fournisseurs de modèles') {
@@ -224,8 +224,10 @@ try {
 
   }
   await page.goto(`${origin}/#connectors`); await page.getByRole('heading', { name: 'Magasin de connecteurs', exact: true }).waitFor();
-  await page.getByRole('tab', { name: 'Compte et apparence', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profil et apparence', exact: true }).click();
   await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+  // #54: sign-out asks first.
+  await page.getByRole('dialog').getByRole('button', { name: 'Se déconnecter', exact: true }).click();
   await page.getByRole('heading', { name: 'Connecte-toi à ton espace' }).waitFor();
   assert.equal((await context.request.get(`${origin}/api/agents`)).status(), 401);
   assert.deepEqual(errors, []);

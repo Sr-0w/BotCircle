@@ -18,23 +18,24 @@ const SkillsPage = lazy(() => import('./skills-page').then(m => ({ default: m.Sk
 const OpencodePage = lazy(() => import('./opencode-page').then(m => ({ default: m.OpencodePage })));
 const TeamView = lazy(() => import('../team-view').then(m => ({ default: m.TeamView })));
 
-export const SETTINGS_SECTIONS = ['general', 'providers', 'models', 'agents', 'opencode', 'connectors', 'computer', 'tools', 'tasks', 'skills', 'team', 'approvals'] as const;
+export const SETTINGS_SECTIONS = ['general', 'providers', 'models', 'agents', 'skills', 'opencode', 'connectors', 'computer', 'tools', 'tasks', 'team', 'approvals'] as const;
 /** Anciennes adresses : elles mènent toujours quelque part. */
 export const SETTINGS_ALIASES: Record<string, SettingsSection> = { credentials: 'providers', keys: 'providers' };
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
+// #54: grouped like Android — you, intelligence, connections, then what is activity rather than settings.
 const sections = [
-  { id: 'general', label: 'Compte et apparence', icon: PaletteIcon, group: 'Toi', description: 'Ton profil, le thème et les notifications.' },
-  { id: 'providers', label: 'Fournisseurs de modèles', icon: KeyRoundIcon, group: 'IA et agents', description: 'OpenRouter, ChatGPT / Codex et Ollama : leur connexion et leur état, au même endroit.' },
-  { id: 'models', label: 'Modèles', icon: CpuIcon, group: 'IA et agents', description: 'Le modèle par défaut, son raisonnement et son routage.' },
-  { id: 'agents', label: 'Comportement des agents', icon: BotIcon, group: 'IA et agents', description: 'Limites de travail, autonomie et fuseau horaire.' },
-  { id: 'opencode', label: 'OpenCode', icon: OpencodeNavIcon, group: 'IA et agents', description: 'Les machines de développement où tes compagnons délèguent du code.' },
-  { id: 'connectors', label: 'Connecteurs et services', icon: PlugIcon, group: 'Espace de travail', description: 'Mail, MCP et services externes que les compagnons peuvent utiliser.' },
-  { id: 'computer', label: 'Ordinateur', icon: MonitorIcon, group: 'Espace de travail', description: 'Le bureau et le navigateur privés des compagnons.' },
-  { id: 'tools', label: 'Recherche et outils', icon: SearchIcon, group: 'Espace de travail', description: 'La recherche web et l’environnement d’exécution.' },
-  { id: 'tasks', label: 'Tâches planifiées', icon: CalendarClockIcon, group: 'Espace de travail', description: 'Planifications, surveillances et webhooks.' },
-  { id: 'skills', label: 'Skills', icon: SparklesIcon, group: 'Espace de travail', description: 'Savoir-faire réutilisables par tous les compagnons.' },
-  { id: 'team', label: 'Échanges de l’équipe', icon: UsersIcon, group: 'Équipe', description: 'Ce que les compagnons se disent entre eux.' },
-  { id: 'approvals', label: 'Validations', icon: ShieldCheckIcon, group: 'Équipe', description: 'Les actions en attente de ton accord et les dernières décisions.' },
+  { id: 'general', label: 'Profil et apparence', icon: PaletteIcon, group: 'Personnalisation', description: 'Ton nom pour tes Circles, ton compte, le thème.' },
+  { id: 'providers', label: 'Fournisseurs de modèles', icon: KeyRoundIcon, group: 'IA et modèles', description: 'OpenRouter, ChatGPT / Codex et Ollama : leur connexion et leur état, au même endroit.' },
+  { id: 'models', label: 'Modèle par défaut', icon: CpuIcon, group: 'IA et modèles', description: 'Le modèle par défaut, son raisonnement et son routage.' },
+  { id: 'agents', label: 'Comportement des agents', icon: BotIcon, group: 'IA et modèles', description: 'Limites de travail, autonomie et fuseau horaire.' },
+  { id: 'skills', label: 'Skills', icon: SparklesIcon, group: 'IA et modèles', description: 'Savoir-faire réutilisables par tous les compagnons.' },
+  { id: 'opencode', label: 'OpenCode', icon: OpencodeNavIcon, group: 'Connexions', description: 'Les machines de développement où tes compagnons délèguent du code.' },
+  { id: 'connectors', label: 'Connecteurs et services', icon: PlugIcon, group: 'Connexions', description: 'Mail, MCP et services externes que les compagnons peuvent utiliser.' },
+  { id: 'computer', label: 'Ordinateur', icon: MonitorIcon, group: 'Connexions', description: 'Le bureau et le navigateur privés des compagnons.' },
+  { id: 'tools', label: 'Recherche et outils', icon: SearchIcon, group: 'Connexions', description: 'La recherche web et l’environnement d’exécution.' },
+  { id: 'tasks', label: 'Tâches planifiées', icon: CalendarClockIcon, group: 'Activité', description: 'Planifications, surveillances et webhooks.' },
+  { id: 'team', label: 'Échanges de l’équipe', icon: UsersIcon, group: 'Activité', description: 'Ce que les compagnons se disent entre eux.' },
+  { id: 'approvals', label: 'Validations', icon: ShieldCheckIcon, group: 'Activité', description: 'Les actions en attente de ton accord et les dernières décisions.' },
 ] as const;
 
 export function SettingsPage({ section, onSectionChange }: { section: SettingsSection; onSectionChange: (section: SettingsSection) => void }) {

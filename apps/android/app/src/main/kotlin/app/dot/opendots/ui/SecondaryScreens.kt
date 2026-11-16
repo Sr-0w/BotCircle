@@ -1,5 +1,7 @@
 package app.dot.opendots.ui
 
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material3.Icon
 import app.dot.design.DotShapes
 import androidx.compose.foundation.border
 import androidx.compose.ui.platform.testTag
@@ -146,7 +148,7 @@ fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, sub
 // --- Scheduled tasks ---------------------------------------------------------------------------
 
 @Composable
-fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}, onBack: (() -> Unit)? = null) {
+fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}, onBack: (() -> Unit)? = null, onOpenTeam: (() -> Unit)? = null) {
     LaunchedEffect(Unit) { app.loadActivities() }
     val started = stringResource(R.string.task_started)
     var deleting by remember { mutableStateOf<Activity?>(null) }
@@ -156,6 +158,11 @@ fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}
     val running = background.filter { it.active }
     val past = background.filterNot { it.active }.take(20)
     QuietPage(stringResource(R.string.activity), onBack = onBack, inTabs = onBack == null) {
+        // #54: what the Circles say to each other is activity, not a setting.
+        if (onOpenTeam != null) item(key = "team") {
+            ListRow(stringResource(R.string.team_exchanges), subtitle = stringResource(R.string.team_exchanges_note), onClick = onOpenTeam, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = Dot.colors.textTertiary) })
+            Hairline(inset = DotSpacing.gutter)
+        }
         // Work handed to the background: what is running now, then what finished. Each card updates in place.
         listOf(R.string.tasks_running to running, R.string.tasks_finished to past).forEach { (label, list) ->
             if (list.isEmpty()) return@forEach
@@ -258,9 +265,65 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState, onBack: (() -> Unit)? = null)
 
 // --- Settings ---------------------------------------------------------------------------------------
 
+/** #54: the five destinations of Settings, in order. */
+enum class SettingsSection(val title: Int, val note: Int) {
+    Appearance(R.string.appearance, R.string.settings_appearance_note),
+    Ai(R.string.ai_and_models, R.string.settings_ai_note),
+    Connections(R.string.connections, R.string.settings_connections_note),
+    Server(R.string.server, R.string.settings_server_note),
+    About(R.string.about, R.string.settings_about_note),
+}
+
+/** One destination of Settings. Values and flows are the existing ones, reorganised. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit = {}, onOpenModel: () -> Unit = {}, onOpenBehaviour: () -> Unit = {}, onOpenCode: () -> Unit = {}, onOpenTeam: () -> Unit = {}, onBack: (() -> Unit)? = null) {
+fun SettingsSectionPage(app: AppState, ui: AppUiState, section: SettingsSection, onBack: () -> Unit, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit, onOpenModel: () -> Unit, onOpenBehaviour: () -> Unit, onOpenCode: () -> Unit) {
+    val chevron: @Composable () -> Unit = { Icon(Icons.Outlined.ChevronRight, null, tint = Dot.colors.textTertiary) }
+    QuietPage(stringResource(section.title), onBack) {
+        when (section) {
+            SettingsSection.Appearance -> item {
+                SectionLabel(stringResource(R.string.theme))
+                FlowRow(Modifier.padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                    listOf("SYSTEM" to R.string.theme_system, "LIGHT" to R.string.theme_light, "DARK" to R.string.theme_dark, "OLED" to R.string.theme_oled).forEach { (mode, label) ->
+                        DotFilterChip(stringResource(label), selected = ui.themeMode == mode, onClick = { app.setThemeMode(mode) }, radio = true)
+                    }
+                }
+                Text(stringResource(R.string.theme_oled_note), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s))
+                SwitchRow(stringResource(R.string.reduce_transparency), stringResource(R.string.reduce_transparency_note), ui.reduceTransparency, onChange = app::setReduceTransparency)
+            }
+            SettingsSection.Ai -> item {
+                ListRow(stringResource(R.string.providers), subtitle = stringResource(R.string.providers_note), onClick = onOpenProviders, trailing = chevron)
+                Hairline(inset = DotSpacing.gutter)
+                ListRow(stringResource(R.string.default_model), subtitle = stringResource(R.string.default_model_note), onClick = onOpenModel, trailing = chevron)
+                Hairline(inset = DotSpacing.gutter)
+                ListRow(stringResource(R.string.agent_behaviour), subtitle = stringResource(R.string.agent_behaviour_note), onClick = onOpenBehaviour, trailing = chevron)
+                Text(stringResource(R.string.settings_ai_circle_note), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l))
+            }
+            SettingsSection.Connections -> item {
+                SectionLabel(stringResource(R.string.connections_code))
+                ListRow("OpenCode", subtitle = stringResource(R.string.opencode_row_note), onClick = onOpenCode, trailing = chevron)
+                Text(stringResource(R.string.settings_connections_scope), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l))
+            }
+            SettingsSection.Server -> item {
+                ListRow(stringResource(R.string.server), subtitle = ui.serverUrl)
+                Hairline(inset = DotSpacing.gutter)
+                ListRow(stringResource(R.string.server_status), subtitle = stringResource(if (ui.connected) R.string.server_connected else R.string.reconnecting))
+                Hairline(inset = DotSpacing.gutter)
+                ListRow(stringResource(R.string.open_web_app), subtitle = stringResource(R.string.open_web_app_note), onClick = onOpenWeb, trailing = chevron)
+            }
+            SettingsSection.About -> item {
+                ListRow(stringResource(R.string.version), subtitle = BuildInfo.VERSION)
+                Hairline(inset = DotSpacing.gutter)
+                SectionLabel(stringResource(R.string.developer_tools), Modifier.padding(top = DotSpacing.l))
+                ListRow(stringResource(R.string.quiet_catalog), subtitle = stringResource(R.string.quiet_catalog_note), onClick = onOpenCatalog, trailing = chevron)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SettingsScreen(app: AppState, ui: AppUiState, onOpenSection: (SettingsSection) -> Unit, onBack: (() -> Unit)? = null) {
     var confirmSignOut by remember { mutableStateOf(false) }
     var editingName by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { app.loadProfile() }
@@ -303,42 +366,14 @@ fun SettingsScreen(app: AppState, ui: AppUiState, onOpenCatalog: () -> Unit, onO
                 }
             }
         }
+        // #54: a short home: the profile card, then five focused destinations.
         item {
-            SectionLabel(stringResource(R.string.appearance))
-            FlowRow(Modifier.padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                listOf("SYSTEM" to R.string.theme_system, "LIGHT" to R.string.theme_light, "DARK" to R.string.theme_dark, "OLED" to R.string.theme_oled).forEach { (mode, label) ->
-                    DotFilterChip(stringResource(label), selected = ui.themeMode == mode, onClick = { app.setThemeMode(mode) }, radio = true)
-                }
+            Spacer(Modifier.height(DotSpacing.s))
+            SettingsSection.entries.forEach { section ->
+                ListRow(stringResource(section.title), subtitle = stringResource(section.note), onClick = { onOpenSection(section) }, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = Dot.colors.textTertiary) })
+                Hairline(inset = DotSpacing.gutter)
             }
-            Text(stringResource(R.string.theme_oled_note), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s))
-            SwitchRow(stringResource(R.string.reduce_transparency), stringResource(R.string.reduce_transparency_note), ui.reduceTransparency, onChange = app::setReduceTransparency)
-            Hairline(Modifier.padding(top = DotSpacing.s))
-        }
-        // The same organisation as the web settings: providers, then models, then how agents behave.
-        item {
-            SectionLabel(stringResource(R.string.ai_and_agents), Modifier.padding(top = DotSpacing.l))
-            ListRow(stringResource(R.string.providers), subtitle = stringResource(R.string.providers_note), onClick = onOpenProviders)
-            ListRow(stringResource(R.string.default_model), subtitle = stringResource(R.string.default_model_note), onClick = onOpenModel)
-            ListRow(stringResource(R.string.agent_behaviour), subtitle = stringResource(R.string.agent_behaviour_note), onClick = onOpenBehaviour)
-            ListRow("OpenCode", subtitle = stringResource(R.string.opencode_row_note), onClick = onOpenCode)
-            Hairline(Modifier.padding(top = DotSpacing.s))
-        }
-        item {
-            SectionLabel(stringResource(R.string.team), Modifier.padding(top = DotSpacing.l))
-            ListRow(stringResource(R.string.team_exchanges), subtitle = stringResource(R.string.team_exchanges_note), onClick = onOpenTeam)
-            Hairline(Modifier.padding(top = DotSpacing.s))
-        }
-        item {
-            SectionLabel(stringResource(R.string.engine), Modifier.padding(top = DotSpacing.l))
-            ListRow(stringResource(R.string.server), subtitle = ui.serverUrl, onClick = onOpenWeb)
-            ListRow(stringResource(R.string.open_web_app), subtitle = stringResource(R.string.open_web_app_note), onClick = onOpenWeb)
-            Hairline(Modifier.padding(top = DotSpacing.s))
-        }
-        item {
-            SectionLabel(stringResource(R.string.about), Modifier.padding(top = DotSpacing.l))
-            ListRow(stringResource(R.string.quiet_catalog), subtitle = stringResource(R.string.quiet_catalog_note), onClick = onOpenCatalog)
-            ListRow(stringResource(R.string.version), subtitle = BuildInfo.VERSION)
-            Spacer(Modifier.height(DotSpacing.l))
+            Text("BotCircle · " + BuildInfo.VERSION, style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l))
         }
     }
     if (confirmSignOut) DotDialog(

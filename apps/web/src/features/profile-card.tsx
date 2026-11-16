@@ -35,6 +35,7 @@ export function ProfileCard() {
           <Button size="icon" variant="ghost" className="size-7 rounded-full text-muted-foreground" aria-label={t('Modifier ton nom')} onClick={open}><PencilIcon className="size-3.5" /></Button>
         </div>
         <p className="truncate text-xs text-muted-foreground">{account?.email}</p>
+        {account?.profile?.source === 'gravatar' && <p className="truncate text-[11px] text-muted-foreground/80">{t('Profil public Gravatar')}</p>}
       </div>
       <Button variant="outline" size="sm" onClick={() => setLeaving(true)}>{t('Se déconnecter')}</Button>
       <Dialog open={editing} onOpenChange={setEditing}>

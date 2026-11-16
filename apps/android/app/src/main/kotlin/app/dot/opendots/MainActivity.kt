@@ -61,6 +61,8 @@ import app.dot.opendots.ui.LocalRootActions
 import app.dot.opendots.ui.RootActions
 import app.dot.opendots.ui.CodeSessionsPage
 import app.dot.opendots.ui.CircleSection
+import app.dot.opendots.ui.SettingsSection
+import app.dot.opendots.ui.SettingsSectionPage
 import app.dot.opendots.ui.CircleSectionPage
 import app.dot.opendots.ui.CompanionOrb
 import androidx.compose.material.icons.outlined.Code
@@ -190,9 +192,9 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
+private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, CircleSection, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -203,6 +205,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
     var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
     var circleSection by rememberSaveable { mutableStateOf<CircleSection?>(null) }
+    var settingsSection by rememberSaveable { mutableStateOf(SettingsSection.Appearance) }
     // The chat model picker opens from the chat's field or from its settings; Back returns there.
     var modelFromChat by rememberSaveable { mutableStateOf(false) }
     val openCode = { taskId: String -> codeTask = taskId; codeFrom = page; page = Page.CodeWorkspace }
@@ -219,12 +222,16 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             Page.Model, Page.Desktop -> if (circleSection != null) Page.CircleSection else Page.Profile
             Page.Profile -> Page.Chat
             Page.ChatModel -> if (modelFromChat) Page.GeneralChat else Page.ChatSettings
-            Page.DefaultModel -> Page.Providers
+            Page.DefaultModel -> Page.SettingsSection
             Page.CodeWorkspace -> codeFrom
             Page.ChatSettings -> Page.GeneralChat
             // Pages opened from Settings return to it; Settings returns to the tab it was opened from.
             // Settings is a tab: its pages return to it (the tab stays selected).
-            Page.Catalog, Page.Providers, Page.AgentBehaviour, Page.CodeInstances, Page.Team -> Page.None
+            Page.SettingsSection -> Page.None
+            Page.Catalog -> Page.SettingsSection
+            Page.Providers, Page.AgentBehaviour -> Page.SettingsSection
+            Page.CodeInstances -> if (tab == Tab.Settings) Page.SettingsSection else Page.None
+            Page.Team -> Page.Activity
             else -> Page.None
         }
     }
@@ -264,7 +271,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                             Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
                             Tab.Chat -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
                             Tab.Code -> CodeSessionsPage(ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances })
-                            Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenTeam = { page = Page.Team })
+                            Tab.Settings -> SettingsScreen(app, ui, onOpenSection = { settingsSection = it; page = Page.SettingsSection })
                         }
                     }
                     DotFloatingDock(
@@ -278,7 +285,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             }
             // Settings is the fourth tab now; an old saved page lands on it.
             current == Page.Settings -> LaunchedEffect(Unit) { tab = Tab.Settings; page = Page.None }
-            current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back)
+            current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back, onOpenTeam = { page = Page.Team })
+            current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances })
             current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back)
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })

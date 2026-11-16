@@ -10,8 +10,8 @@ android {
         applicationId = "app.dot.opendots"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.1.0-alpha.20"
+        versionCode = 21
+        versionName = "0.1.0-alpha.21"
     }
     buildTypes {
         release {

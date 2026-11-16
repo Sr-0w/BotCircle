@@ -355,8 +355,13 @@ class ScreensTest {
         waitFor("Connected machines")
         shoot("code-dark")
         tab("Settings")
-        waitFor("OLED black")
+        // #54: a short home — profile card, then Appearance, AI & models, Connections, Server, About.
+        waitFor("AI & models")
         shoot("settings-dark")
+        compose.onNodeWithText("Appearance").performClick()
+        waitFor("OLED black")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("AI & models")
         // Settings is a destination: the dock stays; Back returns to Circles.
         assertTrue(compose.onAllNodes(hasTestTag("dock")).fetchSemanticsNodes().isNotEmpty())
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
@@ -484,6 +489,7 @@ class ScreensTest {
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companions").performClick()
         tab("Settings")
+        compose.onNodeWithText("AI & models").performClick()
         waitFor("Model providers")
         compose.onNodeWithText("Model providers").performClick()
         waitFor("OpenRouter")
@@ -633,6 +639,7 @@ class ScreensTest {
         compose.onNodeWithContentDescription("Companions").performClick()
         waitFor("Venty")
         tab("Settings")
+        compose.onNodeWithText("Connections").performClick()
         tapUntil("OpenCode", "Pair with a link")
         compose.onNodeWithText("Pair with a link").performClick()
         waitFor("Scan the QR code")
@@ -662,7 +669,8 @@ class ScreensTest {
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companions").performClick()
         waitFor("Venty")
-        tab("Settings")
+        // #54: team exchanges are activity, not a setting.
+        openActivity()
         tapUntil("Team exchanges", "Ari ↔ Dev")
         tapUntil("Ari ↔ Dev", "Is the build green?")
         shoot("team-thread-dark")
