@@ -59,6 +59,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import androidx.compose.material.icons.outlined.ManageSearch
 import androidx.compose.foundation.layout.Arrangement
 import app.dot.opendots.ConversationRef
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -72,7 +73,7 @@ import androidx.compose.material.icons.outlined.Archive
  * joins one when it is called by name.
  */
 @Composable
-fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
+fun ChatsPage(app: AppState, ui: AppUiState, onSearch: (String) -> Unit = {}, onOpen: (GeneralChat) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var found by remember { mutableStateOf<List<GeneralChat>?>(null) }
     // Search covers titles and content, on the server.
@@ -87,12 +88,16 @@ fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
     var showArchived by rememberSaveable { mutableStateOf(false) }
     val pin = stringResource(R.string.pin); val unpin = stringResource(R.string.unpin); val archive = stringResource(R.string.archive)
     val restore = stringResource(R.string.restore); val delete = stringResource(R.string.delete_ellipsis); val more = stringResource(R.string.chat_actions)
-    QuietPage(stringResource(R.string.chats), onBack = null, inTabs = true, subtitle = if (!ui.connected) stringResource(R.string.reconnecting) else null) {
+    QuietPage(stringResource(R.string.chats), onBack = null, inTabs = true, actions = { DotIconButton(Icons.Outlined.ManageSearch, stringResource(R.string.search_title), onClick = { onSearch(query) }, modifier = Modifier.testTag("open-search")) }, subtitle = if (!ui.connected) stringResource(R.string.reconnecting) else null) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                 if (ui.chats.isNotEmpty()) SearchField(query, { query = it }, Modifier.weight(1f).padding(end = DotSpacing.m), placeholder = stringResource(R.string.search_chats)) else Spacer(Modifier.weight(1f))
                 DotButton(stringResource(R.string.new_chat), { app.createChat { app.state.value.currentChat?.let(onOpen) } }, icon = Icons.Outlined.Add, compact = true)
             }
+        }
+        // #58: the field filters chats; the full search covers every message of chats and Circles.
+        if (query.isNotBlank()) item(key = "search-everywhere") {
+            ListRow(stringResource(R.string.search_everywhere, query.trim()), icon = Icons.Outlined.ManageSearch, onClick = { onSearch(query.trim()) }, modifier = Modifier.testTag("search-everywhere"))
         }
         if (shown.isEmpty()) item {
             EmptyState(Icons.Outlined.Forum, stringResource(if (query.isBlank()) R.string.chats_empty_title else R.string.chats_none_found), if (query.isBlank()) stringResource(R.string.chats_empty_body) else "")

@@ -175,8 +175,9 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
 
     suspend fun messages(agentId: String, before: Long? = null): History = messages(ChatTarget.Companion(agentId), before)
 
-    suspend fun messages(target: ChatTarget, before: Long? = null): History {
-        val root = json("GET", "${target.path}/messages" + (before?.let { "?before=$it" } ?: "")).asObject() ?: JsonObject(emptyMap())
+    suspend fun messages(target: ChatTarget, before: Long? = null, around: String? = null): History {
+        val query = before?.let { "?before=$it" } ?: around?.let { "?around=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""
+        val root = json("GET", "${target.path}/messages$query").asObject() ?: JsonObject(emptyMap())
         return History(
             conversationId = root.str("conversationId").orEmpty(),
             messages = root.arr("messages").orEmpty().mapNotNull { (it as? JsonObject)?.let(::parseMessage) },
@@ -367,6 +368,14 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun deleteChat(id: String, stopActive: Boolean = false, confirmTasks: Boolean = false) {
         json("DELETE", "/chats/$id", buildJsonObject { if (stopActive) put("stopActive", true); if (confirmTasks) put("confirmTasks", true) })
     }
+    // #58: search every conversation, or inside one.
+    suspend fun search(q: String, scope: String = "all", agentId: String? = null, archived: Boolean = false, sort: String = "relevance", offset: Int = 0): SearchResults {
+        val enc = { v: String -> java.net.URLEncoder.encode(v, "UTF-8") }
+        return get("/search?q=${enc(q)}&scope=$scope&sort=$sort&offset=$offset" + (agentId?.let { "&agentId=${enc(it)}" } ?: "") + (if (archived) "&archived=1" else ""))
+    }
+    suspend fun searchThread(conversationId: String, q: String): List<ThreadMatch> = get("/conversations/$conversationId/search?q=${java.net.URLEncoder.encode(q, "UTF-8")}")
+    suspend fun conversationMessagesAround(conversationId: String, around: String?): List<ChatMessage> =
+        (json("GET", "/conversations/$conversationId/messages" + (around?.let { "?around=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")).asObject() ?: JsonObject(emptyMap())).arr("messages").orEmpty().mapNotNull { (it as? JsonObject)?.let(::parseMessage) }
     suspend fun archivedThreads(agentId: String): List<ArchivedThread> = get("/agents/$agentId/archives")
     suspend fun archiveThread(agentId: String, conversationId: String) { json("POST", "/agents/$agentId/conversations/$conversationId/archive") }
     suspend fun restoreThread(agentId: String, conversationId: String) { json("POST", "/agents/$agentId/conversations/$conversationId/restore") }

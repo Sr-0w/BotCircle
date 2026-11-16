@@ -1,3 +1,4 @@
+import { useMessageFocus } from '@/lib/search-focus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FloatingComposer } from '@/components/floating-composer';
 import { useChat } from '@ai-sdk/react';
@@ -67,6 +68,11 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
     const result = await api.chatMessages(info.id);
     if (statusRef.current === 'ready' || statusRef.current === 'error') setMessages(result.messages);
   }, [info.id, setMessages]);
+  // #58: a search result (or previous / next in the thread) opens this chat at its message.
+  useMessageFocus(info.id, messages.map((m) => m.id), async (messageId) => {
+    const result = await api.chatMessages(info.id, messageId);
+    if (statusRef.current === 'ready' || statusRef.current === 'error') setMessages(result.messages);
+  });
   // La réponse d'un compagnon intervenu arrive hors du flux : le fil se relit quand le chat change.
   useServerEvent((e) => {
     if ((e.type === 'chat.changed' && e.chatId === info.id && !e.deleted) || (e.type === 'task.changed' && e.task.conversationId === info.id && (e.task.status === 'completed' || e.task.status === 'failed' || e.task.status === 'waiting_for_user')))

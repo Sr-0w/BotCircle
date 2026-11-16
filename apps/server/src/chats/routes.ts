@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { getActiveStream } from '../agents/streams.ts';
 import { AttachmentError, validateMessageParts } from '../attachments/service.ts';
 import { checkModel } from '../models/gateway.ts';
-import { loadMessages, type OpenDotsUIMessage } from '../conversations/repo.ts';
+import { limitAround, loadMessages, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import { listTasks, toTaskDTO } from '../tasks/service.ts';
 import type { ModelConfig } from '@opendots/shared';
 import { ChatError, createChat, getChat, listChats, toChatDTO, updateChat } from './repo.ts';
@@ -55,9 +55,10 @@ export function chatRoutes() {
     const row = await getChat(c.req.param('id'));
     if (!row) return c.json({ error: 'Chat introuvable.' }, 404);
     const before = c.req.query('before');
-    const { messages, rows } = await loadMessages(row.id, { limit: 80, beforeSeq: before ? Number(before) : undefined });
+    const limit = await limitAround(row.id, c.req.query('around'), 80);
+    const { messages, rows } = await loadMessages(row.id, { limit, beforeSeq: before ? Number(before) : undefined });
     return c.json({
-      conversationId: row.id, messages, cursor: rows.length === 80 ? rows[0].seq : null, active: Boolean(getActiveStream(row.id)),
+      conversationId: row.id, messages, cursor: rows.length === limit ? rows[0].seq : null, active: Boolean(getActiveStream(row.id)),
       tasks: await Promise.all((await listTasks({ conversationId: row.id })).map(toTaskDTO)),
     });
   });

@@ -140,6 +140,8 @@ class ScreensTest {
                             """{"type":"finish"}""", "[DONE]",
                         ).joinToString("") { "data: $it\n\n" },
                     ).build()
+                    path == "/search" -> json("""{"hits":[{"messageId":"g1","conversationId":"ch1","seq":1,"role":"user","kind":"chat","agentId":null,"title":"Friday meeting","archived":false,"current":false,"snippet":"@Dev summarise the Friday meeting","highlights":[[5,14]],"createdAt":"2026-11-13T09:00:00Z"}],"more":false}""")
+                    path == "/conversations/ch1/search" -> json("""[{"messageId":"g1","seq":1,"count":1}]""")
                     path == "/chats" && request.url.queryParameter("archived") == "1" -> json("""[{"id":"ch0","title":"Old trip","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"archived":true,"archivedAt":"2026-11-10T09:00:00Z","createdAt":"2026-11-01T09:00:00Z","updatedAt":"2026-11-10T09:00:00Z","lastMessagePreview":"Rome in May"}]""")
                     path == "/chats" -> json(chats)
                     path == "/chats/ch1/archive" || path == "/chats/ch0/restore" -> json("""{"ok":true}""")
@@ -380,6 +382,26 @@ class ScreensTest {
         compose.waitUntil(10_000) { posts.count { it.first == "/chats/ch1" } == 2 }
         assertEquals("{}", posts.filter { it.first == "/chats/ch1" }[0].second)
         assertEquals("""{"confirmTasks":true}""", posts.filter { it.first == "/chats/ch1" }[1].second)
+    }
+
+    /** #58: search every message, open the result at its message, then find inside the thread. */
+    @Test fun searchFindsMessagesAndOpensThemInTheirThread() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Circles").performClick()
+        tab("Chat")
+        waitFor("Friday meeting")
+        compose.onNode(hasTestTag("open-search")).performClick()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("summarise")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("search-hit")).fetchSemanticsNodes().isNotEmpty() }
+        shoot("search-dark")
+        compose.onNode(hasTestTag("search-hit")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("message-focused")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasTestTag("header-menu")).performClick()
+        compose.onNodeWithText("Search this thread").performClick()
+        compose.onNode(hasTestTag("thread-find")).assertExists()
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("thread-find")))[0].performTextInput("Friday")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("thread-find-position") and hasText("1 / 1")).fetchSemanticsNodes().isNotEmpty() }
     }
 
     /** #46: `/` opens a palette of real actions; a command is never sent to the model. */

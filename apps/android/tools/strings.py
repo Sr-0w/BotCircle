@@ -2,6 +2,15 @@ import sys
 from xml.sax.saxutils import escape
 S = {
  "app_name": ("BotCircle", "BotCircle"),
+ "search_title": ("Search", "Recherche"), "search_all_hint": ("Search all messages (\"exact phrase\")", "Rechercher dans tous les messages (\"phrase exacte\")"),
+ "search_scope_all": ("All", "Tout"), "search_recent": ("Most recent", "Plus récents"), "search_archived": ("Include archives", "Inclure les archives"),
+ "search_all_circles": ("All Circles", "Tous les Circles"),
+ "search_help": ("Words from your messages and the Circles’, in chats and threads. Use quotes for an exact phrase.", "Les mots de tes messages et de ceux des Circles, dans les chats et les fils. Entre guillemets pour une phrase exacte."),
+ "search_none": ("No message matches.", "Aucun message ne correspond."), "search_none_short": ("No results", "Aucun résultat"),
+ "search_kind_chat": ("Chat", "Chat"), "search_kind_circle": ("Circle", "Circle"), "search_assistant": ("Assistant", "Assistant"),
+ "search_more": ("More results", "Plus de résultats"),
+ "search_in_thread": ("Search this thread", "Rechercher dans ce fil"), "search_in_thread_hint": ("Search this thread…", "Rechercher dans ce fil…"),
+ "search_everywhere": ("Search “%1$s” in all messages", "Chercher « %1$s » dans tous les messages"),
  "chat_archived_toast": ("Chat archived. Find it under Archived.", "Chat archivé. Retrouve-le dans Archivés."),
  "thread_archived_toast": ("Thread archived. Find it in Previous threads.", "Fil archivé. Retrouve-le dans Anciens fils."),
  "conversation_restored": ("Restored", "Restauré"), "conversation_deleted": ("Deleted", "Supprimé"),

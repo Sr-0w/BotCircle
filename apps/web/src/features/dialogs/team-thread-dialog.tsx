@@ -1,3 +1,5 @@
+import { scrollToMessage } from '../chat/message-actions';
+import { highlightTerms } from '@/lib/search-focus';
 import { Button } from '@/components/ui/button';
 import { deleteConversation, restoreConversation } from '@/lib/conversation-actions';
 import { useCallback, useEffect, useState } from "react";
@@ -88,13 +90,19 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
 }
 
 /** Ancien fil d’un compagnon, archivé par /clear — lecture seule. */
-export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, onClose }: { agentId: string; conversationId: string; archivedAt: string; onClose: () => void }) {
+export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, focus, onClose }: { agentId: string; conversationId: string; archivedAt: string; focus?: { messageId: string; terms: string[] }; onClose: () => void }) {
   const agent = useStore((s) => s.agents.find((a) => a.id === agentId));
   const [messages, setMessages] = useState<ODMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api.conversation(conversationId).then((r) => setMessages(r.messages)).catch((e) => setError(e.message));
-  }, [conversationId]);
+    api.conversation(conversationId, focus?.messageId).then((r) => setMessages(r.messages)).catch((e) => setError(e.message));
+  }, [conversationId, focus?.messageId]);
+  // #58: opened from a search result: at its message, with the words highlighted.
+  useEffect(() => {
+    if (!messages || !focus) return;
+    const timer = window.setTimeout(() => { scrollToMessage(focus.messageId); highlightTerms(document.getElementById(`message-${focus.messageId}`), focus.terms); }, 150);
+    return () => window.clearTimeout(timer);
+  }, [messages, focus]);
   const items = (messages ?? [])
     .map((m) => ({ m, text: m.parts.map((p) => (p.type === "text" && !SILENCE.test(p.text) ? p.text : "")).join("\n").trim() }))
     .filter((x) => x.text);
@@ -124,9 +132,11 @@ export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, onClo
           <Conversation className="min-h-0 flex-1">
             <ConversationContent className="mx-auto w-full gap-6 px-4 py-6 sm:px-6">
               {items.map(({ m, text }) => (
-                <Message key={m.id} from={m.role === "user" ? "user" : "assistant"} className={cn(m.role !== "user" && "max-w-full")}>
-                  <MessageContent><MessageResponse>{text}</MessageResponse></MessageContent>
-                </Message>
+                <div key={m.id} id={`message-${m.id}`} className="scroll-mt-24 rounded-2xl [&[data-flash]]:ring-2 [&[data-flash]]:ring-ring">
+                  <Message from={m.role === "user" ? "user" : "assistant"} className={cn(m.role !== "user" && "max-w-full")}>
+                    <MessageContent><MessageResponse>{text}</MessageResponse></MessageContent>
+                  </Message>
+                </div>
               ))}
             </ConversationContent>
             <ConversationScrollButton />

@@ -45,6 +45,8 @@ import type { Account } from './account';
 
 export type ODMessage = UIMessage<MessageMetadata>;
 
+export interface SearchHit { messageId: string; conversationId: string; seq: number; role: 'user' | 'assistant'; kind: 'chat' | 'circle'; agentId: string | null; title: string; archived: boolean; current: boolean; snippet: string; highlights: [number, number][]; createdAt: string; score: number }
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly data: any = null) {
     super(message);
@@ -197,7 +199,14 @@ export const api = {
   archiveChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/archive`),
   restoreChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/restore`),
   deleteChat: (id: string, opts: { stopActive?: boolean; confirmTasks?: boolean } = {}) => request<{ ok: boolean }>('DELETE', `/chats/${id}`, opts),
-  chatMessages: (id: string) => request<{ conversationId: string; messages: ODMessage[]; cursor: number | null; active: boolean; tasks: TaskDTO[] }>('GET', `/chats/${id}/messages`),
+  chatMessages: (id: string, around?: string) => request<{ conversationId: string; messages: ODMessage[]; cursor: number | null; active: boolean; tasks: TaskDTO[] }>('GET', `/chats/${id}/messages${around ? `?around=${encodeURIComponent(around)}` : ''}`),
+  // #58: search every conversation, or inside one.
+  search: (params: { q: string; scope?: 'all' | 'chats' | 'circles'; agentId?: string | null; archived?: boolean; sort?: 'relevance' | 'recent'; days?: number; offset?: number }) => {
+    const qs = new URLSearchParams({ q: params.q, scope: params.scope ?? 'all', sort: params.sort ?? 'relevance', offset: String(params.offset ?? 0) });
+    if (params.agentId) qs.set('agentId', params.agentId); if (params.archived) qs.set('archived', '1'); if (params.days) qs.set('days', String(params.days));
+    return request<{ hits: SearchHit[]; more: boolean }>('GET', `/search?${qs}`);
+  },
+  searchThread: (conversationId: string, q: string) => request<{ messageId: string; seq: number; count: number }[]>('GET', `/conversations/${conversationId}/search?q=${encodeURIComponent(q)}`),
   stopChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/stop`),
 
   desktop: (agentId: string) => request<DesktopStatus>('GET', `/computer/desktop?agentId=${agentId}`),
@@ -271,17 +280,17 @@ export const api = {
   deleteThread: (id: string, conversationId: string, opts: { stopActive?: boolean; confirmTasks?: boolean } = {}) => request<{ conversationId: string }>("DELETE", `/agents/${id}/conversations/${conversationId}`, opts),
   clearConversation: (id: string, conversationId: string) => request<{ conversationId: string; archivedId: string | null }>("POST", `/agents/${id}/clear`, { conversationId }),
   markRead: (id: string) => request<{ ok: boolean }>("POST", `/agents/${id}/read`),
-  messages: (id: string, before?: number) =>
+  messages: (id: string, before?: number, around?: string) =>
     request<{ conversationId: string; messages: ODMessage[]; cursor: number | null; active: boolean }>(
       "GET",
-      `/agents/${id}/messages${before ? `?before=${before}` : ""}`,
+      `/agents/${id}/messages${before ? `?before=${before}` : around ? `?around=${encodeURIComponent(around)}` : ""}`,
     ),
   stop: (id: string) => request<{ ok: boolean }>("POST", `/agents/${id}/stop`),
   react: (messageId: string, emoji: string) => request<{ added: boolean; reactions: { emoji: string; actor: string }[] }>("POST", `/messages/${messageId}/reactions`, { emoji }),
-  conversation: (id: string) =>
+  conversation: (id: string, around?: string) =>
     request<{ conversation: { id: string; agentA: string; agentB: string }; messages: ODMessage[]; active: boolean }>(
       "GET",
-      `/conversations/${id}/messages`,
+      `/conversations/${id}/messages${around ? `?around=${encodeURIComponent(around)}` : ""}`,
     ),
   teamPair: (a: string, b: string) => request<{ conversationId: string }>("GET", `/team/pair/${a}/${b}`),
   teamThreads: () => request<TeamThreadDTO[]>("GET", "/team/threads"),

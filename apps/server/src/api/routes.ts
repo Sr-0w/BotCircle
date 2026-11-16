@@ -8,6 +8,7 @@ import { opencodeRoutes } from '../opencode/routes.ts';
 import { sshRoutes } from '../ssh/routes.ts';
 import { homeAssistantRoutes } from '../homeassistant/routes.ts';
 import { chatRoutes } from '../chats/routes.ts';
+import { searchConversation, searchMessages } from '../conversations/search.ts';
 import { archiveCircleThread, deleteCircleThread, LifecycleError, restoreCircleThread } from '../conversations/lifecycle.ts';
 import { grantArtifact } from '../artifacts/service.ts';
 import { artifactIdFromUrl } from '@opendots/shared';
@@ -31,7 +32,7 @@ import { connectorMentionables } from '../agents/mentions.ts';
 import { AVATAR_PRESETS, resolveAvatar } from '../agents/avatars.ts';
 import { applyAvatar, restoreAvatar } from '../agents/avatar-actions.ts';
 import { getActiveStream } from '../agents/streams.ts';
-import { getConversation, listTeamThreads, pairConversationId, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
+import { getConversation, listTeamThreads, pairConversationId, limitAround, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import {
   checkModel,
   listOllamaModels,
@@ -386,8 +387,10 @@ export function createApi() {
     if (!agent) return c.json({ error: 'Introuvable' }, 404);
     const conversationId = await mainConversationId(agent.id);
     const before = c.req.query('before');
-    const { messages, rows } = await loadMessages(conversationId, { limit: 80, beforeSeq: before ? Number(before) : undefined });
-    return c.json({ conversationId, messages, cursor: rows.length === 80 ? rows[0].seq : null, active: Boolean(getActiveStream(conversationId)) });
+    // #58: ?around=<messageId> loads enough history for a search result to be opened at its message.
+    const limit = await limitAround(conversationId, c.req.query('around'), 80);
+    const { messages, rows } = await loadMessages(conversationId, { limit, beforeSeq: before ? Number(before) : undefined });
+    return c.json({ conversationId, messages, cursor: rows.length === limit ? rows[0].seq : null, active: Boolean(getActiveStream(conversationId)) });
   });
 
   api.post('/agents/:id/chat', bodyLimit({ maxSize: 1_000_000, onError: (c) => c.json({ error: 'Message trop volumineux.' }, 413) }), async (c) => {
@@ -491,10 +494,27 @@ export function createApi() {
     return c.json({ ok: true, stopped: stopAgent(c.req.param('id')) });
   });
 
+  // #58: search every conversation (chats and Circles), and inside one conversation (previous / next).
+  api.get('/search', async (c) => {
+    const q = c.req.query('q') ?? '';
+    const scope = (['all', 'chats', 'circles'] as const).find((s) => s === c.req.query('scope')) ?? 'all';
+    const days = Number(c.req.query('days') ?? 0);
+    return c.json(await searchMessages({
+      q, scope, agentId: c.req.query('agentId') || null, archived: c.req.query('archived') === '1',
+      sort: c.req.query('sort') === 'recent' ? 'recent' : 'relevance', since: days > 0 ? new Date(Date.now() - days * 86_400_000) : null,
+      offset: Number(c.req.query('offset') ?? 0) || 0,
+    }));
+  });
+  api.get('/conversations/:id/search', async (c) => {
+    const conv = await getConversation(c.req.param('id'));
+    if (!conv || conv.deletedAt || !['chat', 'main', 'archive', 'pair'].includes(conv.kind)) return c.json({ error: 'Introuvable' }, 404);
+    return c.json(await searchConversation(conv.id, c.req.query('q') ?? ''));
+  });
+
   api.get('/conversations/:id/messages', async (c) => {
     const conv = await getConversation(c.req.param('id'));
-    if (!conv) return c.json({ error: 'Introuvable' }, 404);
-    const { messages } = await loadMessages(conv.id, { limit: 200, includeHidden: conv.kind === 'pair' });
+    if (!conv || conv.deletedAt) return c.json({ error: 'Introuvable' }, 404);
+    const { messages } = await loadMessages(conv.id, { limit: await limitAround(conv.id, c.req.query('around'), 200), includeHidden: conv.kind === 'pair' });
     return c.json({ conversation: conv, messages, active: Boolean(getActiveStream(conv.id)) });
   });
 

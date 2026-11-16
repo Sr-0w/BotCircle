@@ -1,3 +1,4 @@
+import { useMessageFocus } from "@/lib/search-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentModelControl, modelsOf } from './chat-controls';
 import { toast } from 'sonner';
@@ -66,6 +67,11 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
     if (statusRef.current === "ready" || statusRef.current === "error") setMessages(res.messages);
     return res;
   }, [agent.id, setMessages]);
+  // #58: a search result (or previous / next in the thread) opens this thread at its message.
+  useMessageFocus(agent.mainConversationId, messages.map((m) => m.id), async (messageId) => {
+    const res = await api.messages(agent.id, undefined, messageId);
+    if (statusRef.current === "ready" || statusRef.current === "error") setMessages(res.messages);
+  });
   // Cover a welcome finishing between the initial history fetch and mounting.
   useEffect(() => { void resync().catch(() => {}); }, [resync]);
 

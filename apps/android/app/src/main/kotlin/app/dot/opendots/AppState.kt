@@ -73,6 +73,8 @@ data class AppUiState(
     /** Secure sign-in requests seen by the app, by id. */
     val secureLogins: Map<String, SecureLogin> = emptyMap(),
     val currentChatId: String? = null,
+    /** #58: a conversation to open at a message (from search): its agent or chat id, and the message. */
+    val focus: Pair<String, String>? = null,
     /** #56: archived chats (hidden from the list, restorable). */
     val archivedChats: List<GeneralChat> = emptyList(),
     val connected: Boolean = true,
@@ -387,6 +389,9 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         _state.update { s -> s.copy(chats = s.chats.map { if (it.id == chat.id) chat else it }) }
         onDone()
     }
+
+    fun focusOn(targetId: String, messageId: String) = _state.update { it.copy(focus = targetId to messageId) }
+    fun clearFocus() = _state.update { it.copy(focus = null) }
 
     private fun refreshChats() = viewModelScope.launch {
         runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }

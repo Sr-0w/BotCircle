@@ -85,6 +85,7 @@ import app.dot.design.components.DotMenuItem
 import app.dot.design.components.DotMenu
 import app.dot.opendots.chat.ChatStatus
 import app.dot.opendots.data.Part
+import androidx.compose.material.icons.outlined.Search
 import app.dot.opendots.ConversationRef
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.outlined.History
@@ -188,7 +189,9 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     val restoreLabel = stringResource(R.string.restore)
     val previousLabel = stringResource(R.string.previous_threads)
     val deleteLabel = stringResource(if (general != null) R.string.delete_ellipsis else R.string.delete_thread)
-    val headerMenu = if (general != null) {
+    var finding by remember(agent.id) { mutableStateOf(false) }
+    val findLabel = stringResource(R.string.search_in_thread)
+    val headerMenu = listOf(Triple(findLabel, Icons.Outlined.Search) { finding = true }) + if (general != null) {
         val ref = ConversationRef.Chat(general.id, general.title)
         listOf(
             if (general.archived) Triple(restoreLabel, Icons.Outlined.Unarchive) { lifecycle.restore(ref) {} } else Triple(archiveLabel, Icons.Outlined.Archive) { lifecycle.archive(ref, onBack) },
@@ -267,6 +270,21 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     // Newest first: the list is laid out from the bottom, so a growing reply stays anchored without any scroll jump.
     val rows = remember(chat.messages) { chat.messages.asReversed() }
     val lastAssistantId = remember(chat.messages) { chat.messages.lastOrNull { !it.isUser && it.meta.kind != "event" }?.id }
+    // #58: open at a message (search result) and in-thread search (previous / next).
+    var flashId by remember(agent.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(ui.focus, chat.loading) {
+        val (targetId, messageId) = ui.focus ?: return@LaunchedEffect
+        if (targetId != (general?.id ?: agent.id) || chat.loading) return@LaunchedEffect
+        app.clearFocus(); session.focus(messageId)
+    }
+    LaunchedEffect(chat.focusTick) {
+        val id = chat.focusId ?: return@LaunchedEffect
+        val index = rows.indexOfFirst { it.id == id }
+        if (index < 0) return@LaunchedEffect
+        val before = (if (chat.error != null) 1 else 0) + (if (chat.busy) 1 else 0)
+        listState.animateScrollToItem(before + index)
+        flashId = id; kotlinx.coroutines.delay(1800); if (flashId == id) flashId = null
+    }
     val atLatest by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 200 } }
 
     // Sending always brings the conversation back to the latest message.
@@ -287,7 +305,12 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         Box(Modifier.fillMaxSize()) {
             FrostedHeaderLayout(
                 backdrop = backdrop,
-                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null, archived = general?.archived == true, menuItems = headerMenu) },
+                header = {
+                    Column {
+                        ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null, archived = general?.archived == true, menuItems = headerMenu)
+                        if (finding) ThreadFindBar(app, { session.conversation }, onFocus = session::focus) { finding = false }
+                    }
+                },
             ) { padding ->
                 val direction = LocalLayoutDirection.current
                 // In landscape the navigation bar or a display cutout can sit beside the content.
@@ -322,7 +345,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                             message, env,
                             streaming = chat.busy && message.id == rows.firstOrNull()?.id && !message.isUser,
                             showActions = message.id == lastAssistantId,
-                            modifier = Modifier.padding(top = DotSpacing.l).widthIn(max = 720.dp),
+                            modifier = Modifier.padding(top = DotSpacing.l).widthIn(max = 720.dp)
+                                .then(if (message.id == flashId) Modifier.clip(DotShapes.large).background(Dot.colors.accent.copy(alpha = 0.14f)).testTag("message-focused") else Modifier),
                         )
                     }
                     if (chat.loadingOlder) item(key = "older") {

@@ -37,7 +37,7 @@ export function DialogHost() {
     case "team":
       return <TeamThreadDialog agentA={d.agentA} agentB={d.agentB} onClose={closeDialog} />;
     case "archive":
-      return <ArchiveThreadDialog agentId={d.agentId} conversationId={d.conversationId} archivedAt={d.archivedAt} onClose={closeDialog} />;
+      return <ArchiveThreadDialog agentId={d.agentId} conversationId={d.conversationId} archivedAt={d.archivedAt} focus={d.focus} onClose={closeDialog} />;
     case "task":
       return <TaskDialog taskId={d.taskId} onClose={closeDialog} />;
     case "artifact":

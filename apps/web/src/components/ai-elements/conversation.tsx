@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -74,7 +74,13 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { isAtBottom, scrollToBottom, stopScroll } = useStickToBottomContext();
+  // #58: opening a conversation at an older message must not be pulled back to the bottom.
+  useEffect(() => {
+    const stop = () => stopScroll();
+    window.addEventListener("od:stop-stick", stop);
+    return () => window.removeEventListener("od:stop-stick", stop);
+  }, [stopScroll]);
 
   const handleScrollToBottom = useCallback(() => {
     scrollToBottom();

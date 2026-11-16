@@ -1,183 +1,90 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createServer } from 'node:http';
-import { getSearchSettings } from '../src/settings.ts';
-import { webSearch } from '../src/tools/search.ts';
-import { ensureLocalSearch } from '../src/tools/local-search.ts';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApplication } from '../src/app.ts';
+import { authStore, closeAuthStore, registerUser, createSession } from '../src/auth/store.ts';
+import { withAccount, type AccountContext } from '../src/auth/context.ts';
+import { closeAllDatabases, openDatabase } from '../src/db/client.ts';
+import { createAgent, mainConversationId } from '../src/agents/repo.ts';
+import { saveMessage } from '../src/conversations/repo.ts';
+import { createChat } from '../src/chats/repo.ts';
+import { archiveChat, archiveCircleThread, deleteChatConversation } from '../src/conversations/lifecycle.ts';
+import { findMatches, parseQuery } from '../src/conversations/search.ts';
 
-vi.mock('../src/settings.ts', () => ({ getSearchSettings: vi.fn() }));
-vi.mock('../src/tools/local-search.ts', () => ({ ensureLocalSearch: vi.fn() }));
-const settings = vi.mocked(getSearchSettings);
-const query = 'Hognoul Awans coordinates';
-const personal = 'https://searx.example';
-const hit = (title = 'Hognoul Awans', url = 'https://example.com/hognoul', content = 'Coordonnées en Belgique') => ({ title, url, content });
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-const article = (title = 'Hognoul Awans', url = 'https://example.com/hognoul') =>
-  `<article class='result'><h3><a class="url_header" href='${url}'>${title}</a></h3><p class='content extra'>Coordonnées : 50.65, 5.44</p></article>`;
-function respond(body: unknown) {
-  const fetch = vi.fn().mockResolvedValue(json(body));
-  vi.stubGlobal('fetch', fetch);
-  return fetch;
-}
-afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
+/** #58: full-text search across chats and Circle threads, and inside one thread. */
+let alice: AccountContext, bob: AccountContext, cookie: string, bobCookie: string;
+const app = createApplication(async () => { await openDatabase({ memory: true }); });
+const get = async (path: string, as = cookie) => (await app.request(`https://app.example/api${path}`, { headers: { cookie: as, 'x-opendots-client': '1' } })).json();
+const say = (cv: string, id: string, text: string, role: 'user' | 'assistant' = 'user', agentId?: string) => saveMessage(cv, { id, role, parts: [{ type: 'text', text }], metadata: {} }, { author: role === 'user' ? 'user' : 'agent', agentId });
+let ids: Record<string, string> = {};
 
-describe('recherche libre sans clé', () => {
-  it('exécute une vraie requête HTTP vers une instance personnelle avec repli JSON → HTML', async () => {
-    const requests: URL[] = [];
-    const server = createServer((req, res) => {
-      const url = new URL(req.url!, 'http://localhost');
-      requests.push(url);
-      if (url.searchParams.get('format') === 'json') { res.writeHead(403); res.end(); }
-      else { res.setHeader('content-type', 'text/html'); res.end(article()); }
-    });
-    await new Promise<void>((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
-    try {
-      const address = server.address();
-      if (!address || typeof address === 'string') throw new Error('Serveur non démarré');
-      const base = `http://127.0.0.1:${address.port}`;
-      settings.mockResolvedValue({ provider: 'searxng', url: base });
-      const out = await webSearch(query);
-      expect(out.instance).toBe(base);
-      expect(out.results[0].title).toBe('Hognoul Awans');
-      expect(requests).toHaveLength(2);
-      expect(requests.every((url) => url.pathname === '/search' && url.searchParams.get('q') === query)).toBe(true);
-    } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
+beforeAll(async () => {
+  await authStore(true);
+  alice = await registerUser('search-alice@example.com', 'search test password'); bob = await registerUser('search-bob@example.com', 'search test password');
+  cookie = `opendots_session=${await createSession(alice.id)}`; bobCookie = `opendots_session=${await createSession(bob.id)}`;
+  for (const account of [alice, bob]) await withAccount(account, () => openDatabase({ memory: true }));
+  ids = await withAccount(alice, async () => {
+    const ari = await createAgent({ name: 'Ari' }), dev = await createAgent({ name: 'Dev' });
+    const chat = await createChat({ title: 'Vacances' });
+    await say(chat.id, 'c1', 'On part à Évora en été');
+    await say(chat.id, 'c2', 'Réserve un hôtel près de la cathédrale', 'assistant');
+    const old = await createChat({ title: 'Ancien' }); await say(old.id, 'o1', 'Le café de Évora était bon'); await archiveChat(old.id);
+    const gone = await createChat({ title: 'Supprimé' }); await say(gone.id, 'g1', 'Évora secret'); await deleteChatConversation(gone.id);
+    const ariMain = await mainConversationId(ari.id);
+    await say(ariMain, 'a1', 'Configure opencode.json dans ~/projets/bot', 'user');
+    await say(ariMain, 'a2', 'J’ai modifié opencode.json et lancé anthropic/claude-sonnet-5.5', 'assistant', ari.id);
+    const devMain = await mainConversationId(dev.id);
+    await say(devMain, 'd1', 'Ancienne discussion sur opencode.json', 'user');
+    await archiveCircleThread(dev.id, devMain);
+    for (let i = 0; i < 150; i++) await say(ariMain, `f${i}`, i === 3 ? 'un mot rare : zéphyr' : `message ordinaire ${i}`);
+    return { ari: ari.id, dev: dev.id, chat: chat.id, old: old.id, ariMain, devMain };
   });
-  it('utilise uniquement SearXNG local par défaut, après sa disponibilité', async () => {
-    settings.mockResolvedValue({ provider: 'auto', url: null });
-    vi.mocked(ensureLocalSearch).mockResolvedValue('http://127.0.0.1:18888');
-    const fetch = respond({ query, results: [hit()] });
-    const out = await webSearch(query);
-    expect(out.provider).toBe('searxng');
-    expect(out.instance).toBe('http://127.0.0.1:18888');
-    expect(ensureLocalSearch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(new URL(fetch.mock.calls[0][0]).origin).toBe('http://127.0.0.1:18888');
+  await withAccount(bob, async () => { const c = await createChat({ title: 'Bob' }); await say(c.id, 'b1', 'Évora chez Bob'); });
+});
+afterAll(async () => { await closeAllDatabases(); await closeAuthStore(); });
+
+describe('recherche', () => {
+  it('normalise accents et casse, garde la ponctuation et les phrases exactes', () => {
+    expect(parseQuery('Évora "Claude-Sonnet 5.5" opencode.json')).toEqual(['evora', 'claude-sonnet 5.5', 'opencode.json']);
+    expect(findMatches('À ÉVORA, évora!', ['evora'])).toEqual([[2, 7], [9, 14]]);
   });
 
-  it('utilise l’API anonyme Mwmbl v2 uniquement quand elle est sélectionnée', async () => {
-    settings.mockResolvedValue({ provider: 'mwmbl', url: null });
-    const fetch = respond({ query, results: [hit()] });
-    const out = await webSearch(query);
-    expect(out.provider).toBe('mwmbl');
-    expect(out.status).toBe('results');
-    const [url, init] = fetch.mock.calls[0];
-    expect(new URL(url).pathname).toBe('/api/v2/search/');
-    expect(new URL(url).searchParams.get('q')).toBe(query);
-    expect(init.headers).toEqual({ Accept: 'application/json' });
-    expect(ensureLocalSearch).not.toHaveBeenCalled();
+  it('trouve le contenu des messages des chats et des Circles, avec extrait surligné, jamais un autre compte ni un fil supprimé', async () => {
+    const res = await get('/search?q=evora');
+    expect(res.hits.map((h: any) => h.messageId)).toEqual(['c1']);
+    const hit = res.hits[0];
+    expect(hit).toMatchObject({ kind: 'chat', title: 'Vacances', conversationId: ids.chat });
+    const [a, b] = hit.highlights[0]; expect(hit.snippet.slice(a, b)).toBe('Évora');
+    // Archived only on request; deleted never; other account never.
+    expect((await get('/search?q=evora&archived=1')).hits.map((h: any) => h.messageId).sort()).toEqual(['c1', 'o1']);
+    expect((await get('/search?q=evora&archived=1', bobCookie)).hits.map((h: any) => h.messageId)).toEqual(['b1']);
+    // Assistant messages too; technical terms with punctuation.
+    expect((await get('/search?q=cathedrale')).hits.map((h: any) => h.role)).toEqual(['assistant']);
+    expect((await get('/search?q=anthropic/claude-sonnet-5.5')).hits.map((h: any) => h.messageId)).toEqual(['a2']);
   });
 
-  it('élargit explicitement une recherche Mwmbl vide sans prétendre filtrer les dates', async () => {
-    settings.mockResolvedValue({ provider: 'mwmbl', url: null });
-    const q = 'OpenRouter changelog';
-    const fetch = vi.fn().mockResolvedValueOnce(json({ query: q, results: [] }))
-      .mockResolvedValueOnce(json({ query: 'OpenRouter', results: [{ title: 'OpenRouter Blog', url: 'https://openrouter.ai/blog', content: 'Updates' }] }));
-    vi.stubGlobal('fetch', fetch);
-    const out = await webSearch(q);
-    expect(out.effectiveQuery).toBe('OpenRouter');
-    expect(out.notice).toContain('dates');
-    expect(out.results).toHaveLength(1);
-    expect(fetch).toHaveBeenCalledTimes(2);
+  it('portées : chats seulement, Circles seulement, un Circle (avec ses anciens fils)', async () => {
+    expect((await get('/search?q=opencode.json&scope=chats')).hits).toHaveLength(0);
+    expect((await get('/search?q=opencode.json&scope=circles')).hits.map((h: any) => h.messageId).sort()).toEqual(['a1', 'a2']);
+    expect((await get('/search?q=opencode.json&scope=circles&archived=1')).hits.map((h: any) => h.messageId).sort()).toEqual(['a1', 'a2', 'd1']);
+    const dev = await get(`/search?q=opencode.json&agentId=${ids.dev}`);
+    expect(dev.hits.map((h: any) => h.messageId)).toEqual(['d1']);
+    expect(dev.hits[0]).toMatchObject({ kind: 'circle', title: 'Dev', archived: true, current: false });
+    // Recent first or best match first.
+    expect((await get('/search?q=opencode.json&sort=recent&scope=circles')).hits[0].messageId).toBe('a2');
   });
 
-  it('ne transmet aucune requête à un service public si Docker manque', async () => {
-    settings.mockResolvedValue({ provider: 'auto', url: null });
-    vi.mocked(ensureLocalSearch).mockRejectedValue(new Error('Docker indisponible'));
-    const fetch = respond({});
-    await expect(webSearch(query)).rejects.toThrow('Docker');
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('lit le HTML SearXNG quand le format JSON est désactivé', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    const fetch = vi.fn().mockResolvedValueOnce(json({}, 403))
-      .mockResolvedValueOnce(new Response(`<input value='Hognoul Awans coordinates' name='q'>${article()}`));
-    vi.stubGlobal('fetch', fetch);
-    expect((await webSearch(query)).results).toEqual([
-      { title: 'Hognoul Awans', url: 'https://example.com/hognoul', snippet: 'Coordonnées : 50.65, 5.44' },
-    ]);
-    expect(new URL(fetch.mock.calls[0][0]).searchParams.get('format')).toBe('json');
-    expect(new URL(fetch.mock.calls[1][0]).searchParams.has('format')).toBe(false);
-  });
-
-  it('ne transmet pas une recherche personnelle aux instances publiques en cas d’échec', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    const fetch = vi.fn().mockRejectedValue(new Error('connexion impossible'));
-    vi.stubGlobal('fetch', fetch);
-    await expect(webSearch(query)).rejects.toThrow('connexion impossible');
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(new URL(fetch.mock.calls[0][0]).origin).toBe(personal);
-  });
-
-  it('refuse les résultats hors sujet de la conversation fournie', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    respond({ results: [hit('Hyundai Tucson - Fiabilité', 'https://example.com/car'), hit("L’Équipe - Actualité du sport", 'https://example.com/sport'), hit('Histoires érotiques', 'https://example.com/stories')] });
-    await expect(webSearch(query)).rejects.toThrow('sans rapport');
-  });
-
-  it.each(['weather Hognoul Awans today', 'Hognoul weather.com'])('rejette la météo d’une autre ville pour %s', async (q) => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    respond({ results: [hit('Weather Forecast Le Locle - weather.com', 'https://example.com/locle', 'Météo en Suisse')] });
-    await expect(webSearch(q)).rejects.toThrow('sans rapport');
-  });
-
-  it('détecte une réponse JSON pour une autre requête', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    respond({ query: 'Le Locle météo', results: [hit()] });
-    await expect(webSearch(query)).rejects.toThrow('autre requête');
-  });
-
-  it('détecte aussi une autre requête dans le formulaire HTML', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`<input name='q' value='Le Locle météo'>${article()}`)));
-    await expect(webSearch(query)).rejects.toThrow('autre requête');
-  });
-
-  it('retire liens invalides, doublons et résultats étrangers avant la limite', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    respond({ results: [hit('Football', 'https://example.com/sport', ''), hit('Hognoul', 'javascript:alert(1)'), hit(), hit()] });
-    expect((await webSearch(query, { limit: 1 })).results).toEqual([
-      { title: 'Hognoul Awans', url: 'https://example.com/hognoul', snippet: 'Coordonnées en Belgique' },
-    ]);
-  });
-
-  it('distingue un vrai résultat vide d’une page de blocage non reconnue', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    respond({ results: [] });
-    expect((await webSearch(query)).results).toEqual([]);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>Access denied</html>')));
-    await expect(webSearch(query)).rejects.toThrow('non reconnue');
-  });
-
-  it('ne rapporte pas un succès vide quand les moteurs amont ont échoué', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    respond({ results: [], unresponsive_engines: [['duckduckgo', 'SSL error']] });
-    await expect(webSearch(query)).rejects.toThrow('moteurs en erreur');
-  });
-
-  it('ne lit pas un captcha comme un résultat', async () => {
-    settings.mockResolvedValue({ provider: 'searxng', url: personal });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<form id="challenge-form"></form>')));
-    await expect(webSearch(query)).rejects.toThrow('anti-robot');
-  });
-
-  it('signale un vrai résultat vide sans le confondre avec une couverture complète du web', async () => {
-    settings.mockResolvedValue({ provider: 'mwmbl', url: null });
-    const fetch = respond({ query: 'OpenRouter', results: [] });
-    const out = await webSearch('OpenRouter');
-    expect(out.status).toBe('no_results');
-    expect(out.notice).toContain('couverture est limitée');
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('rejette un contrat Mwmbl invalide et une recherche vide', async () => {
-    settings.mockResolvedValue({ provider: 'mwmbl', url: null });
-    const fetch = respond({ results: [] });
-    await expect(webSearch(query)).rejects.toThrow('Mwmbl invalide');
-    await expect(webSearch('   ')).rejects.toThrow('vide');
-    expect(fetch).toHaveBeenCalledTimes(1);
+  it('recherche dans un fil (précédent / suivant) et ouverture au bon message dans un long historique', async () => {
+    const inThread = await get(`/conversations/${ids.ariMain}/search?q=opencode.json`);
+    expect(inThread.map((r: any) => r.messageId)).toEqual(['a1', 'a2']);
+    expect((await get(`/conversations/${ids.ariMain}/search?q=zephyr`)).map((r: any) => r.messageId)).toEqual(['f3']);
+    expect((await app.request(`https://app.example/api/conversations/${ids.ariMain}/search?q=x`, { headers: { cookie: bobCookie, 'x-opendots-client': '1' } })).status).toBe(404);
+    const page = await get(`/agents/${ids.ari}/messages`);
+    expect(page.messages.map((m: any) => m.id)).not.toContain('a1');
+    const around = await get(`/agents/${ids.ari}/messages?around=a1`);
+    expect(around.messages.map((m: any) => m.id)).toContain('a1');
+    // New content is searchable at once; deleted content disappears.
+    await withAccount(alice, () => say(ids.chat, 'c3', 'Nouveau mot : quokka'));
+    expect((await get('/search?q=quokka')).hits).toHaveLength(1);
+    await withAccount(alice, () => deleteChatConversation(ids.chat));
+    expect((await get('/search?q=quokka')).hits).toHaveLength(0);
   });
 });

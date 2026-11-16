@@ -87,6 +87,7 @@ import app.dot.opendots.ui.OpencodeInstancesPage
 import app.dot.opendots.ui.DefaultModelPage
 import app.dot.opendots.ui.ProvidersPage
 import app.dot.opendots.ui.ChatsPage
+import app.dot.opendots.ui.SearchPage
 import app.dot.opendots.ui.FilesSheet
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -196,7 +197,7 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
 private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.Ssh, Page.HomeAssistant, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Ssh, HomeAssistant, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Ssh, HomeAssistant, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox, Search }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -206,6 +207,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     // The code workspace opens from a task card anywhere; Back returns to the page that opened it.
     var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
     var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var circleSection by rememberSaveable { mutableStateOf<CircleSection?>(null) }
     var settingsSection by rememberSaveable { mutableStateOf(SettingsSection.Appearance) }
     // The chat model picker opens from the chat's field or from its settings; Back returns there.
@@ -277,7 +279,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                     CompositionLocalProvider(LocalRootBackdrop provides backdrop, LocalRootActions provides rootActions) {
                         when (tab) {
                             Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
-                            Tab.Chat -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
+                            Tab.Chat -> ChatsPage(app, ui, onSearch = { q -> searchQuery = q; page = Page.Search }) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
                             Tab.Code -> CodeSessionsPage(app, ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { app.newCodeSession(onNoMachine = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace } })
                             Tab.Settings -> SettingsScreen(app, ui, onOpenSection = { settingsSection = it; page = Page.SettingsSection })
                         }
@@ -298,6 +300,9 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.HomeAssistant -> HomeAssistantPage(app, ui, onBack = ::back)
             current == Page.Ssh -> SshPage(app, ui, onBack = ::back)
             current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back)
+            current == Page.Search -> SearchPage(app, ui, searchQuery, onBack = ::back,
+                onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat },
+                onOpenAgent = { id -> app.selectAgent(id); page = Page.Chat })
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })
             current == Page.DefaultModel -> DefaultModelPage(app, onBack = ::back)

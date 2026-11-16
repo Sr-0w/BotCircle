@@ -1,12 +1,14 @@
 import { ImageLightbox } from './chat/image-lightbox';
 import { ConfirmHost } from '@/lib/confirm';
+import { openSearch, SearchDialog } from './search/search-dialog';
+import { ThreadSearchBar } from './search/thread-search';
 import { archiveConversation, deleteConversation, restoreConversation } from '@/lib/conversation-actions';
 import { ConversationMenu } from './conversation-menu';
 import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store";
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-import { ArchiveIcon, ArchiveRestoreIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, TextSearchIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
 import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -145,6 +147,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
 
         <div className="mt-4 flex items-center px-4 pb-1.5">
           <span className="flex-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Chats")}</span>
+          <button type="button" aria-label={t("Rechercher dans les conversations")} title={`${t("Rechercher dans les conversations")} (${MOD}+Shift+F)`} onClick={() => openSearch(query)} className="mr-1 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" data-open-search><TextSearchIcon className="size-4" /></button>
           <button type="button" aria-label={t("Nouveau chat")} title={t("Nouveau chat")} onClick={newChat} className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><PlusIcon className="size-4" /></button>
         </div>
         {chats.length > 0 && (
@@ -154,6 +157,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           </div>
         )}
         <nav className="space-y-0.5 px-2 pb-2" aria-label={t("Chats")}>
+          {query.trim() && <button type="button" onClick={() => openSearch(query)} className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-muted-foreground text-xs hover:bg-accent/60" data-search-everywhere><TextSearchIcon className="size-3.5" />{t("Chercher « {v0} » dans tous les messages", { v0: query.trim() })}</button>}
           {shown.length === 0 && <button type="button" onClick={newChat} className="w-full rounded-xl border border-dashed px-3 py-2.5 text-left text-muted-foreground text-xs hover:bg-accent/60">{query ? t("Aucun chat trouvé.") : t("Un fil libre, sans Circle attitré. Commence un chat.")}</button>}
           {shown.map((chat) => (
             <div key={chat.id} className="group/chat relative">
@@ -248,6 +252,13 @@ export function Shell() {
   const agents = useStore((s) => s.agents);
   const [route, go] = useRoute();
   const [navOpen, setNavOpen] = useState(false);
+  const [threadSearch, setThreadSearch] = useState(false);
+  useEffect(() => setThreadSearch(false), [route.view, route.view === "settings" ? "" : (route as { id?: string | null }).id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ctrl/⌘+F inside a conversation: find in this thread.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f' && route.view !== 'settings') { e.preventDefault(); setThreadSearch(true); } };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, [route.view]);
   const [panelOpen, setPanelOpen] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
   const [mobilePanel, setMobilePanel] = useState(false);
   // L'espace de code s'ouvre à côté de la conversation (grand écran) ou en plein écran (petit écran).
@@ -313,6 +324,7 @@ export function Shell() {
                 <p className="truncate font-medium text-sm">{currentChat.title}</p>
                 <p className="truncate text-muted-foreground text-xs">{t("Chat")} · {currentChat.effectiveModel.model}</p>
               </div>
+              <Button variant="ghost" size="icon" aria-label={t("Rechercher dans ce fil")} title={t("Rechercher dans ce fil")} aria-pressed={threadSearch} onClick={() => setThreadSearch((v) => !v)}><SearchIcon /></Button>
               <ConversationMenu label={t("Actions du chat")} items={currentChat.archived
                 ? [{ label: t("Restaurer"), icon: <ArchiveRestoreIcon />, onSelect: () => void restoreConversation({ kind: "chat", id: currentChat.id, title: currentChat.title }) },
                    { label: t("Supprimer…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "chat", id: currentChat.id, title: currentChat.title }) }]
@@ -332,6 +344,7 @@ export function Shell() {
                   <span className="hidden sm:inline"> · {current.effectiveModel.model}</span>
                 </p>
               </div>
+              <Button variant="ghost" size="icon" aria-label={t("Rechercher dans ce fil")} title={t("Rechercher dans ce fil")} aria-pressed={threadSearch} onClick={() => setThreadSearch((v) => !v)}><SearchIcon /></Button>
               <ConversationMenu label={t("Actions du fil")} items={[
                 { label: t("Archiver ce fil"), icon: <ArchiveIcon />, onSelect: () => void archiveConversation({ kind: "thread", agentId: current.id, id: current.mainConversationId, agentName: current.name, current: true }) },
                 { label: t("Supprimer ce fil…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "thread", agentId: current.id, id: current.mainConversationId, agentName: current.name, current: true }) },
@@ -364,6 +377,7 @@ export function Shell() {
                     <Button size="sm" variant="secondary" className="h-7" onClick={() => void restoreConversation({ kind: "chat", id: currentChat.id, title: currentChat.title })}>{t("Restaurer")}</Button>
                   </div>
                 )}
+                {threadSearch && <ThreadSearchBar key={currentChat.id} conversationId={currentChat.id} onClose={() => setThreadSearch(false)} />}
                 <GeneralChatView chat={currentChat} />
               </div>
               {panelOpen && !codeTask && (
@@ -374,7 +388,10 @@ export function Shell() {
             </>
           ) : current ? (
             <>
-              <ChatView agent={current} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                {threadSearch && <ThreadSearchBar key={current.mainConversationId} conversationId={current.mainConversationId} onClose={() => setThreadSearch(false)} />}
+                <ChatView agent={current} />
+              </div>
               {panelOpen && !codeTask && (
                 <aside className="hidden w-[340px] shrink-0 border-l lg:block">
                   <AgentPanel agent={current} />
@@ -414,6 +431,7 @@ export function Shell() {
       )}
       <Suspense fallback={null}>
         <DialogHost />
+        <SearchDialog />
         <ConfirmHost />
         <ImageLightbox />
       </Suspense>

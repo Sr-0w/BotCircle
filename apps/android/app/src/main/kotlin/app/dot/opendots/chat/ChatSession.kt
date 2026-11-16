@@ -39,6 +39,9 @@ data class ChatUiState(
     val notSent: Boolean = false,
     /** A message was sent while the companion worked: it is taken into the work in progress at its next step (#55). */
     val steering: Boolean = false,
+    /** #58: the message to bring into view (search result, previous / next in the thread); [focusTick] repeats it. */
+    val focusId: String? = null,
+    val focusTick: Int = 0,
 ) {
     val busy: Boolean get() = status != ChatStatus.Ready
     /** Waiting for the companion's first visible output. */
@@ -82,6 +85,27 @@ class ChatSession(
                 fail(e)
                 _state.update { it.copy(loading = false, loadError = e.message ?: "") }
             }
+        }
+    }
+
+    /** The conversation shown (for in-thread search). */
+    val conversation: String? get() = conversationId
+
+    /** #58: brings [messageId] into view, loading the history back to it first when needed. */
+    fun focus(messageId: String) {
+        scope.launch {
+            if (_state.value.messages.none { it.id == messageId }) {
+                try {
+                    val history = client.messages(target, around = messageId)
+                    conversationId = history.conversationId
+                    olderLoaded = true
+                    _state.update { s ->
+                        val remote = history.messages.mapTo(HashSet()) { it.id }
+                        s.copy(messages = history.messages + s.messages.filter { it.id !in remote && s.busy }, cursor = history.cursor)
+                    }
+                } catch (e: Exception) { if (e is CancellationException) throw e; fail(e); return@launch }
+            }
+            _state.update { it.copy(focusId = messageId, focusTick = it.focusTick + 1) }
         }
     }
 

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, lt, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import { cleanModelText, isSingleEmoji, stripTranscriptNotes, type MessageMetadata, type MessageReaction, type MessageReplyRef, type TeamThreadDTO } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
@@ -145,6 +145,15 @@ async function reactionsFor(ids: string[]): Promise<Map<string, MessageReaction[
     map.set(row.messageId, list);
   }
   return map;
+}
+
+/** #58: how many messages to load so that [messageId] (and a little before it) is in the page — for "open at this message". */
+export async function limitAround(conversationId: string, messageId: string | undefined, base: number): Promise<number> {
+  if (!messageId) return base;
+  const [target] = await db().select({ seq: schema.messages.seq }).from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.conversationId, conversationId)));
+  if (!target) return base;
+  const [{ n }] = await db().select({ n: count() }).from(schema.messages).where(and(eq(schema.messages.conversationId, conversationId), eq(schema.messages.hidden, false), gte(schema.messages.seq, target.seq)));
+  return Math.min(2000, Math.max(base, Number(n) + 10));
 }
 
 /** Derniers messages d'une conversation, du plus ancien au plus récent. */

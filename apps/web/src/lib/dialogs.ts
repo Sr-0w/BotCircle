@@ -11,7 +11,7 @@ export type DialogState =
   | { kind: "activity"; activity?: ActivityDTO; agentId?: string }
   | { kind: "draft"; draftId: string }
   | { kind: "team"; agentA: string; agentB: string }
-  | { kind: "archive"; agentId: string; conversationId: string; archivedAt: string }
+  | { kind: "archive"; agentId: string; conversationId: string; archivedAt: string; focus?: { messageId: string; terms: string[] } }
   | { kind: "task"; taskId: string }
   | { kind: "artifact"; artifactId: string }
   | { kind: "file-preview"; file: PresentedFile }

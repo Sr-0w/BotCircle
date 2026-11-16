@@ -435,6 +435,18 @@ data class GeneralChat(
     val lastMessagePreview: String? = null,
 )
 
+/** #58: one search result — a message, in a chat or a Circle's thread, with a highlighted snippet. */
+@Serializable
+data class SearchHit(
+    val messageId: String, val conversationId: String, val seq: Long = 0, val role: String = "user", val kind: String = "chat",
+    val agentId: String? = null, val title: String = "", val archived: Boolean = false, val current: Boolean = false,
+    val snippet: String = "", val highlights: List<List<Int>> = emptyList(), val createdAt: String = "",
+)
+@Serializable
+data class SearchResults(val hits: List<SearchHit> = emptyList(), val more: Boolean = false)
+@Serializable
+data class ThreadMatch(val messageId: String, val seq: Long = 0, val count: Int = 0)
+
 /** #56: a Circle's thread set aside (archive or /clear), kept and readable. */
 @Serializable
 data class ArchivedThread(val id: String, val createdAt: String = "", val archivedAt: String = "", val messageCount: Int = 0)

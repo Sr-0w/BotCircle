@@ -228,3 +228,6 @@
 @media (prefers-reduced-transparency: reduce) {
   .quiet-glass { background: var(--card); backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+/* #58: searched words inside a message. */
+::highlight(od-search) { background-color: color-mix(in oklab, var(--color-yellow-400, #facc15) 55%, transparent); color: inherit; }

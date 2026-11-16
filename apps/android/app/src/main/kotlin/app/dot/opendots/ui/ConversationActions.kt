@@ -1,5 +1,6 @@
 package app.dot.opendots.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -187,16 +188,19 @@ fun ArchivedThreadsSheet(app: AppState, ui: AppUiState, agent: Agent, onDismiss:
     reading?.let { thread -> ArchivedThreadReader(app, ui, thread) { reading = null } }
 }
 
+/** An archived thread, read-only; [focusId] (from search) is scrolled to and marked. */
 @Composable
-private fun ArchivedThreadReader(app: AppState, ui: AppUiState, thread: ArchivedThread, onDismiss: () -> Unit) {
+fun ArchivedThreadReader(app: AppState, ui: AppUiState, thread: ArchivedThread, focusId: String? = null, onDismiss: () -> Unit) {
     var messages by remember(thread.id) { mutableStateOf<List<ChatMessage>?>(null) }
-    LaunchedEffect(thread.id) { messages = runCatching { app.client.conversationMessages(thread.id) }.getOrDefault(emptyList()) }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(thread.id) { messages = runCatching { app.client.conversationMessagesAround(thread.id, focusId) }.getOrDefault(emptyList()) }
     DotBottomSheet(onDismiss) {
         val rows = messages?.mapNotNull { m -> m.parts.filterIsInstance<Part.Text>().joinToString("\n") { cleanModelText(it.text) }.trim().takeIf { it.isNotEmpty() }?.let { m to it } }
+        LaunchedEffect(rows, focusId) { val i = rows?.indexOfFirst { it.first.id == focusId } ?: -1; if (i >= 0) list.scrollToItem(i) }
         if (rows == null) Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
-        else LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, bottom = DotSpacing.xxl), verticalArrangement = Arrangement.spacedBy(DotSpacing.m), modifier = Modifier.testTag("archived-thread-reader")) {
+        else LazyColumn(state = list, contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, bottom = DotSpacing.xxl), verticalArrangement = Arrangement.spacedBy(DotSpacing.m), modifier = Modifier.testTag("archived-thread-reader")) {
             items(rows, key = { it.first.id }) { (message, text) ->
-                Column {
+                Column(if (message.id == focusId) Modifier.background(Dot.colors.accent.copy(alpha = 0.14f)).testTag("message-focused") else Modifier) {
                     Text(if (message.isUser) stringResource(R.string.you) else ui.agents.firstOrNull { it.id == message.meta.agentId }?.let { agentDisplayName(it) } ?: stringResource(R.string.companion), style = Dot.type.label, color = Dot.colors.textSecondary)
                     Spacer(Modifier.width(DotSpacing.xs))
                     Text(text, style = Dot.type.callout, color = Dot.colors.textPrimary, overflow = TextOverflow.Ellipsis)
