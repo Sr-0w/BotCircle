@@ -268,9 +268,10 @@ fun ApprovalsScreen(app: AppState, ui: AppUiState, onBack: (() -> Unit)? = null)
 
 // --- Settings ---------------------------------------------------------------------------------------
 
-/** #54: the five destinations of Settings, in order. */
+/** #54: the destinations of Settings, in order (#64 adds Notifications). */
 enum class SettingsSection(val title: Int, val note: Int) {
     Appearance(R.string.appearance, R.string.settings_appearance_note),
+    Notifications(R.string.notifications, R.string.settings_notifications_note),
     Ai(R.string.ai_and_models, R.string.settings_ai_note),
     Connections(R.string.connections, R.string.settings_connections_note),
     Server(R.string.server, R.string.settings_server_note),
@@ -284,6 +285,7 @@ fun SettingsSectionPage(app: AppState, ui: AppUiState, section: SettingsSection,
     val chevron: @Composable () -> Unit = { Icon(Icons.Outlined.ChevronRight, null, tint = Dot.colors.textTertiary) }
     QuietPage(stringResource(section.title), onBack) {
         when (section) {
+            SettingsSection.Notifications -> item { NotificationSettings(app, ui) }
             SettingsSection.Appearance -> item {
                 SectionLabel(stringResource(R.string.theme))
                 FlowRow(Modifier.padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {

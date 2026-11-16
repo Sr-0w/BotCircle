@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- #64: notifications (asked from Settings › Notifications, never at launch). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".OpenDotsApp"
@@ -28,6 +30,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- #64: UnifiedPush — pushes from the self-hosted server, through the distributor the user chose (e.g. ntfy). -->
+        <service android:name=".push.BotCirclePushService" android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- Files a companion delivered are opened by other apps through a read-only, per-file grant. -->
         <provider

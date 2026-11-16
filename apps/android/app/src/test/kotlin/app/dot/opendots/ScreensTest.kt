@@ -160,6 +160,8 @@ class ScreensTest {
                             """{"type":"finish"}""", "[DONE]",
                         ).joinToString("") { "data: $it\n\n" },
                     ).build()
+                    path == "/notifications/prefs" -> json("""{"enabled":true,"categories":{"messages":true,"tasks":true,"approvals":true,"code":true,"scheduled":true},"mutedAgents":[],"mutedChats":[],"quietHours":null,"preview":false}""")
+                    path == "/notifications/subscriptions" && request.method == "GET" -> json("""[{"id":"push_web","kind":"webpush","label":"Firefox · Linux","createdAt":"2026-11-16T08:00:00Z","lastOkAt":null,"failures":0,"endpointHost":"updates.push.services.mozilla.com"}]""")
                     path == "/search" -> json("""{"hits":[{"messageId":"g1","conversationId":"ch1","seq":1,"role":"user","kind":"chat","agentId":null,"title":"Friday meeting","archived":false,"current":false,"snippet":"@Dev summarise the Friday meeting","highlights":[[5,14]],"createdAt":"2026-11-13T09:00:00Z"}],"more":false}""")
                     path == "/conversations/ch1/search" -> json("""[{"messageId":"g1","seq":1,"count":1}]""")
                     path == "/chats" && request.url.queryParameter("archived") == "1" -> json("""[{"id":"ch0","title":"Old trip","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"archived":true,"archivedAt":"2026-11-10T09:00:00Z","createdAt":"2026-11-01T09:00:00Z","updatedAt":"2026-11-10T09:00:00Z","lastMessagePreview":"Rome in May"}]""")
@@ -422,6 +424,33 @@ class ScreensTest {
         compose.onNode(hasTestTag("thread-find")).assertExists()
         compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("thread-find")))[0].performTextInput("Friday")
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("thread-find-position") and hasText("1 / 1")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** #64: a pushed notification is shown in its channel, closed by a later "close" push, and a tap opens its place. */
+    @Test fun pushedNotificationsShowCloseAndOpenTheirPlace() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        org.robolectric.Shadows.shadowOf(context).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        val payload = { close: Boolean -> kotlinx.serialization.json.Json.parseToJsonElement("""{"id":"n1","tag":"approval:ap1","category":"approvals","title":"Ari attend ta validation","body":"Validation demandée","close":$close,"target":{"kind":"approval","id":"ap1","agentId":"a1"}}""") as kotlinx.serialization.json.JsonObject }
+        app.dot.opendots.push.Notifier.handle(context, payload(false))
+        val shown = org.robolectric.Shadows.shadowOf(manager).allNotifications
+        assertEquals(1, shown.size)
+        assertEquals("approvals", shown[0].channelId)
+        assertEquals("Ari attend ta validation", shown[0].extras.getString(android.app.Notification.EXTRA_TITLE))
+        // Tapping it opens the Inbox (never approves anything).
+        val tap = org.robolectric.Shadows.shadowOf(shown[0].contentIntent).savedIntent
+        assertEquals("approval", tap.getStringExtra(app.dot.opendots.push.Notifier.EXTRA_KIND))
+        app.dot.opendots.push.Notifier.handle(context, payload(true))
+        assertEquals(0, org.robolectric.Shadows.shadowOf(manager).allNotifications.size)
+        // Settings → Notifications lists categories and devices.
+        compose.onNodeWithContentDescription("Circles").performClick()
+        tab("Settings")
+        tapUntil("Notifications", "Receive while the app is closed")
+        waitFor("Firefox · Linux")
+        waitFor("Task outcomes")
+        shoot("notifications-settings-dark")
     }
 
     /** #46: `/` opens a palette of real actions; a command is never sent to the model. */

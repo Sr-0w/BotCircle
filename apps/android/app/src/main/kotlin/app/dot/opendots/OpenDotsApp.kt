@@ -14,6 +14,12 @@ class OpenDotsApp : Application(), SingletonImageLoader.Factory {
     val store: SessionStore by lazy { PrefsSessionStore(this) }
     val client: OpenDotsClient by lazy { OpenDotsClient(store) }
 
+    override fun onCreate() {
+        super.onCreate()
+        // #64: the notification categories exist in Android's settings from the start (sound / importance per category).
+        app.dot.opendots.push.Notifier.ensureChannels(this)
+    }
+
     /** Attachments live behind the session: images are fetched with the same HTTP client (and cookie) as the API. */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)

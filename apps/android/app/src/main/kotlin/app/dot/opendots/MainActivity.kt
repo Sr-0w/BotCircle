@@ -87,6 +87,8 @@ import app.dot.opendots.ui.OpencodeInstancesPage
 import app.dot.opendots.ui.DefaultModelPage
 import app.dot.opendots.ui.ProvidersPage
 import app.dot.opendots.ui.ChatsPage
+import app.dot.opendots.ui.TaskSheet
+import app.dot.opendots.push.Notifier
 import app.dot.opendots.ui.SearchPage
 import app.dot.opendots.ui.FilesSheet
 import kotlinx.serialization.json.buildJsonObject
@@ -125,6 +127,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) handleNotification(intent)
         setContent {
             val ui by app.state.collectAsStateWithLifecycle()
             val mode = runCatching { ThemeMode.valueOf(ui.themeMode) }.getOrDefault(ThemeMode.SYSTEM)
@@ -140,6 +143,19 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalReduceTransparency provides ui.reduceTransparency) { OpenDotsRoot(app, ui) }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleNotification(intent)
+    }
+
+    /** #64: a tapped notification names what to open; access is checked again by the server when it loads. */
+    private fun handleNotification(intent: Intent?) {
+        val kind = intent?.getStringExtra(Notifier.EXTRA_KIND) ?: return
+        val id = intent.getStringExtra(Notifier.EXTRA_ID) ?: return
+        app.openFromNotification(AppState.OpenTarget(kind, id, intent.getStringExtra(Notifier.EXTRA_AGENT), intent.getStringExtra(Notifier.EXTRA_MESSAGE)))
+        intent.removeExtra(Notifier.EXTRA_KIND)
     }
 }
 
@@ -218,6 +234,22 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
     var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    // #64: a tapped notification opens its exact place.
+    val openTarget by app.openTarget.collectAsStateWithLifecycle()
+    var notifiedTask by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(openTarget, ui.stage) {
+        val target = openTarget ?: return@LaunchedEffect
+        if (ui.stage != Stage.Main) return@LaunchedEffect
+        app.consumeOpenTarget()
+        when (target.kind) {
+            "circle" -> { app.selectAgent(target.id); target.messageId?.let { app.focusOn(target.id, it) }; page = Page.Chat }
+            "chat" -> { app.selectChat(target.id); target.messageId?.let { app.focusOn(target.id, it) }; page = Page.GeneralChat }
+            "approval", "request" -> page = Page.Inbox
+            "code" -> { codeTask = target.id; codeFrom = Page.None; page = Page.CodeWorkspace }
+            "task" -> { page = Page.Activity; notifiedTask = target.id }
+            else -> page = Page.Activity
+        }
+    }
     var circleSection by rememberSaveable { mutableStateOf<CircleSection?>(null) }
     var settingsSection by rememberSaveable { mutableStateOf(SettingsSection.Appearance) }
     // The chat model picker opens from the chat's field or from its settings; Back returns there.
@@ -306,7 +338,10 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             }
             // Settings is the fourth tab now; an old saved page lands on it.
             current == Page.Settings -> LaunchedEffect(Unit) { tab = Tab.Settings; page = Page.None }
-            current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back, onOpenTeam = { page = Page.Team })
+            current == Page.Activity -> {
+                TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back, onOpenTeam = { page = Page.Team })
+                notifiedTask?.let { id -> TaskSheet(app, ui, id) { notifiedTask = null } }
+            }
             current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenSsh = { page = Page.Ssh }, onOpenHomeAssistant = { page = Page.HomeAssistant })
             current == Page.HomeAssistant -> HomeAssistantPage(app, ui, onBack = ::back)
             current == Page.Ssh -> SshPage(app, ui, onBack = ::back)

@@ -435,6 +435,17 @@ data class GeneralChat(
     val lastMessagePreview: String? = null,
 )
 
+/** #64: notification preferences and the devices / browsers that receive pushes. */
+@Serializable
+data class QuietHours(val start: String = "22:00", val end: String = "07:00", val timezone: String = "UTC")
+@Serializable
+data class NotificationPrefs(
+    val enabled: Boolean = true, val categories: Map<String, Boolean> = emptyMap(), val mutedAgents: List<String> = emptyList(),
+    val mutedChats: List<String> = emptyList(), val quietHours: QuietHours? = null, val preview: Boolean = false,
+)
+@Serializable
+data class PushDevice(val id: String, val kind: String = "webpush", val label: String = "", val createdAt: String = "", val lastOkAt: String? = null, val failures: Int = 0, val endpointHost: String = "")
+
 /** #58: one search result — a message, in a chat or a Circle's thread, with a highlighted snippet. */
 @Serializable
 data class SearchHit(

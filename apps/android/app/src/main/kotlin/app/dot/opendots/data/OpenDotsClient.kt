@@ -412,6 +412,16 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun deleteChat(id: String, stopActive: Boolean = false, confirmTasks: Boolean = false) {
         json("DELETE", "/chats/$id", buildJsonObject { if (stopActive) put("stopActive", true); if (confirmTasks) put("confirmTasks", true) })
     }
+    // #64: notifications
+    suspend fun vapidKey(): String = json("GET", "/notifications/vapid").asObject()?.str("publicKey").orEmpty()
+    suspend fun notificationPrefs(): NotificationPrefs = get("/notifications/prefs")
+    suspend fun setNotificationPrefs(patch: JsonObject): NotificationPrefs = OdJson.decodeFromJsonElement(json("PUT", "/notifications/prefs", patch))
+    suspend fun pushDevices(): List<PushDevice> = get("/notifications/subscriptions")
+    suspend fun addPushSubscription(kind: String, endpoint: String, p256dh: String, auth: String, label: String): String =
+        json("POST", "/notifications/subscriptions", buildJsonObject { put("kind", kind); put("endpoint", endpoint); put("p256dh", p256dh); put("auth", auth); put("label", label.take(80)) }).asObject()?.str("id").orEmpty()
+    suspend fun removePushSubscription(id: String) { json("DELETE", "/notifications/subscriptions/$id") }
+    suspend fun testPush(subscriptionId: String? = null): JsonObject = json("POST", "/notifications/test", buildJsonObject { subscriptionId?.let { put("subscriptionId", it) } }).asObject() ?: JsonObject(emptyMap())
+
     // #58: search every conversation, or inside one.
     suspend fun search(q: String, scope: String = "all", agentId: String? = null, archived: Boolean = false, sort: String = "relevance", offset: Int = 0): SearchResults {
         val enc = { v: String -> java.net.URLEncoder.encode(v, "UTF-8") }

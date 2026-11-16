@@ -402,6 +402,13 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         onDone()
     }
 
+    /** #64: where a tapped notification leads (consumed by the navigation). */
+    data class OpenTarget(val kind: String, val id: String, val agentId: String?, val messageId: String?)
+    private val _openTarget = kotlinx.coroutines.flow.MutableStateFlow<OpenTarget?>(null)
+    val openTarget: kotlinx.coroutines.flow.StateFlow<OpenTarget?> = _openTarget
+    fun openFromNotification(target: OpenTarget) { _openTarget.value = target }
+    fun consumeOpenTarget() { _openTarget.value = null }
+
     fun focusOn(targetId: String, messageId: String) = _state.update { it.copy(focus = targetId to messageId) }
     fun clearFocus() = _state.update { it.copy(focus = null) }
 

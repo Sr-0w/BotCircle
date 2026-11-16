@@ -10,8 +10,8 @@ android {
         applicationId = "app.dot.opendots"
         minSdk = 26
         targetSdk = 36
-        versionCode = 35
-        versionName = "0.1.0-alpha.35"
+        versionCode = 36
+        versionName = "0.1.0-alpha.36"
     }
     buildTypes {
         release {
@@ -37,6 +37,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.unifiedpush.connector)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     // QR codes (OpenCode pairing): the system scanner UI, no camera permission for the app.
