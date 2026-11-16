@@ -200,7 +200,7 @@ private fun InlineName(agent: Agent, onSave: (String) -> Unit) {
 
 /** One section of a Circle's details. Permissions are what it may DO; Data & connections, what it can REACH. */
 @Composable
-fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenComputer: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onUpdate: (JsonObject) -> Unit) {
+fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenComputer: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onMakePrimary: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
     val c = Dot.colors
     val title = stringResource(when (section) { CircleSection.Permissions -> R.string.permissions; CircleSection.Data -> R.string.circle_data; CircleSection.Advanced -> R.string.circle_advanced })
     QuietPage(title, onBack, subtitle = agentDisplayName(agent)) {
@@ -245,6 +245,12 @@ fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, 
                     if (agent.model != null) Box(Modifier.padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s)) {
                         DotButton(stringResource(R.string.model_reset), { onUpdate(JsonObject(mapOf("model" to JsonNull))) }, style = ButtonStyle.Secondary, compact = true)
                     }
+                }
+                // #47: the primary Circle's avatar stands for Circles in the dock.
+                item {
+                    SectionLabel(stringResource(R.string.primary_circle), Modifier.padding(top = DotSpacing.l))
+                    if (agent.primary) ListRow(stringResource(R.string.primary_circle_is), subtitle = stringResource(R.string.primary_circle_note))
+                    else Box(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s)) { DotButton(stringResource(R.string.primary_circle_make), onMakePrimary, style = ButtonStyle.Secondary, compact = true) }
                 }
             }
         }

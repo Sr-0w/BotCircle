@@ -179,6 +179,12 @@ function Advanced({ agent, save, onBack, picking, setPicking }: { agent: AgentDT
           ))}
         </div>
       </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">{t("Circle principal")}</Label>
+        {agent.primary
+          ? <p className="text-muted-foreground text-xs">{t("C’est ton Circle principal : son avatar représente les Circles dans la navigation.")}</p>
+          : <Button size="sm" variant="outline" onClick={() => void api.setPrimaryAgent(agent.id).catch((e) => toast.error(e.message))}>{t("En faire mon Circle principal")}</Button>}
+      </div>
       <Field label={t("Responsabilités")}><Textarea rows={2} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></Field>
       <Field label={t("Personnalité")}><Textarea rows={2} value={draft.personality} onChange={(e) => setDraft({ ...draft, personality: e.target.value })} /></Field>
       <Field label={t("Consignes")}><Textarea rows={4} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} /></Field>

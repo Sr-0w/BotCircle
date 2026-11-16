@@ -313,7 +313,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 if (companionJournal) JournalSheet(app, agent) { companionJournal = false }
             }
             current == Page.CircleSection -> {
-                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }) { patch -> app.updateAgent(agent.id, patch) }
+                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }, onMakePrimary = { app.setPrimaryAgent(agent.id) }) { patch -> app.updateAgent(agent.id, patch) }
                 if (companionMemory) MemorySheet(app, agent) { companionMemory = false }
                 if (companionFiles) FilesSheet(app, ui, stringResource(R.string.files), agentId = agent.id, conversationId = null) { companionFiles = false }
             }

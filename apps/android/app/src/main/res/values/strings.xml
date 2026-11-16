@@ -395,6 +395,10 @@
     <string name="preview_truncated">Long file: only the first 2 MB are shown. Save it to see everything.</string>
     <string name="previous">Previous</string>
     <string name="previous_version">Previous version</string>
+    <string name="primary_circle">Primary Circle</string>
+    <string name="primary_circle_is">This is your primary Circle</string>
+    <string name="primary_circle_make">Make it my primary Circle</string>
+    <string name="primary_circle_note">Its avatar stands for Circles in the navigation.</string>
     <string name="profile_add_name">Add your name</string>
     <string name="profile_edit_name">Edit your name</string>
     <string name="profile_first_name">First name</string>

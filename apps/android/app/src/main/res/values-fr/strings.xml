@@ -395,6 +395,10 @@
     <string name="preview_truncated">Fichier long : seuls les 2 premiers Mo sont affichés. Enregistre-le pour tout voir.</string>
     <string name="previous">Précédent</string>
     <string name="previous_version">Version précédente</string>
+    <string name="primary_circle">Circle principal</string>
+    <string name="primary_circle_is">C’est ton Circle principal</string>
+    <string name="primary_circle_make">En faire mon Circle principal</string>
+    <string name="primary_circle_note">Son avatar représente les Circles dans la navigation.</string>
     <string name="profile_add_name">Ajoute ton prénom</string>
     <string name="profile_edit_name">Modifier ton nom</string>
     <string name="profile_first_name">Prénom</string>

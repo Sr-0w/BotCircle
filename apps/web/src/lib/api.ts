@@ -241,6 +241,7 @@ export const api = {
   /** /clear, after the user's confirmation: the current thread is set aside (kept) and a blank one starts. */
   profile: () => request<{ firstName: string | null; lastName: string | null }>('GET', '/profile'),
   setProfile: (body: { firstName: string | null; lastName: string | null }) => request<{ firstName: string | null; lastName: string | null }>('PUT', '/profile', body),
+  setPrimaryAgent: (id: string) => request<{ ok: boolean }>('PUT', `/agents/${id}/primary`),
   mentionables: (id: string) => request<{ kind: 'connector'; id: string; name: string; provider: string | null; status: 'connected' | 'not_connected' | 'permission_missing' }[]>('GET', `/agents/${id}/mentionables`),
   archives: (id: string) => request<{ id: string; createdAt: string; archivedAt: string }[]>("GET", `/agents/${id}/archives`),
   clearConversation: (id: string, conversationId: string) => request<{ conversationId: string; archivedId: string | null }>("POST", `/agents/${id}/clear`, { conversationId }),
