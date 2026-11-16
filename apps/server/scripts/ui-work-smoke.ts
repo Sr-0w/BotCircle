@@ -420,6 +420,27 @@ try {
   await page.goto(`${origin}/#/agent/${devId}`);
   await page.locator('[data-chat-exchange="chat_request"]').first().getByText(/Demande depuis le chat/).waitFor();
   await shot('chat-request-in-companion');
+  // #53 : fiche courte, renommage en place (Échap annule, Entrée enregistre), permissions sur leur page.
+  await page.goto(`${origin}/#/agent/${devId}`);
+  await page.getByRole('tab', { name: 'Profil' }).click();
+  const circleCard = page.locator('[data-circle-section="home"]');
+  await circleCard.getByRole('button', { name: 'Renommer' }).click();
+  await circleCard.getByRole('textbox', { name: 'Nom' }).fill('Ignoré');
+  await circleCard.getByRole('textbox', { name: 'Nom' }).press('Escape');
+  await circleCard.getByRole('heading', { name: 'Dev' }).waitFor();
+  await circleCard.getByRole('button', { name: 'Renommer' }).click();
+  await circleCard.getByRole('textbox', { name: 'Nom' }).fill('Devon');
+  await circleCard.getByRole('textbox', { name: 'Nom' }).press('Enter');
+  await circleCard.getByRole('heading', { name: 'Devon' }).waitFor();
+  assert.equal(await circleCard.getByRole('switch').count(), 0);
+  await circleCard.getByRole('button', { name: /Permissions/ }).click();
+  await page.locator('[data-circle-section="permissions"]').getByText('Lire des pages web').waitFor();
+  await shot('circle-permissions');
+  await page.getByRole('button', { name: 'Détails' }).click();
+  await circleCard.getByRole('button', { name: 'Renommer' }).click();
+  await circleCard.getByRole('textbox', { name: 'Nom' }).fill('Dev');
+  await circleCard.getByRole('button', { name: 'Enregistrer' }).click();
+  await circleCard.getByRole('heading', { name: 'Dev', exact: true }).waitFor();
   // #46 : /clear demande d'abord ; l'ancien fil est archivé et reste lisible.
   await page.goto(`${origin}/#/agent/${ariId}`);
   const thread = page.locator('[id^="message-"]');

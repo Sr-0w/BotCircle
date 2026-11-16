@@ -364,9 +364,20 @@ class ScreensTest {
         compose.onNodeWithText("Ari").performClick()
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companion details").performClick()
-        waitFor("Read public web pages")
-        waitFor("anthropic/claude-sonnet-5.5")
+        // #53: a short summary — the real model, four entries, no toggles; permissions on their own page.
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("anthropic/claude-sonnet-5.5", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(!compose.onAllNodesWithTextCompat("Read public web pages"))
         shoot("profile-dark")
+        compose.onNodeWithText("Permissions").performClick()
+        waitFor("INFORMATION & SERVICES")
+        waitFor("Read public web pages")
+        shoot("profile-permissions-dark")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        // The name is renamed in place: pencil, field, Done.
+        compose.onNodeWithContentDescription("Rename").performClick()
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("rename")))[0].performTextReplacement("Ariane")
+        compose.onNodeWithContentDescription("Save").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/agents/a1" && "\"name\":\"Ariane\"" in it.second } }
     }
 
     /** #38: a general chat has its own controls in its field; answers can be regenerated, messages edited, versions read. */
@@ -638,7 +649,8 @@ class ScreensTest {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companion details").performClick()
-        waitFor("Read public web pages")
+        compose.onNodeWithText("Data & connections").performClick()
+        waitFor("KNOWLEDGE")
         tapUntil("Memory", "Robin prefers short answers.")
         waitFor("shared by all companions")
         compose.onAllNodes(hasText("Forget"))[0].performClick()

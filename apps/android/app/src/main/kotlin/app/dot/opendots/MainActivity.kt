@@ -60,6 +60,8 @@ import app.dot.opendots.ui.LocalRootBackdrop
 import app.dot.opendots.ui.LocalRootActions
 import app.dot.opendots.ui.RootActions
 import app.dot.opendots.ui.CodeSessionsPage
+import app.dot.opendots.ui.CircleSection
+import app.dot.opendots.ui.CircleSectionPage
 import app.dot.opendots.ui.CompanionOrb
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Settings
@@ -190,7 +192,7 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
 private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -200,6 +202,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     // The code workspace opens from a task card anywhere; Back returns to the page that opened it.
     var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
     var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
+    var circleSection by rememberSaveable { mutableStateOf<CircleSection?>(null) }
     // The chat model picker opens from the chat's field or from its settings; Back returns there.
     var modelFromChat by rememberSaveable { mutableStateOf(false) }
     val openCode = { taskId: String -> codeTask = taskId; codeFrom = page; page = Page.CodeWorkspace }
@@ -211,7 +214,9 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     fun back() {
         keyboard?.hide()
         page = when (page) {
-            Page.Model, Page.Desktop -> Page.Profile
+            Page.CircleSection -> Page.Profile
+            // The model is set under Advanced, the computer under Data & connections.
+            Page.Model, Page.Desktop -> if (circleSection != null) Page.CircleSection else Page.Profile
             Page.Profile -> Page.Chat
             Page.ChatModel -> if (modelFromChat) Page.GeneralChat else Page.ChatSettings
             Page.DefaultModel -> Page.Providers
@@ -292,9 +297,13 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model) } })
             }
             current == Page.Profile -> {
-                CompanionProfilePage(agent!!, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onChangeModel = { page = Page.Model }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onOpenJournal = { companionJournal = true }) { patch -> app.updateAgent(agent.id, patch) }
-                if (companionMemory) MemorySheet(app, agent) { companionMemory = false }
+                LaunchedEffect(Unit) { circleSection = null }
+                CompanionProfilePage(agent!!, onBack = ::back, onOpenSection = { circleSection = it; page = Page.CircleSection }, onOpenJournal = { companionJournal = true }) { patch -> app.updateAgent(agent.id, patch) }
                 if (companionJournal) JournalSheet(app, agent) { companionJournal = false }
+            }
+            current == Page.CircleSection -> {
+                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }) { patch -> app.updateAgent(agent.id, patch) }
+                if (companionMemory) MemorySheet(app, agent) { companionMemory = false }
                 if (companionFiles) FilesSheet(app, ui, stringResource(R.string.files), agentId = agent.id, conversationId = null) { companionFiles = false }
             }
             current == Page.Model -> ModelPickerPage(app, agent!!, onBack = ::back)

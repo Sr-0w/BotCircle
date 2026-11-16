@@ -60,6 +60,13 @@
     <string name="chats_empty_body">Un chat est un fil libre, qui n’appartient à aucun compagnon. Fais-en intervenir un avec @ quand tu en as besoin.</string>
     <string name="chats_empty_title">Aucun chat</string>
     <string name="chats_none_found">Aucun chat trouvé</string>
+    <string name="circle_advanced">Avancé</string>
+    <string name="circle_advanced_note">Modèle et réglages techniques</string>
+    <string name="circle_data">Données et connexions</string>
+    <string name="circle_data_note">Fichiers, mémoire, ordinateur</string>
+    <string name="circle_knowledge">Connaissances</string>
+    <string name="circle_permissions_note">Ce qu’il a le droit de faire</string>
+    <string name="circle_resources">Ressources connectées</string>
     <string name="circles">Circles</string>
     <string name="clear_body">Une nouvelle conversation avec %1$s sera créée. L’ancienne restera dans l’historique.</string>
     <string name="clear_body_chat">Un nouveau chat vierge sera ouvert, avec les mêmes réglages. Celui-ci restera dans la liste.</string>
@@ -335,6 +342,9 @@
     <string name="perm_code">Déléguer du code à OpenCode</string>
     <string name="perm_computer">Voir et utiliser le bureau</string>
     <string name="perm_connectors">Utiliser les connecteurs</string>
+    <string name="perm_group_autonomy">Autonomie et collaboration</string>
+    <string name="perm_group_computer">Ordinateur et exécution</string>
+    <string name="perm_group_info">Information et services</string>
     <string name="perm_mail">Lire les e-mails connectés</string>
     <string name="perm_memory">Gérer sa mémoire</string>
     <string name="perm_shell">Exécuter des commandes sur son ordinateur</string>

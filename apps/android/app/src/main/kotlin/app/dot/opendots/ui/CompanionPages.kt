@@ -1,5 +1,10 @@
 package app.dot.opendots.ui
 
+import androidx.compose.ui.platform.testTag
+import app.dot.design.components.DotIconButton
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -129,74 +134,119 @@ private fun CompanionRow(agent: Agent, onClick: () -> Unit) {
  * A companion's profile page: who it is, which model it runs on, what it may do, and the way to its computer. Identity
  * normally changes by talking to it; this is the direct route.
  */
+/** The sections of a Circle's details (#53): what it may do, what it can reach, its technical settings. */
+enum class CircleSection { Permissions, Data, Advanced }
+
+/**
+ * A Circle's details (#53): a short summary — avatar, name (renamed in place with the pencil), state, description,
+ * the model it really runs on — then four entries. Toggles and technical settings live in their own pages.
+ */
 @Composable
-fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenComputer: () -> Unit, onChangeModel: () -> Unit, onOpenFiles: () -> Unit = {}, onOpenMemory: () -> Unit = {}, onOpenJournal: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
+fun CompanionProfilePage(agent: Agent, onBack: () -> Unit, onOpenSection: (CircleSection) -> Unit, onOpenJournal: () -> Unit, onUpdate: (JsonObject) -> Unit) {
     val c = Dot.colors
-    var name by rememberSaveable(agent.id, agent.name) { mutableStateOf(if (agent.named) agent.name else "") }
     QuietPage(stringResource(R.string.companion_details), onBack) {
         item {
             Row(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                 CompanionOrb(agent, size = 64.dp)
                 Spacer(Modifier.width(DotSpacing.l))
                 Column(Modifier.weight(1f)) {
-                    Text(agentDisplayName(agent), style = Dot.type.display, color = c.textPrimary, modifier = Modifier.semantics { heading() })
+                    InlineName(agent) { name -> onUpdate(buildJsonObject { put("name", name) }) }
                     Text(agent.stateDetail?.takeIf { agent.busy } ?: agentStateLabel(agent.state), style = Dot.type.callout, color = if (agent.state == "error") c.danger else c.textSecondary)
                 }
             }
             if (agent.description.isNotBlank()) Text(agent.description, style = Dot.type.body, color = c.textSecondary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s))
-            Row(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m), verticalAlignment = Alignment.Bottom) {
-                DotTextField(name, { name = it.take(40) }, Modifier.weight(1f), label = stringResource(R.string.name), imeAction = ImeAction.Done)
-                Spacer(Modifier.width(DotSpacing.m))
-                DotPrimaryButton(stringResource(R.string.save), { onUpdate(buildJsonObject { put("name", name.trim()) }) }, enabled = name.isNotBlank() && name.trim() != agent.name)
-            }
-            Hairline()
+            Hairline(Modifier.padding(top = DotSpacing.s))
         }
         item {
-            SectionLabel(stringResource(R.string.model), Modifier.padding(top = DotSpacing.l))
+            // The model it really runs on; its settings are under Advanced.
             ListRow(
-                agent.effectiveModel.model,
-                subtitle = providerLabel(agent.effectiveModel.provider) + " · " + stringResource(if (agent.model == null) R.string.model_default else R.string.model_own),
-                onClick = onChangeModel,
-                trailing = { Text(stringResource(R.string.change), style = Dot.type.label, color = c.accent) },
+                stringResource(R.string.model), subtitle = agent.effectiveModel.model + " · " + providerLabel(agent.effectiveModel.provider) + " · " + stringResource(if (agent.model == null) R.string.model_default else R.string.model_own),
+                onClick = { onOpenSection(CircleSection.Advanced) }, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) },
             )
-            if (agent.model != null) Box(Modifier.padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s)) {
-                DotButton(stringResource(R.string.model_reset), { onUpdate(JsonObject(mapOf("model" to JsonNull))) }, style = ButtonStyle.Secondary, compact = true)
-            }
+            Hairline()
+            ListRow(stringResource(R.string.permissions), subtitle = stringResource(R.string.circle_permissions_note), onClick = { onOpenSection(CircleSection.Permissions) }, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+            Hairline()
+            ListRow(stringResource(R.string.circle_data), subtitle = stringResource(R.string.circle_data_note), onClick = { onOpenSection(CircleSection.Data) }, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+            Hairline()
+            ListRow(stringResource(R.string.circle_advanced), subtitle = stringResource(R.string.circle_advanced_note), onClick = { onOpenSection(CircleSection.Advanced) }, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+            Hairline()
+            ListRow(stringResource(R.string.activity), subtitle = stringResource(R.string.journal_note), onClick = onOpenJournal, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
             Hairline()
         }
-        item {
-            ListRow(
-                stringResource(R.string.computer_row), subtitle = stringResource(R.string.computer_row_note), icon = Icons.Outlined.DesktopWindows, onClick = onOpenComputer,
-                trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) },
-            )
-            Hairline()
-            ListRow(
-                stringResource(R.string.files), subtitle = stringResource(R.string.files_row_note), icon = Icons.AutoMirrored.Outlined.InsertDriveFile, onClick = onOpenFiles,
-                trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) },
-            )
-            Hairline()
-            ListRow(stringResource(R.string.memory), subtitle = stringResource(R.string.memory_note), onClick = onOpenMemory, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
-            Hairline()
-            ListRow(stringResource(R.string.journal), subtitle = stringResource(R.string.journal_note), onClick = onOpenJournal, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
-            Hairline()
+    }
+}
+
+/** The name, with a pencil: tapping it edits the name in place; ✓ or Done saves, × cancels. */
+@Composable
+private fun InlineName(agent: Agent, onSave: (String) -> Unit) {
+    val c = Dot.colors
+    var editing by rememberSaveable(agent.id) { mutableStateOf(false) }
+    if (!editing) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(agentDisplayName(agent), style = Dot.type.display, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).semantics { heading() })
+            DotIconButton(Icons.Outlined.Edit, stringResource(R.string.rename), onClick = { editing = true }, tint = c.textSecondary)
         }
-        item {
-            SectionLabel(stringResource(R.string.permissions), Modifier.padding(top = DotSpacing.l))
-            val p = agent.permissions
-            listOf(
-                Triple("web", R.string.perm_web, p.web),
-                Triple("mail", R.string.perm_mail, p.mail),
-                Triple("shell", R.string.perm_shell, p.shell),
-                Triple("computer", R.string.perm_computer, p.computer),
-                Triple("code", R.string.perm_code, p.code),
-                Triple("connectors", R.string.perm_connectors, p.connectors),
-                Triple("manageMemory", R.string.perm_memory, p.manageMemory),
-                Triple("manageActivities", R.string.perm_activities, p.manageActivities),
-                Triple("messageAgents", R.string.perm_team, p.messageAgents),
-            ).forEach { (key, label, value) ->
-                SwitchRow(stringResource(label), null, value) { on -> onUpdate(buildJsonObject { putJsonObject("permissions") { put(key, on) } }) }
+        return
+    }
+    var name by rememberSaveable(agent.id) { mutableStateOf(if (agent.named) agent.name else "") }
+    val valid = name.isNotBlank() && name.trim().length <= 40
+    val save = { if (valid) { if (name.trim() != agent.name) onSave(name.trim()); editing = false } }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("rename")) {
+        DotTextField(name, { name = it.take(40) }, Modifier.weight(1f), placeholder = stringResource(R.string.name), imeAction = ImeAction.Done, onImeAction = save)
+        DotIconButton(Icons.Outlined.Check, stringResource(R.string.save), onClick = save, enabled = valid, tint = c.accent)
+        DotIconButton(Icons.Outlined.Close, stringResource(R.string.cancel), onClick = { name = if (agent.named) agent.name else ""; editing = false }, tint = c.textSecondary)
+    }
+}
+
+/** One section of a Circle's details. Permissions are what it may DO; Data & connections, what it can REACH. */
+@Composable
+fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenComputer: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onUpdate: (JsonObject) -> Unit) {
+    val c = Dot.colors
+    val title = stringResource(when (section) { CircleSection.Permissions -> R.string.permissions; CircleSection.Data -> R.string.circle_data; CircleSection.Advanced -> R.string.circle_advanced })
+    QuietPage(title, onBack, subtitle = agentDisplayName(agent)) {
+        when (section) {
+            CircleSection.Permissions -> {
+                val p = agent.permissions
+                listOf(
+                    R.string.perm_group_info to listOf(Triple("web", R.string.perm_web, p.web), Triple("mail", R.string.perm_mail, p.mail), Triple("connectors", R.string.perm_connectors, p.connectors)),
+                    R.string.perm_group_computer to listOf(Triple("shell", R.string.perm_shell, p.shell), Triple("computer", R.string.perm_computer, p.computer), Triple("code", R.string.perm_code, p.code)),
+                    R.string.perm_group_autonomy to listOf(Triple("manageMemory", R.string.perm_memory, p.manageMemory), Triple("manageActivities", R.string.perm_activities, p.manageActivities), Triple("messageAgents", R.string.perm_team, p.messageAgents)),
+                ).forEach { (group, perms) ->
+                    item(key = "g$group") { SectionLabel(stringResource(group), Modifier.padding(top = DotSpacing.l)) }
+                    perms.forEach { (key, label, value) ->
+                        item(key = key) { SwitchRow(stringResource(label), null, value) { on -> onUpdate(buildJsonObject { putJsonObject("permissions") { put(key, on) } }) } }
+                    }
+                }
+                item { Text(stringResource(R.string.permissions_note), style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l)) }
             }
-            Text(stringResource(R.string.permissions_note), style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s))
+            CircleSection.Data -> {
+                item { SectionLabel(stringResource(R.string.circle_knowledge), Modifier.padding(top = DotSpacing.l)) }
+                item {
+                    ListRow(stringResource(R.string.files), subtitle = stringResource(R.string.files_row_note), icon = Icons.AutoMirrored.Outlined.InsertDriveFile, onClick = onOpenFiles, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+                    Hairline()
+                    ListRow(stringResource(R.string.memory), subtitle = stringResource(R.string.memory_note), onClick = onOpenMemory, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+                    Hairline()
+                }
+                item { SectionLabel(stringResource(R.string.circle_resources), Modifier.padding(top = DotSpacing.l)) }
+                item {
+                    ListRow(stringResource(R.string.computer_row), subtitle = stringResource(R.string.computer_row_note), icon = Icons.Outlined.DesktopWindows, onClick = onOpenComputer, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+                    Hairline()
+                }
+            }
+            CircleSection.Advanced -> {
+                item { SectionLabel(stringResource(R.string.model), Modifier.padding(top = DotSpacing.l)) }
+                item {
+                    ListRow(
+                        agent.effectiveModel.model,
+                        subtitle = providerLabel(agent.effectiveModel.provider) + " · " + stringResource(if (agent.model == null) R.string.model_default else R.string.model_own),
+                        onClick = onChangeModel,
+                        trailing = { Text(stringResource(R.string.change), style = Dot.type.label, color = c.accent) },
+                    )
+                    if (agent.model != null) Box(Modifier.padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s)) {
+                        DotButton(stringResource(R.string.model_reset), { onUpdate(JsonObject(mapOf("model" to JsonNull))) }, style = ButtonStyle.Secondary, compact = true)
+                    }
+                }
+            }
         }
     }
 }

@@ -188,7 +188,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
       </TabsContent>
 
       <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-3">
-        <AgentSettings agent={agent} />
+        <AgentSettings agent={agent} onOpenTab={setTab} />
       </TabsContent>
     </Tabs>
   );

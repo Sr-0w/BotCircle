@@ -60,6 +60,13 @@
     <string name="chats_empty_body">A chat is a free thread that belongs to no companion. Call one in with @ when you need it.</string>
     <string name="chats_empty_title">No chats yet</string>
     <string name="chats_none_found">No chat found</string>
+    <string name="circle_advanced">Advanced</string>
+    <string name="circle_advanced_note">Model and technical settings</string>
+    <string name="circle_data">Data &amp; connections</string>
+    <string name="circle_data_note">Files, memory, computer</string>
+    <string name="circle_knowledge">Knowledge</string>
+    <string name="circle_permissions_note">What it may do</string>
+    <string name="circle_resources">Connected resources</string>
     <string name="circles">Circles</string>
     <string name="clear_body">A new conversation with %1$s starts. The previous one stays in the history.</string>
     <string name="clear_body_chat">A blank chat opens with the same settings. This one stays in the list.</string>
@@ -335,6 +342,9 @@
     <string name="perm_code">Delegate code to OpenCode</string>
     <string name="perm_computer">See and use the desktop</string>
     <string name="perm_connectors">Use connectors</string>
+    <string name="perm_group_autonomy">Autonomy &amp; collaboration</string>
+    <string name="perm_group_computer">Computer &amp; execution</string>
+    <string name="perm_group_info">Information &amp; services</string>
     <string name="perm_mail">Read connected mail</string>
     <string name="perm_memory">Manage its memory</string>
     <string name="perm_shell">Run commands on its computer</string>
