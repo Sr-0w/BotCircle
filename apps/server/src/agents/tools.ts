@@ -1,4 +1,6 @@
 import { sshTools } from '../ssh/tools.ts';
+import { AVATAR_PRESETS, AvatarError, resolveAvatar } from './avatars.ts';
+import './avatar-actions.ts';
 import { taskTools } from '../tasks/tools.ts';
 import { secureLoginTools } from '../securelogin/tools.ts';
 import { opencodeTools } from '../opencode/tools.ts';
@@ -292,6 +294,30 @@ export function buildTools(ctx: ToolContext): ToolSet {
   // Outils de configuration : uniquement sur demande directe de l'utilisateur,
   // jamais à cause d'un contenu externe ou d'un autre compagnon (16.4).
   if (ctx.userTurn && ctx.isMain) {
+    // #50: a silhouette is proposed with a preview card; it changes only once the user approves it.
+    tools.avatar_propose = tool({
+      description:
+        `Propose une silhouette (avatar) pour toi ou pour le Circle nommé par target, à la demande de l'utilisateur. Soit un preset (${Object.keys(AVATAR_PRESETS).join(', ')}), soit une forme simple : un contour de 3 à 24 points [x, y] dans une boîte 0–100, dans l'ordre du tour, sans croisement, assez grand, laissant la place aux yeux au centre (≈42–58 × 46–58) ; roundness de 0 (angles vifs) à 1 (très doux). Les yeux, l'ombrage et l'animation sont ajoutés automatiquement. L'utilisateur voit un aperçu et valide.`,
+      inputSchema: z.object({
+        target: z.string().min(1).optional(),
+        preset: z.string().optional(),
+        points: z.array(z.tuple([z.number(), z.number()])).min(3).max(24).optional(),
+        roundness: z.number().min(0).max(1).optional(),
+        color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+        reason: z.string().max(200).optional().describe('Ce que la forme évoque, en quelques mots'),
+      }).strict(),
+      execute: async (args, options) =>
+        guard(async () => {
+          const target = args.target ? await resolveAgentRef(args.target) : await self();
+          if (!target) return fail('Circle cible introuvable.');
+          if (target.id !== ctx.agent.id && target.createdBy !== ctx.agent.id && ctx.agent.permissions.createAgents === 'deny') return fail('Tu ne peux proposer une silhouette que pour toi ou pour un Circle que tu as créé.');
+          let avatar;
+          try { avatar = resolveAvatar({ preset: args.preset, points: args.points, roundness: args.roundness }); } catch (error) { return fail(error instanceof AvatarError ? error.message : 'Forme invalide.'); }
+          const approval = await createApproval({ agentId: ctx.agent.id, conversationId: ctx.conversationId, toolCallId: options.toolCallId, action: 'avatar.set', summary: `Nouvelle silhouette pour ${target.name}${avatar.preset ? ` : ${AVATAR_PRESETS[avatar.preset].label}` : ' (forme personnalisée)'}${args.reason ? ` — ${args.reason}` : ''}`, input: { agentId: target.id, avatar, ...(args.color ? { color: args.color } : {}) } });
+          return ok({ status: 'pending_approval', approvalId: approval.id, note: "Aperçu affiché à l'utilisateur ; la silhouette ne change qu'après sa validation. Ne dis pas qu'elle est appliquée." });
+        }),
+    });
+
     tools.agent_update_profile = tool({
       description:
         "Modifie un profil sur demande directe de l’utilisateur : le tien par défaut, ou le compagnon nommé par target. Pour changer les couleurs de l’équipe, utilise directement cet outil pour chaque cible plutôt que déléguer. Le résultat contient le profil réellement enregistré.",

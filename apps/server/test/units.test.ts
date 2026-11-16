@@ -109,6 +109,8 @@ describe('prompt système', () => {
     name: 'Compagnon',
     named: false,
     color: '#fff',
+    avatar: null,
+    avatarPrevious: null,
     description: '',
     personality: '',
     instructions: '',

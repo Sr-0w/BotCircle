@@ -51,8 +51,8 @@ export function TeamView() {
                 className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-accent", selected === t.conversationId && "bg-accent")}
               >
                 <div className="relative h-8 w-11 shrink-0">
-                  <DotAvatar color={a?.color ?? "#999"} size={26} className="absolute top-0 left-0" />
-                  <DotAvatar color={b?.color ?? "#999"} size={26} className="absolute right-0 bottom-0 ring-2 ring-background" />
+                  <DotAvatar color={a?.color ?? "#999"} shape={a?.avatar} size={26} className="absolute top-0 left-0" />
+                  <DotAvatar color={b?.color ?? "#999"} shape={b?.avatar} size={26} className="absolute right-0 bottom-0 ring-2 ring-background" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
             if (!text && !tools) return null;
             return (
               <div key={m.id} className={cn("flex gap-3", right && "flex-row-reverse")}>
-                <DotAvatar color={author?.color ?? "#999"} size={28} />
+                <DotAvatar color={author?.color ?? "#999"} shape={author?.avatar} size={28} />
                 <div className={cn("min-w-0 max-w-[80%] space-y-1", right && "items-end text-right")}>
                   <p className="text-muted-foreground text-xs">
                     {author?.name ?? t("Circle")} · {relativeTime(m.metadata?.createdAt)}

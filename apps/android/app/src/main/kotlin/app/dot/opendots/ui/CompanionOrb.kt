@@ -23,7 +23,9 @@ import androidx.compose.ui.unit.dp
 import app.dot.design.Dot
 import app.dot.design.DotMotion
 import app.dot.design.rememberReducedMotion
+import androidx.compose.ui.graphics.Path
 import app.dot.opendots.data.Agent
+import app.dot.opendots.data.AgentAvatar
 
 fun parseAgentColor(hex: String): Color =
     runCatching { Color(android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")) }.getOrDefault(Color(0xFF888888))
@@ -34,7 +36,7 @@ fun parseAgentColor(hex: String): Color =
  * slowly (still when system animations are off); an error shows a small danger mark.
  */
 @Composable
-fun CompanionOrb(color: Color, modifier: Modifier = Modifier, size: Dp = 36.dp, state: String = "available", named: Boolean = true) {
+fun CompanionOrb(color: Color, modifier: Modifier = Modifier, size: Dp = 36.dp, state: String = "available", named: Boolean = true, shape: AgentAvatar? = null) {
     val active = state in Agent.BUSY_STATES
     val reduced = rememberReducedMotion()
     val blink = if (active && !reduced) {
@@ -47,12 +49,12 @@ fun CompanionOrb(color: Color, modifier: Modifier = Modifier, size: Dp = 36.dp, 
     val page = Dot.colors.background
     Canvas(modifier.size(size)) {
         val d = this.size.minDimension
-        drawCircle(
-            Brush.radialGradient(
-                0f to lerp(color, Color.White, 0.22f), 0.55f to color, 1f to lerp(color, Color.Black, 0.22f),
-                center = Offset(d * 0.34f, d * 0.28f), radius = d * 0.85f,
-            ),
+        val fill = Brush.radialGradient(
+            0f to lerp(color, Color.White, 0.22f), 0.55f to color, 1f to lerp(color, Color.Black, 0.22f),
+            center = Offset(d * 0.34f, d * 0.28f), radius = d * 0.85f,
         )
+        val outline = shape?.takeIf { it.points.size >= 3 }?.let { avatarPath(it, d) }
+        if (outline != null) drawPath(outline, fill) else drawCircle(fill)
         val eyeW = d * 0.12f
         val eyeH = d * (if (named) 0.2f else 0.16f) * blink
         val gap = d * 0.16f
@@ -70,4 +72,25 @@ fun CompanionOrb(color: Color, modifier: Modifier = Modifier, size: Dp = 36.dp, 
 
 @Composable
 fun CompanionOrb(agent: Agent, modifier: Modifier = Modifier, size: Dp = 36.dp) =
-    CompanionOrb(parseAgentColor(agent.color), modifier, size, agent.state, agent.named)
+    CompanionOrb(parseAgentColor(agent.color), modifier, size, agent.state, agent.named, agent.avatar)
+
+/** Same curve as the web and server (`avatarPath` in shared): Catmull-Rom through the points, as cubic Béziers. */
+fun avatarPath(avatar: AgentAvatar, size: Float): Path {
+    val pts = avatar.points.filter { it.size >= 2 }
+    val n = pts.size
+    val k = avatar.roundness.coerceIn(0f, 1f) / 6f
+    val s = size / 100f
+    fun p(i: Int) = pts[((i % n) + n) % n]
+    return Path().apply {
+        moveTo(p(0)[0] * s, p(0)[1] * s)
+        for (i in 0 until n) {
+            val p0 = p(i - 1); val p1 = p(i); val p2 = p(i + 1); val p3 = p(i + 2)
+            cubicTo(
+                (p1[0] + (p2[0] - p0[0]) * k) * s, (p1[1] + (p2[1] - p0[1]) * k) * s,
+                (p2[0] - (p3[0] - p1[0]) * k) * s, (p2[1] - (p3[1] - p1[1]) * k) * s,
+                p2[0] * s, p2[1] * s,
+            )
+        }
+        close()
+    }
+}

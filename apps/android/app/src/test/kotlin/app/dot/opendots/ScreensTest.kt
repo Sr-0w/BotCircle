@@ -121,6 +121,8 @@ class ScreensTest {
                 return when {
                     path == "/auth/me" -> json(if (signedIn) """{"account":{"id":"usr_1","email":"robin@example.com","role":"admin"},"registrationOpen":true}""" else """{"account":null,"registrationOpen":true}""")
                     path == "/auth/login" -> { signedIn = true; MockResponse.Builder().code(200).addHeader("Set-Cookie", "opendots_session=tok123; Path=/; HttpOnly").body("""{"account":{"id":"usr_1","email":"robin@example.com","role":"admin"}}""").build() }
+                    path == "/avatars/presets" -> json("""[{"id":"circle","label":"Cercle","points":[[50,5],[95,50],[50,95],[5,50]],"roundness":1},{"id":"house","label":"Maison","points":[[50,6],[94,42],[94,94],[6,94],[6,42]],"roundness":0.35}]""")
+                    path == "/agents/a1/avatar" -> json("{}")
                     path == "/profile" && request.method == "PUT" -> json(request.body?.utf8() ?: "{}")
                     path == "/profile" -> json("""{"firstName":null,"lastName":null}""")
                     path == "/bootstrap" -> json("""{"onboarded":$onboarded,"openrouterConfigured":true,"paused":false}""")
@@ -314,7 +316,7 @@ class ScreensTest {
         shoot("settings-profile-dark")
     }
 
-    /** #47/#31: Code ＋ starts a real session directly (machine, project, instruction); sessions started in OpenCode are listed. */
+    /** #47/#31: Code ＋ opens a new session at once (no form); sessions started in OpenCode are listed. */
     @Test fun codeStartsASessionDirectlyAndListsSessionsFromOpenCode() {
         paired = true
         launch(ThemeMode.DARK)
@@ -323,13 +325,27 @@ class ScreensTest {
         tab("Code")
         waitFor("Started in the terminal")
         waitFor("From OpenCode")
-        compose.onNodeWithContentDescription("New coding session").performClick()
-        waitFor("devbox")
-        waitFor("botcircle")
-        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("code-instruction")) or (androidx.compose.ui.test.hasSetTextAction() and hasTestTag("code-instruction")))[0].performTextInput("Add a parser test.")
-        compose.onNodeWithText("Create and start").performClick()
+        compose.onNodeWithContentDescription("New session").performClick()
+        // The session is created over the network, off the UI thread: let it land, then check the request.
+        repeat(30) { if (posts.none { it.first == "/opencode/sessions" }) { Thread.sleep(200); compose.waitForIdle() } }
         compose.waitUntil(10_000) { posts.any { it.first == "/opencode/sessions" } }
-        assertEquals("""{"instanceId":"oc9","directory":"/home/dev/botcircle","instruction":"Add a parser test."}""", posts.first { it.first == "/opencode/sessions" }.second)
+        assertEquals("""{"instanceId":"oc9","directory":null,"instruction":""}""", posts.first { it.first == "/opencode/sessions" }.second)
+        assertTrue(compose.onAllNodes(hasTestTag("code-instruction")).fetchSemanticsNodes().isEmpty())
+    }
+
+    /** #50: Advanced offers the silhouettes (Round = the dot); picking one saves it. */
+    @Test fun circleSilhouetteIsPickedInAdvanced() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Circle details").performClick()
+        compose.onNodeWithText("Advanced").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("shape-house")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodes(hasTestTag("shape-round")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(compose.onAllNodes(hasTestTag("shape-circle")).fetchSemanticsNodes().isEmpty())
+        shoot("circle-silhouettes-dark")
+        compose.onNode(hasTestTag("shape-house")).performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/agents/a1/avatar" } }
+        assertEquals("""{"preset":"house"}""", posts.first { it.first == "/agents/a1/avatar" }.second)
     }
 
     /** #46: `/` opens a palette of real actions; a command is never sent to the model. */

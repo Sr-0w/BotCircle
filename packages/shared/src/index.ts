@@ -97,6 +97,10 @@ export interface AgentDTO {
   createdAt: string;
   /** The user's primary Circle (#47): its avatar stands for Circles in the navigation. */
   primary?: boolean;
+  /** #50: its silhouette; null = the round dot. */
+  avatar?: AgentAvatar | null;
+  /** #50: true when a previous silhouette can be restored. */
+  hasPreviousAvatar?: boolean;
   updatedAt: string;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
@@ -833,3 +837,28 @@ export function partitionToolNarrative<T extends { type: string }>(parts: T[]): 
 /** Limites communes aux images jointes au chat. */
 export const IMAGE_MAX_COUNT = 6;
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+// --- #50: Circle silhouettes ------------------------------------------------------------------------------------
+
+/**
+ * A Circle's silhouette: a closed outline of points in a 100×100 box, smoothed by `roundness` (0 = sharp corners,
+ * 1 = fully smooth). The same eyes, shading and animations go on every shape. Presets are resolved by the server, so
+ * clients only ever draw points — no SVG, HTML or script from a model reaches a page.
+ */
+export interface AgentAvatar { preset: string | null; points: [number, number][]; roundness: number }
+
+/** Closed smooth path through the points (Catmull–Rom → cubic Bézier), scaled to `size`. Same maths on Android. */
+export function avatarPath(points: [number, number][], roundness: number, size = 100): string {
+  const n = points.length;
+  if (n < 3) return '';
+  const k = Math.max(0, Math.min(1, roundness)) / 6, s = size / 100;
+  const p = (i: number) => points[(i + n) % n];
+  let d = `M${(p(0)[0] * s).toFixed(2)},${(p(0)[1] * s).toFixed(2)}`;
+  for (let i = 0; i < n; i++) {
+    const [p0, p1, p2, p3] = [p(i - 1), p(i), p(i + 1), p(i + 2)];
+    const c1 = [p1[0] + (p2[0] - p0[0]) * k, p1[1] + (p2[1] - p0[1]) * k];
+    const c2 = [p2[0] - (p3[0] - p1[0]) * k, p2[1] - (p3[1] - p1[1]) * k];
+    d += `C${(c1[0] * s).toFixed(2)},${(c1[1] * s).toFixed(2)} ${(c2[0] * s).toFixed(2)},${(c2[1] * s).toFixed(2)} ${(p2[0] * s).toFixed(2)},${(p2[1] * s).toFixed(2)}`;
+  }
+  return `${d}Z`;
+}

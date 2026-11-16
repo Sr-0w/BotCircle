@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { OpencodeInstanceDTO, TaskDTO } from '@opendots/shared';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { PlusIcon } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { openCodeWorkspace } from '@/lib/work-store';
@@ -20,7 +20,7 @@ export function CodeSessions({ instances }: { instances: OpencodeInstanceDTO[] }
   const tasks = useStore((s) => s.tasks), agents = useStore((s) => s.agents);
   const [machines, setMachines] = useState<MachineSessions[]>([]);
   const [instanceId, setInstanceId] = useState<string>(''), [projects, setProjects] = useState<string[]>([]), [directory, setDirectory] = useState('');
-  const [instruction, setInstruction] = useState(''), [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState(false);
   useEffect(() => { api.codeSessions().then(setMachines).catch(() => {}); }, [tasks.length]);
   useEffect(() => { if (!instanceId && instances.length) setInstanceId((instances.find((i) => i.state === 'online') ?? instances[0]).id); }, [instances, instanceId]);
   const instance = instances.find((i) => i.id === instanceId);
@@ -28,38 +28,35 @@ export function CodeSessions({ instances }: { instances: OpencodeInstanceDTO[] }
     if (!instanceId) return;
     api.opencodeProjects(instanceId).then((list) => {
       const dirs = [...new Set([instance?.defaultDirectory, ...list.map((p) => p.worktree)].filter((d): d is string => !!d))];
-      setProjects(dirs); setDirectory((d) => (dirs.includes(d) ? d : dirs[0] ?? ''));
+      // The project of the last session on this machine first: ＋ goes straight back to where you work.
+      const recent = tasks.filter((x) => x.provider === 'opencode' && x.external?.instanceId === instanceId && x.external?.directory).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.external?.directory ?? '';
+      setProjects(dirs); setDirectory((d) => (dirs.includes(d) ? d : dirs.includes(recent) ? recent : dirs[0] ?? ''));
     }).catch(() => { setProjects([]); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId, instance?.defaultDirectory]);
   const sessions = useMemo(() => tasks.filter((task) => task.provider === 'opencode').sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [tasks]);
   const outside = machines.flatMap((m) => m.sessions.filter((s) => !s.taskId).map((s) => ({ machine: m, session: s })));
   const by = (task: TaskDTO) => task.requestedBy === 'user' ? t('Par toi') : task.requestedBy === 'opencode' ? t('Depuis OpenCode') : t('Par {v0}', { v0: agents.find((a) => a.id === task.agentId)?.name ?? t('un Circle') });
 
   async function start() {
-    if (!instanceId || !instruction.trim()) return;
+    if (!instanceId) return;
     setStarting(true);
-    try { const task = await api.startCodeSession({ instanceId, directory: directory || null, instruction: instruction.trim() }); setInstruction(''); openCodeWorkspace(task.id); }
+    // Code ＋ opens the session itself: the first message is written there, with its model picker.
+    try { const task = await api.startCodeSession({ instanceId, directory: directory || null, instruction: '' }); openCodeWorkspace(task.id); }
     catch (e) { toast.error((e as Error).message); } finally { setStarting(false); }
   }
   return (
     <section className="space-y-4" data-code-sessions>
       {instances.length > 0 && (
-        <div className="space-y-2 rounded-2xl border p-4" data-new-code-session>
-          <p className="font-medium text-sm">{t('Nouvelle session de code')}</p>
-          <div className="flex flex-wrap gap-2">
-            <select aria-label={t('Machine')} className="h-8 rounded-md border bg-background px-2 text-xs" value={instanceId} onChange={(e) => setInstanceId(e.target.value)}>
-              {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </select>
-            <select aria-label={t('Projet')} className="h-8 min-w-32 flex-1 rounded-md border bg-background px-2 text-xs" value={directory} onChange={(e) => setDirectory(e.target.value)}>
-              {!projects.length && <option value="">{t('Le dossier par défaut de la machine')}</option>}
-              {projects.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <Textarea rows={3} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder={t('Que doit faire OpenCode ?')} aria-label={t('Consigne')} />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="min-w-48 flex-1 text-muted-foreground text-xs">{t('Utilise le modèle par défaut de la session ; tu peux le changer dans la session.')}</p>
-            <Button size="sm" disabled={starting || !instruction.trim()} onClick={() => void start()}>{t('Créer et lancer')}</Button>
-          </div>
+        <div className="flex flex-wrap items-center gap-2" data-new-code-session>
+          <Button size="sm" disabled={starting || !instanceId} onClick={() => void start()}><PlusIcon />{t('Nouvelle session')}</Button>
+          <select aria-label={t('Machine')} className="h-8 rounded-md border bg-background px-2 text-xs" value={instanceId} onChange={(e) => setInstanceId(e.target.value)}>
+            {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <select aria-label={t('Projet')} className="h-8 min-w-32 rounded-md border bg-background px-2 text-xs" value={directory} onChange={(e) => setDirectory(e.target.value)}>
+            {!projects.length && <option value="">{t('Le dossier par défaut de la machine')}</option>}
+            {projects.map((d) => <option key={d} value={d}>{d.replace(/\/+$/, '').split('/').pop() || d}</option>)}
+          </select>
         </div>
       )}
       {(sessions.length > 0 || outside.length > 0) && (

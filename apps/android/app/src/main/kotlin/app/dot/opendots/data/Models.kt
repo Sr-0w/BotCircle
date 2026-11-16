@@ -80,11 +80,24 @@ data class Agent(
     val mainConversationId: String = "",
     /** The user's primary Circle: its avatar stands for Circles in the dock (#47, #59). */
     val primary: Boolean = false,
+    /** Its silhouette (#50); null = the round dot. */
+    val avatar: AgentAvatar? = null,
+    val hasPreviousAvatar: Boolean = false,
     val createdAt: String = "",
     val archived: Boolean = false,
 ) {
     val busy: Boolean get() = state in BUSY_STATES
     companion object { val BUSY_STATES = setOf("awake", "thinking", "working", "collaborating") }
+}
+
+/** A Circle's outline: points on a 0–100 grid joined by a closed curve whose softness is [roundness] (#50). */
+@Immutable
+@Serializable
+data class AgentAvatar(val preset: String? = null, val points: List<List<Float>> = emptyList(), val roundness: Float = 1f)
+
+@Serializable
+data class AvatarPreset(val id: String, val label: String = "", val points: List<List<Float>> = emptyList(), val roundness: Float = 1f) {
+    val avatar: AgentAvatar get() = AgentAvatar(id, points, roundness)
 }
 
 @Immutable

@@ -39,8 +39,8 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
       <DialogContent className="flex h-[85vh] max-w-3xl flex-col gap-0 p-0">
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
-            {me && <DotAvatar color={me.color} size={20} />}
-            {peer && <DotAvatar color={peer.color} size={20} />}
+            {me && <DotAvatar color={me.color} shape={me?.avatar} size={20} />}
+            {peer && <DotAvatar color={peer.color} shape={peer?.avatar} size={20} />}
             <span>
               {me?.name ?? t("Circle")} ↔ {peer?.name ?? t("Circle")}
             </span>
@@ -64,7 +64,7 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
                 return (
                   <div key={m.id} className={cn("flex flex-col gap-1.5", mine ? "items-end" : "items-start")}>
                     <div className={cn("flex items-center gap-2 text-muted-foreground text-xs", mine && "flex-row-reverse")}>
-                      <DotAvatar color={author?.color ?? "#999"} size={20} />
+                      <DotAvatar color={author?.color ?? "#999"} shape={author?.avatar} size={20} />
                       <span className="font-medium text-foreground">{author?.name ?? t("Circle")}</span>
                       <span className="opacity-60">{formatDateTime(m.metadata?.createdAt)}</span>
                     </div>
@@ -101,7 +101,7 @@ export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, onClo
       <DialogContent className="flex h-[85vh] max-w-3xl flex-col gap-0 p-0" data-testid="archive-dialog">
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
-            {agent && <DotAvatar color={agent.color} size={20} />}
+            {agent && <DotAvatar color={agent.color} shape={agent?.avatar} size={20} />}
             <span>{t("Ancien fil")}</span>
           </DialogTitle>
           <DialogDescription>{t("Archivé le {v0} — lecture seule", { v0: formatDateTime(archivedAt) })}</DialogDescription>

@@ -117,7 +117,7 @@ export function TasksPage() {
         {groups.map(({ agent, items: list }) => (
           <section key={agent.id}>
             <div className="mb-2 flex items-center gap-2">
-              <DotAvatar color={agent.color} size={20} state={agent.state} />
+              <DotAvatar color={agent.color} shape={agent?.avatar} size={20} state={agent.state} />
               <h2 className="font-medium text-sm">{agent.name}</h2>
               <span className="text-muted-foreground text-xs">{list.length}</span>
             </div>

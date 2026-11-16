@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, TriangleAlertIcon, XIcon } from "lucide-react";
-import type { ApprovalDTO } from "@opendots/shared";
+import type { AgentAvatar, ApprovalDTO } from "@opendots/shared";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ServiceLogo } from "@/components/brand/service-logo";
+import { DotAvatar } from "../dot-avatar";
 
 import { t } from "@/lib/i18n";
 const STATUS: Record<ApprovalDTO["status"], string> = {
@@ -102,7 +103,7 @@ export function ApprovalCard({ approvalId, fallbackSummary, embedded }: { approv
       <div className={cn("not-prose w-full", !embedded && "max-w-md rounded-2xl border bg-card")} data-approval={status}>
         <button type="button" onClick={() => setOpen(!open)} disabled={!hasDetails} aria-expanded={open}
           className="flex min-h-12 w-full items-center gap-3 px-3.5 py-2 text-left disabled:cursor-default">
-          <ServiceLogo service={approval?.service} />
+          {approval?.action === 'avatar.set' ? <AvatarProposal input={approval.input} /> : <ServiceLogo service={approval?.service} />}
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block truncate text-sm">{summary.title}</span>
             <span className={cn("block truncate text-xs", status === "failed" ? "text-destructive" : "text-muted-foreground")}>{t(STATUS[status])}</span>
@@ -118,7 +119,7 @@ export function ApprovalCard({ approvalId, fallbackSummary, embedded }: { approv
   return (
     <div className={cn("not-prose w-full px-3.5 py-3", !embedded && "max-w-md rounded-2xl border border-foreground/25 bg-card")} data-approval="pending">
       <div className="flex items-start gap-3">
-        <ServiceLogo service={approval?.service} className="mt-0.5" />
+        {approval?.action === "avatar.set" ? <AvatarProposal input={approval.input} /> : <ServiceLogo service={approval?.service} className="mt-0.5" />}
         <div className="min-w-0 flex-1">
           <p className="font-medium text-sm leading-snug [overflow-wrap:anywhere]">{summary.title}</p>
           <p className="truncate text-muted-foreground text-xs">{[summary.context, agent ? t("Demandé par {v0}", { v0: agent.name }) : null].filter(Boolean).join(" · ")}</p>
@@ -157,4 +158,12 @@ export function ApprovalGroup({ ids }: { ids: string[] }) {
       <div className="divide-y">{ids.map((id) => <ApprovalCard key={id} approvalId={id} embedded />)}</div>
     </div>
   );
+}
+
+
+/** #50: a proposed silhouette is shown as it will look, before the user approves it. */
+function AvatarProposal({ input }: { input: unknown }) {
+  const value = input as { agentId?: string; avatar?: AgentAvatar; color?: string } | null;
+  const agent = useStore((s) => s.agents.find((a) => a.id === value?.agentId));
+  return <span data-avatar-proposal><DotAvatar color={value?.color ?? agent?.color ?? '#7c3aed'} shape={value?.avatar ?? null} size={36} /></span>;
 }

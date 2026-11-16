@@ -2,6 +2,9 @@ import sys
 from xml.sax.saxutils import escape
 S = {
  "app_name": ("BotCircle", "BotCircle"),
+ "avatar_shape": ("Silhouette", "Silhouette"), "avatar_round": ("Round", "Rond"),
+ "avatar_restore": ("Back to the previous silhouette", "Revenir à la silhouette précédente"),
+ "avatar_shape_note": ("You can also ask this Circle to imagine its own shape: it will show you a preview before applying it.", "Tu peux aussi demander à ce Circle d’imaginer sa propre forme : il t’en montrera l’aperçu avant de l’appliquer."),
  "about": ("About", "À propos"), "account": ("Account", "Compte"),
  "answers_sent": ("Answers sent", "Réponses envoyées"),
  "appearance": ("Appearance", "Apparence"),
@@ -276,7 +279,7 @@ S = {
  "settings_about_note": ('Version and developer tools', 'Version et outils de développement'),
  "settings_ai_circle_note": ("A Circle's own model and permissions are in its details.", 'Le modèle et les permissions propres à un Circle sont dans sa fiche.'),
  "settings_connections_scope": ("Registering a machine here does not give every Circle access: each Circle's access is set in its details, under Data & connections.", 'Enregistrer une machine ici ne la donne pas à tous les Circles : l’accès de chacun se règle dans sa fiche, sous Données et connexions.'),
- "code_new": ('New coding session', 'Nouvelle session de code'),
+ "code_new": ('New session', 'Nouvelle session'),
  "code_from_opencode": ('From OpenCode', 'Depuis OpenCode'),
  "code_untitled": ('Untitled session', 'Session sans titre'),
  "code_no_machine": ('No connected machine', 'Aucune machine connectée'),
@@ -432,7 +435,7 @@ S = {
  "code_tab_changes": ('Changes', 'Changements'),
  "code_tab_exchanges": ('Exchanges', 'Échanges'),
  "code_unreachable": ('Instance unreachable: this is the last known state, not a result.', 'Instance injoignable : l’état affiché est le dernier connu, pas un résultat.'),
- "code_no_message": ('The session has no message yet.', 'La session n’a pas encore de message.'),
+ "code_no_message": ('New session: write what OpenCode should do below. You can pick the model in the field.', 'Nouvelle session : écris ci-dessous ce qu’OpenCode doit faire. Le modèle se choisit dans le champ.'),
  "code_cannot_read": ('This cannot be read right now.', 'Illisible pour l’instant.'),
  "code_permission": ('OpenCode asks for permission', 'OpenCode demande une autorisation'),
  "code_allow_once": ('Allow once', 'Autoriser cette fois'),

@@ -27,6 +27,8 @@ import { archivedConversations, createAgent, getAgent, listAgentRows, listAgents
 import { runTurn, stopAgent } from '../agents/turn.ts';
 import { getUserProfile, setUserProfile } from '../profile.ts';
 import { connectorMentionables } from '../agents/mentions.ts';
+import { AVATAR_PRESETS, resolveAvatar } from '../agents/avatars.ts';
+import { applyAvatar, restoreAvatar } from '../agents/avatar-actions.ts';
 import { getActiveStream } from '../agents/streams.ts';
 import { getConversation, listTeamThreads, pairConversationId, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import {
@@ -348,6 +350,17 @@ export function createApi() {
     if (!agent) return c.json({ error: 'Introuvable' }, 404);
     return c.json(await connectorMentionables(agent));
   });
+
+  // #50: the user picks a silhouette directly (no approval needed: it is their own choice), or restores the previous one.
+  api.put('/agents/:id/avatar', async (c) => {
+    const body = z.object({ preset: z.string().nullable().optional(), points: z.array(z.tuple([z.number(), z.number()])).max(24).optional(), roundness: z.number().min(0).max(1).optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional() }).strict().parse(await c.req.json());
+    try {
+      const avatar = body.preset === null ? null : resolveAvatar(body);
+      return c.json(await toAgentDTO(await applyAvatar(c.req.param('id'), avatar, body.color)));
+    } catch (error) { return c.json({ error: error instanceof Error ? error.message : 'Forme invalide.' }, 400); }
+  });
+  api.post('/agents/:id/avatar/restore', async (c) => c.json(await toAgentDTO(await restoreAvatar(c.req.param('id')))));
+  api.get('/avatars/presets', (c) => c.json(Object.entries(AVATAR_PRESETS).map(([id, p]) => ({ id, label: p.label, points: p.points, roundness: p.roundness }))));
 
   // #47: the user chooses their primary Circle; every client updates its navigation avatar.
   api.put('/agents/:id/primary', async (c) => {

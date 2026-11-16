@@ -70,7 +70,7 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
     : task.blocker ?? task.currentActionSummary ?? task.phase;
   return (
     <div data-task-card={task.status} className={cn('flex flex-col gap-2 rounded-2xl border bg-card px-3.5 py-3 text-left', compact ? 'w-full' : 'w-[min(100%,26rem)]')}>
-      {showAgent && agent && <div className="flex items-center gap-1.5 text-muted-foreground text-xs"><DotAvatar color={agent.color} size={14} /> <span className="font-medium text-foreground">{agent.name}</span> · {t('intervention')}</div>}
+      {showAgent && agent && <div className="flex items-center gap-1.5 text-muted-foreground text-xs"><DotAvatar color={agent.color} shape={agent?.avatar} size={14} /> <span className="font-medium text-foreground">{agent.name}</span> · {t('intervention')}</div>}
       <div className="flex items-start gap-2.5">
         <TaskStatusIcon status={task.status} className="mt-0.5" />
         <div className="min-w-0 flex-1">

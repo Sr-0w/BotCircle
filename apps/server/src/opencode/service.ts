@@ -229,6 +229,8 @@ export async function startDirectSession(input: { instanceId: string; directory?
   }
   const conversationId = newId('cv');
   await db().insert(schema.conversations).values({ id: conversationId, kind: 'task', agentId: null, title: 'Code' });
+  // Code ＋ opens the session right away: an empty OpenCode session, the first message is typed in it.
+  if (!input.instruction.trim()) return openEmptySession(instance, input.directory ?? null, conversationId, input.title?.trim() || 'Nouvelle session');
   const title = input.title?.trim() || truncate(input.instruction.replace(/\s+/g, ' ').trim(), 80);
   return startOpencodeTask({ agentId: DIRECT_OWNER, conversationId, instance, directory: input.directory ?? null, title, instruction: input.instruction, requestedBy: 'user', model: input.model ?? null });
 }
@@ -247,6 +249,23 @@ export async function allSessions(): Promise<{ instanceId: string; instanceName:
       return { instanceId: row.id, instanceName: row.name, reachable: true, sessions: sessions.map((s) => ({ ...s, taskId: linked.get(`${row.id}:${s.id}`) ?? null })) };
     } catch { return { instanceId: row.id, instanceName: row.name, reachable: false, sessions: [] }; }
   }));
+}
+
+/** A new, idle OpenCode session with nothing sent yet: the user writes in it from the workspace. */
+async function openEmptySession(instance: InstanceRow, dir: string | null, conversationId: string, title: string) {
+  const client = await clientFor(instance);
+  const directory = dir?.trim() || instance.defaultDirectory || null;
+  const session = await client.createSession(title.slice(0, 120), directory);
+  const id = newId('task');
+  await db().insert(schema.tasks).values({
+    id, agentId: DIRECT_OWNER, conversationId, workConversationId: conversationId, title: title.slice(0, 200), instruction: '',
+    requestedBy: 'user', provider: 'opencode', status: 'completed', startedAt: new Date(), finishedAt: new Date(),
+    external: { instanceId: instance.id, sessionId: session.id, directory: session.directory ?? directory, seenMessageId: null, unreachable: false },
+  });
+  const row = (await getTask(id))!;
+  publish({ type: 'task.changed', task: await toTaskDTO(row) });
+  publish({ type: 'opencode.changed' });
+  return row;
 }
 
 export async function attachSession(input: { instanceId: string; sessionId: string; directory?: string | null }) {
@@ -348,7 +367,7 @@ export async function instructOpencode(task: TaskRow, instruction: string, autho
   const delivered = await client.prompt(ext.sessionId, instruction, ext.directory, busy ? delivery : undefined, { files, model: client.version === 'v1' ? ext.model ?? null : null });
   await exchange(task, { author, kind: 'instruction', text: files.length ? `${instruction}\n\nFichiers joints : ${files.map((f) => f.name).join(', ')}` : instruction, original });
   // Une session terminée repart : la carte redevient « en cours », le prochain résultat sera un nouveau résultat.
-  await patchExternal(task, { promptedAt: Date.now(), unreachable: false, quota: null }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
+  await patchExternal(task, { promptedAt: Date.now(), unreachable: false, quota: null }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, ...(task.instruction ? {} : { instruction: instruction.trim().slice(0, 8000), title: truncate(instruction.replace(/\s+/g, ' ').trim(), 80) }), currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
   return { queued: busy, delivery: busy ? (delivered ?? 'queue') : null };
 }
 

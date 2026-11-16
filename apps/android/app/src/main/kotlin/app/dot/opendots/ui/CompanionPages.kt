@@ -1,6 +1,14 @@
 package app.dot.opendots.ui
 
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.contentDescription
+import app.dot.opendots.data.AvatarPreset
+import app.dot.opendots.data.AgentAvatar
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Arrangement
 import app.dot.design.components.DotIconButton
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Check
@@ -200,7 +208,7 @@ private fun InlineName(agent: Agent, onSave: (String) -> Unit) {
 
 /** One section of a Circle's details. Permissions are what it may DO; Data & connections, what it can REACH. */
 @Composable
-fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenComputer: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onMakePrimary: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
+fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenComputer: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onMakePrimary: () -> Unit = {}, loadPresets: suspend () -> List<AvatarPreset> = { emptyList() }, onSetAvatar: (String?) -> Unit = {}, onRestoreAvatar: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
     val c = Dot.colors
     val title = stringResource(when (section) { CircleSection.Permissions -> R.string.permissions; CircleSection.Data -> R.string.circle_data; CircleSection.Advanced -> R.string.circle_advanced })
     QuietPage(title, onBack, subtitle = agentDisplayName(agent)) {
@@ -246,6 +254,8 @@ fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, 
                         DotButton(stringResource(R.string.model_reset), { onUpdate(JsonObject(mapOf("model" to JsonNull))) }, style = ButtonStyle.Secondary, compact = true)
                     }
                 }
+                // #50: the Circle's silhouette.
+                item { ShapePicker(agent, loadPresets, onSetAvatar, onRestoreAvatar) }
                 // #47: the primary Circle's avatar stands for Circles in the dock.
                 item {
                     SectionLabel(stringResource(R.string.primary_circle), Modifier.padding(top = DotSpacing.l))
@@ -339,3 +349,33 @@ fun SwitchRow(title: String, subtitle: String?, checked: Boolean, enabled: Boole
     }
 }
 
+
+/** #50: presets drawn from the server's outlines; "Round" is the plain dot; the previous silhouette can come back. */
+@Composable
+private fun ShapePicker(agent: Agent, loadPresets: suspend () -> List<AvatarPreset>, onSet: (String?) -> Unit, onRestore: () -> Unit) {
+    val c = Dot.colors
+    var presets by remember { mutableStateOf<List<AvatarPreset>>(emptyList()) }
+    LaunchedEffect(Unit) { presets = loadPresets() }
+    val color = parseAgentColor(agent.color)
+    SectionLabel(stringResource(R.string.avatar_shape), Modifier.padding(top = DotSpacing.l))
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s).testTag("shape-picker"),
+        horizontalArrangement = Arrangement.spacedBy(DotSpacing.s),
+    ) {
+        @Composable
+        fun option(id: String?, label: String, shape: AgentAvatar?) {
+            val selected = if (id == null) agent.avatar == null else agent.avatar?.preset == id
+            Box(
+                Modifier.size(48.dp).clip(DotShapes.medium).background(if (selected) c.surfaceRaised else c.surface)
+                    .border(DotSpacing.hairline * 2, if (selected) c.borderStrong else c.border, DotShapes.medium)
+                    .selectable(selected = selected, role = Role.RadioButton) { onSet(id) }
+                    .semantics { contentDescription = label }.testTag("shape-${id ?: "round"}"),
+                contentAlignment = Alignment.Center,
+            ) { CompanionOrb(color, size = 32.dp, named = agent.named, shape = shape) }
+        }
+        option(null, stringResource(R.string.avatar_round), null)
+        presets.filter { it.id != "circle" }.forEach { option(it.id, it.label, it.avatar) }
+    }
+    if (agent.hasPreviousAvatar) Box(Modifier.padding(horizontal = DotSpacing.gutter)) { DotButton(stringResource(R.string.avatar_restore), onRestore, style = ButtonStyle.Secondary, compact = true) }
+    Text(stringResource(R.string.avatar_shape_note), style = Dot.type.caption, color = c.textSecondary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xs))
+}

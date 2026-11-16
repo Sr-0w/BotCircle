@@ -60,7 +60,6 @@ import app.dot.opendots.ui.LocalRootBackdrop
 import app.dot.opendots.ui.LocalRootActions
 import app.dot.opendots.ui.RootActions
 import app.dot.opendots.ui.CodeSessionsPage
-import app.dot.opendots.ui.NewCodeSessionPage
 import app.dot.opendots.ui.SshPage
 import app.dot.opendots.ui.HomeAssistantPage
 import app.dot.opendots.ui.CircleSection
@@ -195,9 +194,9 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.NewCodeSession, Page.Ssh, Page.HomeAssistant, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
+private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.Ssh, Page.HomeAssistant, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, NewCodeSession, Ssh, HomeAssistant, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Ssh, HomeAssistant, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -231,7 +230,6 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             // Pages opened from Settings return to it; Settings returns to the tab it was opened from.
             // Settings is a tab: its pages return to it (the tab stays selected).
             Page.SettingsSection -> Page.None
-            Page.NewCodeSession -> Page.None
             Page.Ssh, Page.HomeAssistant -> Page.SettingsSection
             Page.Catalog -> Page.SettingsSection
             Page.Providers, Page.AgentBehaviour -> Page.SettingsSection
@@ -275,7 +273,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                         when (tab) {
                             Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
                             Tab.Chat -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
-                            Tab.Code -> CodeSessionsPage(app, ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { page = Page.NewCodeSession })
+                            Tab.Code -> CodeSessionsPage(app, ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { app.newCodeSession(onNoMachine = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace } })
                             Tab.Settings -> SettingsScreen(app, ui, onOpenSection = { settingsSection = it; page = Page.SettingsSection })
                         }
                     }
@@ -291,7 +289,6 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             // Settings is the fourth tab now; an old saved page lands on it.
             current == Page.Settings -> LaunchedEffect(Unit) { tab = Tab.Settings; page = Page.None }
             current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back, onOpenTeam = { page = Page.Team })
-            current == Page.NewCodeSession -> NewCodeSessionPage(app, onBack = ::back, onOpenInstances = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace }
             current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenSsh = { page = Page.Ssh }, onOpenHomeAssistant = { page = Page.HomeAssistant })
             current == Page.HomeAssistant -> HomeAssistantPage(app, ui, onBack = ::back)
             current == Page.Ssh -> SshPage(app, ui, onBack = ::back)
@@ -318,7 +315,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 if (companionJournal) JournalSheet(app, agent) { companionJournal = false }
             }
             current == Page.CircleSection -> {
-                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }, onMakePrimary = { app.setPrimaryAgent(agent.id) }) { patch -> app.updateAgent(agent.id, patch) }
+                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }, onMakePrimary = { app.setPrimaryAgent(agent.id) }, loadPresets = app::avatarPresets, onSetAvatar = { app.setAvatar(agent.id, it) }, onRestoreAvatar = { app.restoreAvatar(agent.id) }) { patch -> app.updateAgent(agent.id, patch) }
                 if (companionMemory) MemorySheet(app, agent) { companionMemory = false }
                 if (companionFiles) FilesSheet(app, ui, stringResource(R.string.files), agentId = agent.id, conversationId = null) { companionFiles = false }
             }

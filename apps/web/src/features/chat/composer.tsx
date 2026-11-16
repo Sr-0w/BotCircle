@@ -14,7 +14,7 @@ export const isChatImage = (file: File) => IMAGE_TYPES.includes(file.type) || (f
 export function formatBytes(size: number) { return size < 1024 ? `${size} o` : size < 1024 * 1024 ? `${Math.round(size / 1024)} Ko` : `${(size / 1024 / 1024).toFixed(1)} Mo`; }
 
 type DraftFile = { id: string; file: File; preview: string | null };
-export type MentionTarget = { id: string; name: string; color?: string; description?: string; provider?: string | null; disabled?: boolean };
+export type MentionTarget = { id: string; name: string; color?: string; description?: string; provider?: string | null; disabled?: boolean; avatar?: import("@opendots/shared").AgentAvatar | null };
 /**
  * A `/` command (#46): a real action of the app, never a prompt for the model. Typed by the user only; text coming
  * from a message, a file or a tool is never parsed as a command.
@@ -160,7 +160,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
         </button>
       ))}
     </div>}
-     {mention && <div role="listbox" aria-label={mentionLabel ?? t('Circles')} className="absolute bottom-full left-3 mb-2 w-64 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{option.color ? <DotAvatar color={option.color} size={18} /> : option.provider ? <ServiceLogo service={option.provider} className="size-[18px]" /> : <AtSignIcon className="size-4 text-muted-foreground" />}<span className="min-w-0"><span className="block font-medium">@{option.name}</span>{option.description && <span className="block truncate text-muted-foreground text-xs">{option.description}</span>}</span></button>)}</div>}
+     {mention && <div role="listbox" aria-label={mentionLabel ?? t('Circles')} className="absolute bottom-full left-3 mb-2 w-64 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{option.color ? <DotAvatar color={option.color} shape={option?.avatar} size={18} /> : option.provider ? <ServiceLogo service={option.provider} className="size-[18px]" /> : <AtSignIcon className="size-4 text-muted-foreground" />}<span className="min-w-0"><span className="block font-medium">@{option.name}</span>{option.description && <span className="block truncate text-muted-foreground text-xs">{option.description}</span>}</span></button>)}</div>}
     {reply && <div className="flex items-start gap-2 px-3 pt-2 text-xs"><div className="min-w-0 flex-1 border-l-2 border-foreground/30 pl-2"><p className="font-medium">{t('En réponse à')}</p><p className="truncate text-muted-foreground">{reply.preview || t('Message')}</p></div><Button type="button" size="icon-xs" variant="ghost" aria-label={t('Annuler la réponse')} onClick={onClearReply}><XIcon /></Button></div>}
     {files.length > 0 && <div className="flex flex-wrap gap-2 px-2 pt-2" aria-label={t('Fichiers joints')}>{files.map((item) => <div key={item.id} className="relative">
       {item.preview

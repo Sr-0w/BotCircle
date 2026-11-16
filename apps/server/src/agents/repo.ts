@@ -168,6 +168,8 @@ export async function toAgentDTO(row: AgentRow, primary?: string | null): Promis
     mainConversationId: convId,
     archived: row.archived,
     primary: row.id === (primary === undefined ? await primaryAgentId() : primary),
+    avatar: row.avatar ?? null,
+    hasPreviousAvatar: Boolean(row.avatarPrevious),
   };
 }
 

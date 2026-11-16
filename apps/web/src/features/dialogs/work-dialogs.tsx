@@ -34,7 +34,7 @@ export function TaskDialog({ taskId, onClose }: { taskId: string; onClose: () =>
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">{task && <TaskStatusIcon status={task.status} />}<span className="min-w-0 truncate">{task?.title ?? t('Tâche')}</span></DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-1.5">
-            {agent && <><DotAvatar color={agent.color} size={14} /> {agent.name} ·</>}
+            {agent && <><DotAvatar color={agent.color} shape={agent?.avatar} size={14} /> {agent.name} ·</>}
             {task && <>{t(TASK_STATUS_LABELS[task.status])}{task.completedSteps > 0 && ` · ${t('{count} actions', { count: task.completedSteps })}`} · {formatDateTime(task.createdAt)}</>}
           </DialogDescription>
         </DialogHeader>
@@ -105,12 +105,12 @@ export function ArtifactDialog({ artifactId, onClose }: { artifactId: string; on
               {activeGrants.length === 0 && <p className="text-muted-foreground text-xs">{t('Aucun Circle ne peut lire ce fichier.')}</p>}
               {activeGrants.map((grant) => { const agent = agents.find((a) => a.id === grant.agentId); return (
                 <div key={grant.agentId} className="flex items-center gap-2" data-grant>
-                  {agent && <DotAvatar color={agent.color} size={16} />}
+                  {agent && <DotAvatar color={agent.color} shape={agent?.avatar} size={16} />}
                   <span className="min-w-0 flex-1"><span className="font-medium">{agent?.name ?? t('Un Circle')}</span> <span className="text-muted-foreground text-xs">· {t('par {v0}', { v0: who(grant.grantedBy) })} · {formatDateTime(grant.createdAt)}</span></span>
                   <Button size="sm" variant="ghost" className="h-7 text-destructive text-xs" onClick={() => void apply(api.revokeArtifact(artifactId, grant.agentId))}>{t('Retirer')}</Button>
                 </div>
               ); })}
-              {others.length > 0 && <div className="flex flex-wrap gap-1.5 pt-1">{others.map((agent) => <Button key={agent.id} size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => void apply(api.grantArtifact(artifactId, agent.id))}><DotAvatar color={agent.color} size={12} /> {t('Donner à {v0}', { v0: agent.name })}</Button>)}</div>}
+              {others.length > 0 && <div className="flex flex-wrap gap-1.5 pt-1">{others.map((agent) => <Button key={agent.id} size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => void apply(api.grantArtifact(artifactId, agent.id))}><DotAvatar color={agent.color} shape={agent?.avatar} size={12} /> {t('Donner à {v0}', { v0: agent.name })}</Button>)}</div>}
             </section>
             <section>
               <h3 className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">{t('Historique')}</h3>

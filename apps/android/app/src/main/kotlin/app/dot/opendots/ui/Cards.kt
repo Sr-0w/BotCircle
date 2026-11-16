@@ -76,6 +76,7 @@ import app.dot.opendots.data.Approval
 import app.dot.opendots.data.AskQuestion
 import app.dot.opendots.data.ChatMessage
 import app.dot.opendots.data.OdJson
+import app.dot.opendots.data.AgentAvatar
 import app.dot.opendots.data.Part
 import app.dot.opendots.data.arr
 import app.dot.opendots.data.asObject
@@ -196,7 +197,7 @@ fun ApprovalCard(approvalId: String, fallbackSummary: String?, env: MessageEnv, 
                 Modifier.fillMaxWidth().clickable(enabled = hasDetails, role = Role.Button) { open = !open }.heightIn(min = 52.dp).padding(horizontal = DotSpacing.m, vertical = DotSpacing.s),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ServiceLogo(approval?.service)
+                if (approval?.action == "avatar.set") AvatarProposal(approval, env) else ServiceLogo(approval?.service)
                 Spacer(Modifier.width(DotSpacing.m))
                 Column(Modifier.weight(1f)) {
                     Text(summary.title.ifBlank { stringResource(R.string.approval_title) }, style = Dot.type.callout, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -211,7 +212,7 @@ fun ApprovalCard(approvalId: String, fallbackSummary: String?, env: MessageEnv, 
     }
     Column(modifier.fillMaxWidth().then(surface).padding(horizontal = DotSpacing.m, vertical = DotSpacing.m).testTag("approval-pending")) {
         Row(verticalAlignment = Alignment.Top) {
-            ServiceLogo(approval?.service, Modifier.padding(top = 2.dp))
+            if (approval?.action == "avatar.set") AvatarProposal(approval, env) else ServiceLogo(approval?.service, Modifier.padding(top = 2.dp))
             Spacer(Modifier.width(DotSpacing.m))
             Column(Modifier.weight(1f)) {
                 Text(summary.title.ifBlank { stringResource(R.string.approval_title) }, style = Dot.type.bodyStrong, color = c.textPrimary)
@@ -525,4 +526,14 @@ fun SecureLoginCard(login: app.dot.opendots.data.SecureLogin?, env: MessageEnv) 
             }
         }
     }
+}
+
+/** #50: the proposed silhouette, drawn as it will look, before the user approves it. */
+@Composable
+private fun AvatarProposal(approval: Approval, env: MessageEnv) {
+    val input = approval.input as? JsonObject
+    val shape = remember(input) { runCatching { OdJson.decodeFromJsonElement<AgentAvatar>(input!!["avatar"]!!) }.getOrNull() }
+    val target = (input?.get("agentId") as? JsonPrimitive)?.content?.let { id -> env.agents.firstOrNull { it.id == id } }
+    val color = (input?.get("color") as? JsonPrimitive)?.content ?: target?.color ?: "#7c3aed"
+    CompanionOrb(parseAgentColor(color), Modifier.testTag("avatar-proposal"), size = 36.dp, shape = shape)
 }

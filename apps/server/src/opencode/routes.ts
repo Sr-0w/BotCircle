@@ -48,7 +48,7 @@ export function opencodeRoutes() {
   // #31 / #47: Code — every session of the connected machines; start one directly; open one started in OpenCode.
   app.get('/sessions', async (c) => c.json(await allSessions()));
   app.post('/sessions', async (c) => {
-    const body = z.object({ instanceId: z.string().min(1), directory: z.string().max(2000).nullable().optional(), instruction: z.string().min(1).max(8000), title: z.string().max(200).nullable().optional(), model: z.object({ providerID: z.string().min(1), id: z.string().min(1), variant: z.string().max(60).nullable().optional() }).strict().nullable().optional() }).strict().parse(await c.req.json());
+    const body = z.object({ instanceId: z.string().min(1), directory: z.string().max(2000).nullable().optional(), instruction: z.string().max(8000).default(''), title: z.string().max(200).nullable().optional(), model: z.object({ providerID: z.string().min(1), id: z.string().min(1), variant: z.string().max(60).nullable().optional() }).strict().nullable().optional() }).strict().parse(await c.req.json());
     return c.json(await toTaskDTO(await startDirectSession(body)));
   });
   app.post('/sessions/attach', async (c) => {

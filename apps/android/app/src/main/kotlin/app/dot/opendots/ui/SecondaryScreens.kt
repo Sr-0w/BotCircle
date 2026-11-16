@@ -10,6 +10,8 @@ import androidx.compose.material.icons.outlined.Edit
 import app.dot.design.components.DotTextField
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.FactCheck
 import app.dot.design.components.UnreadDot
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
@@ -116,15 +118,16 @@ fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, sub
                     title = title, subtitle = subtitle,
                     navigation = if (onBack == null) null else { { Box(Modifier.padding(start = DotSpacing.s)) { BackButton(onBack) } } },
                     actions = {
-                        Row(Modifier.padding(end = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
+                        // Separate glass capsules, with air between them (#47 follow-up: they touched).
+                        Row(Modifier.padding(end = DotSpacing.s), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                             actions?.invoke()
                             if (root != null) {
                                 Box {
-                                    DotIconButton(Icons.Outlined.Timeline, stringResource(R.string.activity), onClick = root.onActivity)
+                                    DotIconButton(Icons.Outlined.History, stringResource(R.string.activity), onClick = root.onActivity)
                                     if (root.working) UnreadDot(Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp), size = 6.dp)
                                 }
                                 Box {
-                                    DotIconButton(Icons.Outlined.Inbox, if (root.waiting > 0) stringResource(R.string.inbox_waiting, root.waiting) else stringResource(R.string.inbox), onClick = root.onInbox)
+                                    DotIconButton(Icons.Outlined.FactCheck, if (root.waiting > 0) stringResource(R.string.inbox_waiting, root.waiting) else stringResource(R.string.inbox), onClick = root.onInbox)
                                     if (root.waiting > 0) CountBadge(root.waiting, Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp))
                                 }
                             }

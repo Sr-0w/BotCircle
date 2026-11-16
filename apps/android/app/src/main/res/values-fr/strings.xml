@@ -42,6 +42,10 @@
     <string name="attach_files">Joindre des fichiers</string>
     <string name="attach_image">Joindre une image</string>
     <string name="attached_image">Image jointe</string>
+    <string name="avatar_restore">Revenir à la silhouette précédente</string>
+    <string name="avatar_round">Rond</string>
+    <string name="avatar_shape">Silhouette</string>
+    <string name="avatar_shape_note">Tu peux aussi demander à ce Circle d’imaginer sa propre forme : il t’en montrera l’aperçu avant de l’appliquer.</string>
     <string name="back">Retour</string>
     <string name="call_service">Appeler un service</string>
     <string name="cancel">Annuler</string>
@@ -141,12 +145,12 @@
     <string name="code_model_set">Modèle : %s</string>
     <string name="code_name_hint">PC de dev</string>
     <string name="code_never_checked">Jamais contrôlée</string>
-    <string name="code_new">Nouvelle session de code</string>
+    <string name="code_new">Nouvelle session</string>
     <string name="code_no_change">OpenCode ne signale aucun fichier modifié dans cette session.</string>
     <string name="code_no_file_changed">Aucun fichier modifié</string>
     <string name="code_no_instance">Aucune instance connectée</string>
     <string name="code_no_machine">Aucune machine connectée</string>
-    <string name="code_no_message">La session n’a pas encore de message.</string>
+    <string name="code_no_message">Nouvelle session : écris ci-dessous ce qu’OpenCode doit faire. Le modèle se choisit dans le champ.</string>
     <string name="code_no_patch">Diff non fourni par OpenCode.</string>
     <string name="code_offline">Injoignable</string>
     <string name="code_online">En ligne</string>

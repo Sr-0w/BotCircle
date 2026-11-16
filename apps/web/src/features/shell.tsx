@@ -58,7 +58,7 @@ function AgentRow({ agent, active, onClick }: { agent: AgentDTO; active: boolean
         active && "bg-accent",
       )}
     >
-      <DotAvatar color={agent.color} state={agent.state} size={34} named={agent.named} />
+      <DotAvatar color={agent.color} shape={agent?.avatar} state={agent.state} size={34} named={agent.named} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-sm">{agent.named ? agent.name : t("Nouveau Circle")}</span>
@@ -291,7 +291,7 @@ export function Shell() {
             </>
           ) : current ? (
             <>
-              <DotAvatar color={current.color} state={current.state} size={28} named={current.named} />
+              <DotAvatar color={current.color} shape={current?.avatar} state={current.state} size={28} named={current.named} />
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="truncate font-medium text-sm">{current.named ? current.name : t("Nouveau Circle")}</p>
                 <p className="truncate text-muted-foreground text-xs">

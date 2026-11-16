@@ -185,7 +185,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           ))}
           {busy && (
             <button type="button" onClick={() => openWorkPanel()} title={t("Voir le travail en cours")} className="flex w-fit max-w-full items-center gap-2.5 rounded-full py-1 pr-2 text-left text-sm" data-live-status>
-              <DotAvatar color={agent.color} state={waiting ? "thinking" : agent.state === "available" ? "working" : agent.state} size={18} />
+              <DotAvatar color={agent.color} shape={agent?.avatar} state={waiting ? "thinking" : agent.state === "available" ? "working" : agent.state} size={18} />
               <span className="min-w-0 truncate"><Shimmer>{liveLabel}</Shimmer></span>
               {!!step?.count && <span className="shrink-0 text-muted-foreground text-xs">· {t("{count} actions", { count: step.count })}</span>}
             </button>
@@ -252,7 +252,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
 function EmptyState({ agent }: { agent: AgentDTO }) {
   return (
     <div className="flex flex-col items-center gap-5 py-16 text-center">
-      <DotAvatar color={agent.color} size={72} state={agent.state} named={agent.named} />
+      <DotAvatar color={agent.color} shape={agent?.avatar} size={72} state={agent.state} named={agent.named} />
       <div className="space-y-1.5">
         <h2 className="font-semibold text-xl tracking-tight">
           {agent.named ? t("{v0} est là", { v0: agent.name }) : t("Ton premier Circle est prêt")}

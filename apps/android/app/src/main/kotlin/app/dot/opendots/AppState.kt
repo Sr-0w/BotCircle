@@ -7,6 +7,7 @@ import app.dot.opendots.chat.ChatSession
 import app.dot.opendots.data.Account
 import app.dot.opendots.data.Activity
 import app.dot.opendots.data.Agent
+import app.dot.opendots.data.AvatarPreset
 import app.dot.opendots.data.ApiException
 import app.dot.opendots.data.Approval
 import app.dot.opendots.data.BgTask
@@ -306,6 +307,21 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         onStarted(task.id)
     }
 
+    /**
+     * Code ＋: opens a new OpenCode session at once (no form). The machine online first; the project of the last session
+     * on it, else its default folder. [onNoMachine] when nothing is connected yet.
+     */
+    fun newCodeSession(onNoMachine: () -> Unit, onReady: (String) -> Unit) = act {
+        val instances = client.opencodeInstances()
+        val instance = instances.firstOrNull { it.state == "online" } ?: instances.firstOrNull()
+        if (instance == null) { onNoMachine(); return@act }
+        val recent = _state.value.tasks.values.filter { it.provider == "opencode" && it.external?.instanceId == instance.id && !it.external.directory.isNullOrBlank() }
+            .maxByOrNull { it.createdAt }?.external?.directory
+        val task = client.startCodeSession(instance.id, recent, "")
+        _state.update { it.copy(tasks = it.tasks + (task.id to task)) }
+        onReady(task.id)
+    }
+
     fun attachCodeSession(instanceId: String, sessionId: String, directory: String?, onReady: (String) -> Unit) = act {
         val task = client.attachCodeSession(instanceId, sessionId, directory)
         _state.update { it.copy(tasks = it.tasks + (task.id to task)) }
@@ -338,6 +354,9 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     /** #47: the Circle whose avatar stands for Circles in the dock. */
     fun setPrimaryAgent(agentId: String) = act { client.setPrimaryAgent(agentId) }
+    suspend fun avatarPresets(): List<AvatarPreset> = runCatching { client.avatarPresets() }.getOrDefault(emptyList())
+    fun setAvatar(agentId: String, preset: String?) = act { client.setAvatar(agentId, preset) }
+    fun restoreAvatar(agentId: String) = act { client.restoreAvatar(agentId) }
 
     fun createChat(onCreated: () -> Unit) = act {
         val chat = client.createChat()

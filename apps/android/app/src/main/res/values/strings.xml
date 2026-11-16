@@ -42,6 +42,10 @@
     <string name="attach_files">Attach files</string>
     <string name="attach_image">Attach an image</string>
     <string name="attached_image">Attached image</string>
+    <string name="avatar_restore">Back to the previous silhouette</string>
+    <string name="avatar_round">Round</string>
+    <string name="avatar_shape">Silhouette</string>
+    <string name="avatar_shape_note">You can also ask this Circle to imagine its own shape: it will show you a preview before applying it.</string>
     <string name="back">Back</string>
     <string name="call_service">Call a service</string>
     <string name="cancel">Cancel</string>
@@ -141,12 +145,12 @@
     <string name="code_model_set">Model: %s</string>
     <string name="code_name_hint">Dev PC</string>
     <string name="code_never_checked">Never checked</string>
-    <string name="code_new">New coding session</string>
+    <string name="code_new">New session</string>
     <string name="code_no_change">OpenCode reports no changed file in this session.</string>
     <string name="code_no_file_changed">No file changed</string>
     <string name="code_no_instance">No instance connected</string>
     <string name="code_no_machine">No connected machine</string>
-    <string name="code_no_message">The session has no message yet.</string>
+    <string name="code_no_message">New session: write what OpenCode should do below. You can pick the model in the field.</string>
     <string name="code_no_patch">Diff not provided by OpenCode.</string>
     <string name="code_offline">Unreachable</string>
     <string name="code_online">Online</string>

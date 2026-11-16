@@ -243,7 +243,7 @@ function PlainEventChip({ message }: { message: ODMessage }) {
   return (
     <details className="group/event mx-auto w-full max-w-lg text-center">
       <summary className="mx-auto inline-flex max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-dashed px-3 py-1 text-muted-foreground text-xs transition-colors hover:text-foreground">
-        {from ? <DotAvatar color={from.color} size={14} /> : EVENT_ICONS[event?.type ?? "system"]}
+        {from ? <DotAvatar color={from.color} shape={from?.avatar} size={14} /> : EVENT_ICONS[event?.type ?? "system"]}
         <span className="min-w-0 truncate">{shortEventTitle(event?.title) ?? t("Événement")}</span>
         <span className="shrink-0 opacity-60">· {formatDateTime(message.metadata?.createdAt)}</span>
       </summary>
@@ -443,7 +443,7 @@ function Author({ agentId, model }: { agentId?: string; model?: string }) {
   const agent = useStore((s) => s.agents.find((a) => a.id === agentId));
   return (
     <p className="flex items-center gap-1.5 text-muted-foreground text-xs" data-author={agent ? agent.id : 'assistant'}>
-      {agent ? <DotAvatar color={agent.color} size={14} /> : <SparklesIcon className="size-3.5" />}
+      {agent ? <DotAvatar color={agent.color} shape={agent?.avatar} size={14} /> : <SparklesIcon className="size-3.5" />}
       <span className="font-medium text-foreground">{agent ? agent.name : agentId ? t('Un Circle') : t('Assistant')}</span>
       {!agentId && model && <span className="truncate">· {model}</span>}
     </p>

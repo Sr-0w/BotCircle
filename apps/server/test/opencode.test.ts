@@ -392,6 +392,19 @@ describe('OpenCode', () => {
       expect(wakesForUser).toHaveLength(0);
     });
 
+    it('Code ＋ ouvre une session vide sans rien envoyer ; le premier message la lance et la titre', async () => {
+      const row = await instance();
+      const prompts = fake.calls.filter((c) => c.path.endsWith('/prompt_async')).length;
+      const task = await startDirectSession({ instanceId: row.id, directory: '/home/dev/opendots', instruction: '' });
+      expect(task).toMatchObject({ agentId: 'user', requestedBy: 'user', provider: 'opencode', status: 'completed', instruction: '', title: 'Nouvelle session' });
+      expect(fake.sessions.has(task.external!.sessionId)).toBe(true);
+      expect(fake.calls.filter((c) => c.path.endsWith('/prompt_async')).length).toBe(prompts);
+      await sendInstruction(task.id, 'Corrige le test du parseur.');
+      const after = (await getTask(task.id))!;
+      expect(after).toMatchObject({ status: 'running', title: 'Corrige le test du parseur.', instruction: 'Corrige le test du parseur.' });
+      expect(fake.calls.filter((c) => c.path.endsWith('/prompt_async')).at(-1)!.body.parts[0].text).toBe('Corrige le test du parseur.');
+    });
+
     it('liste les sessions des machines et ouvre une session lancée dans OpenCode, une seule fois, sans rien lui envoyer', async () => {
       const row = await instance();
       fake.sessions.set('ses_ext', { id: 'ses_ext', title: 'Depuis le terminal', directory: '/home/dev/opendots', time: { created: Date.now() - 60_000, updated: Date.now() } });

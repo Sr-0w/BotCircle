@@ -36,6 +36,9 @@ export const agents = pgTable('agents', {
   name: text('name').notNull(),
   named: boolean('named').notNull().default(false),
   color: text('color').notNull(),
+  /** #50: silhouette (resolved outline) and the previous one; null = the round dot. */
+  avatar: jsonb('avatar').$type<import('@opendots/shared').AgentAvatar | null>(),
+  avatarPrevious: jsonb('avatar_previous').$type<import('@opendots/shared').AgentAvatar | null>(),
   description: text('description').notNull().default(''),
   personality: text('personality').notNull().default(''),
   instructions: text('instructions').notNull().default(''),

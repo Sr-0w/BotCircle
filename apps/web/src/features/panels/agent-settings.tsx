@@ -9,9 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { removeAgentLocally } from "@/lib/store";
 import { toast } from "sonner";
 import { ModelPicker } from "../model-picker";
+import { DotAvatar } from "../dot-avatar";
 
 import { t } from "@/lib/i18n";
 const COLORS = ["#2563eb", "#e11d48", "#16a34a", "#ea580c", "#7c3aed", "#0891b2", "#ca8a04", "#db2777"];
@@ -179,6 +181,7 @@ function Advanced({ agent, save, onBack, picking, setPicking }: { agent: AgentDT
           ))}
         </div>
       </div>
+      <ShapePicker agent={agent} />
       <div className="space-y-1.5">
         <Label className="text-xs">{t("Circle principal")}</Label>
         {agent.primary
@@ -212,6 +215,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+/** #50: the Circle's silhouette — presets drawn from the server's outlines, back to the dot, or the previous one. */
+function ShapePicker({ agent }: { agent: AgentDTO }) {
+  const [presets, setPresets] = useState<{ id: string; label: string; points: [number, number][]; roundness: number }[]>([]);
+  useEffect(() => { api.avatarPresets().then(setPresets).catch(() => {}); }, []);
+  const set = (preset: string | null) => void api.setAvatar(agent.id, { preset }).catch((e) => toast.error(e.message));
+  return (
+    <div className="space-y-1.5" data-shape-picker>
+      <Label className="text-xs">{t("Silhouette")}</Label>
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" onClick={() => set(null)} aria-pressed={!agent.avatar} aria-label={t("Rond")} title={t("Rond")} className={cn("rounded-xl p-1.5 hover:bg-accent", !agent.avatar && "bg-accent ring-1 ring-ring")}><DotAvatar color={agent.color} size={30} /></button>
+        {presets.filter((p) => p.id !== "circle").map((p) => (
+          <button key={p.id} type="button" onClick={() => set(p.id)} aria-pressed={agent.avatar?.preset === p.id} aria-label={t(p.label)} title={t(p.label)} className={cn("rounded-xl p-1.5 hover:bg-accent", agent.avatar?.preset === p.id && "bg-accent ring-1 ring-ring")}>
+            <DotAvatar color={agent.color} size={30} shape={{ preset: p.id, points: p.points, roundness: p.roundness }} />
+          </button>
+        ))}
+      </div>
+      {agent.hasPreviousAvatar && <button type="button" className="text-muted-foreground text-xs underline-offset-2 hover:underline" onClick={() => void api.restoreAvatar(agent.id).catch((e) => toast.error(e.message))}>{t("Revenir à la silhouette précédente")}</button>}
+      <p className="text-muted-foreground text-xs">{t("Tu peux aussi demander à ce Circle d’imaginer sa propre forme : il t’en montrera l’aperçu avant de l’appliquer.")}</p>
     </div>
   );
 }
