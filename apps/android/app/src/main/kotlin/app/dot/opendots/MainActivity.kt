@@ -61,6 +61,7 @@ import app.dot.opendots.ui.LocalRootActions
 import app.dot.opendots.ui.RootActions
 import app.dot.opendots.ui.CodeSessionsPage
 import app.dot.opendots.ui.NewCodeSessionPage
+import app.dot.opendots.ui.SshPage
 import app.dot.opendots.ui.CircleSection
 import app.dot.opendots.ui.SettingsSection
 import app.dot.opendots.ui.SettingsSectionPage
@@ -193,9 +194,9 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.NewCodeSession, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
+private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.NewCodeSession, Page.Ssh, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, NewCodeSession, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, NewCodeSession, Ssh, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -230,6 +231,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             // Settings is a tab: its pages return to it (the tab stays selected).
             Page.SettingsSection -> Page.None
             Page.NewCodeSession -> Page.None
+            Page.Ssh -> Page.SettingsSection
             Page.Catalog -> Page.SettingsSection
             Page.Providers, Page.AgentBehaviour -> Page.SettingsSection
             Page.CodeInstances -> if (tab == Tab.Settings) Page.SettingsSection else Page.None
@@ -289,7 +291,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.Settings -> LaunchedEffect(Unit) { tab = Tab.Settings; page = Page.None }
             current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back, onOpenTeam = { page = Page.Team })
             current == Page.NewCodeSession -> NewCodeSessionPage(app, onBack = ::back, onOpenInstances = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace }
-            current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances })
+            current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenSsh = { page = Page.Ssh })
+            current == Page.Ssh -> SshPage(app, ui, onBack = ::back)
             current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back)
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })

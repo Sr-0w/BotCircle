@@ -117,6 +117,9 @@ export interface ComputerStatus {
 
 export interface DesktopStatus { agentId: string; suspended: boolean; restartRequired?: boolean; vncPassword?: string; enabled: boolean; manualControl: boolean; available: boolean; running: boolean; width: number; height: number }
 
+/** #52: a machine reachable over SSH (secrets never returned). */
+export interface SshConnection { id: string; name: string; description: string; host: string; port: number; username: string; auth: 'key' | 'password'; hasSecret: boolean; hostKey: string | null; agents: string[]; approval: 'ask' | 'auto'; enabled: boolean; status: 'unknown' | 'ok' | 'error'; lastError: string | null; lastOkAt: string | null }
+
 export const api = {
   uploadImage: async (file: File) => {
     const body = new FormData(); body.set('file', file);
@@ -241,6 +244,10 @@ export const api = {
   /** /clear, after the user's confirmation: the current thread is set aside (kept) and a blank one starts. */
   profile: () => request<{ firstName: string | null; lastName: string | null }>('GET', '/profile'),
   setProfile: (body: { firstName: string | null; lastName: string | null }) => request<{ firstName: string | null; lastName: string | null }>('PUT', '/profile', body),
+  sshConnections: () => request<SshConnection[]>('GET', '/ssh/connections'),
+  saveSsh: (id: string | null, body: Record<string, unknown>) => request<SshConnection>(id ? 'PUT' : 'POST', id ? `/ssh/connections/${id}` : '/ssh/connections', body),
+  deleteSsh: (id: string) => request<{ ok: boolean }>('DELETE', `/ssh/connections/${id}`),
+  testSsh: (id: string, trust = false) => request<{ ok: boolean; hostKey: string | null; trusted: boolean; error: string | null }>('POST', `/ssh/connections/${id}/test`, { trust }),
   setPrimaryAgent: (id: string) => request<{ ok: boolean }>('PUT', `/agents/${id}/primary`),
   mentionables: (id: string) => request<{ kind: 'connector'; id: string; name: string; provider: string | null; status: 'connected' | 'not_connected' | 'permission_missing' }[]>('GET', `/agents/${id}/mentionables`),
   archives: (id: string) => request<{ id: string; createdAt: string; archivedAt: string }[]>("GET", `/agents/${id}/archives`),

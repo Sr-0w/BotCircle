@@ -1,3 +1,4 @@
+import { sshTools } from '../ssh/tools.ts';
 import { taskTools } from '../tasks/tools.ts';
 import { secureLoginTools } from '../securelogin/tools.ts';
 import { opencodeTools } from '../opencode/tools.ts';
@@ -716,6 +717,8 @@ export function buildTools(ctx: ToolContext): ToolSet {
   if (ctx.agent.permissions.computer) Object.assign(tools, secureLoginTools(ctx));
   // Développement délégué : réservé aux compagnons que l'utilisateur y a autorisés, hors worker.
   if (ctx.agent.permissions.code && !ctx.taskId) Object.assign(tools, opencodeTools(ctx));
+  // #52: SSH machines granted to this Circle (each connection lists the Circles that may use it).
+  Object.assign(tools, sshTools(ctx));
   return tools;
 }
 

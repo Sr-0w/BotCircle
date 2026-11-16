@@ -476,6 +476,19 @@ data class UserProfile(val firstName: String? = null, val lastName: String? = nu
     val display: String get() = listOfNotNull(firstName, lastName).joinToString(" ")
 }
 
+/** #52: a machine reachable over SSH (secrets are never returned). */
+@Immutable
+@Serializable
+data class SshConnection(
+    val id: String, val name: String = "", val description: String = "", val host: String = "", val port: Int = 22, val username: String = "",
+    val auth: String = "key", val hasSecret: Boolean = false, val hostKey: String? = null, val agents: List<String> = emptyList(),
+    val approval: String = "ask", val enabled: Boolean = true, val status: String = "unknown", val lastError: String? = null, val lastOkAt: String? = null,
+)
+
+@Immutable
+@Serializable
+data class SshTest(val ok: Boolean = false, val hostKey: String? = null, val trusted: Boolean = false, val error: String? = null)
+
 /** #46: a service or MCP connector a Circle can be asked to use with @, and its state. */
 @Immutable
 @Serializable

@@ -273,6 +273,10 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     // --- OpenCode ---------------------------------------------------------------------------------
 
     suspend fun opencodeInstances(): List<OpencodeInstance> = get("/opencode/instances")
+    suspend fun sshConnections(): List<SshConnection> = get("/ssh/connections")
+    suspend fun saveSsh(id: String?, body: kotlinx.serialization.json.JsonObject): SshConnection = OdJson.decodeFromJsonElement(json(if (id == null) "POST" else "PUT", "/ssh/connections" + (id?.let { "/$it" } ?: ""), body))
+    suspend fun deleteSsh(id: String) { json("DELETE", "/ssh/connections/$id") }
+    suspend fun testSsh(id: String, trust: Boolean): SshTest = OdJson.decodeFromJsonElement(json("POST", "/ssh/connections/$id/test", buildJsonObject { put("trust", trust) }))
     suspend fun mentionables(agentId: String): List<Mentionable> = get("/agents/$agentId/mentionables")
     suspend fun opencodeProjects(instanceId: String): List<OpencodeProject> = get("/opencode/instances/$instanceId/projects")
     suspend fun opencodeSessions(): List<OpencodeMachineSessions> = get("/opencode/sessions")

@@ -276,6 +276,30 @@ export const connectors = pgTable('connectors', {
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
+/** #52: a machine the user registered for SSH; usable only by the Circles listed in `agents`. */
+export const sshConnections = pgTable('ssh_connections', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  host: text('host').notNull(),
+  port: integer('port').notNull().default(22),
+  username: text('username').notNull(),
+  auth: text('auth').$type<'key' | 'password'>().notNull().default('key'),
+  /** Encrypted JSON { privateKey?, passphrase?, password? }: never sent to a client, a model or a log. */
+  secret: text('secret'),
+  /** SHA-256 fingerprint of the host key the user trusted; a different key is refused. */
+  hostKey: text('host_key'),
+  agents: jsonb('agents').$type<string[]>().notNull().default([]),
+  /** ask: every command waits for the user's approval; auto: runs directly (full shell, explicitly chosen). */
+  approval: text('approval').$type<'ask' | 'auto'>().notNull().default('ask'),
+  enabled: boolean('enabled').notNull().default(true),
+  status: text('status').$type<'unknown' | 'ok' | 'error'>().notNull().default('unknown'),
+  lastError: text('last_error'),
+  lastOkAt: ts('last_ok_at'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
 export const plugins = pgTable('plugins', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

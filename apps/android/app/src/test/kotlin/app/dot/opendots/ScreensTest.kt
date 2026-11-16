@@ -158,6 +158,8 @@ class ScreensTest {
                       "exchanges":[{"seq":1,"taskId":"tk2","author":"companion","agentId":"a1","kind":"delegation","text":"Group OAuth with the providers.","original":"tidy the settings","createdAt":"2026-11-13T09:01:00Z"}]}""")
                     path == "/opencode/tasks/tk2/prompt" -> json("""{"queued":true,"delivery":"queue"}""")
                     path == "/opencode/instances" && request.method == "GET" -> json(if (paired) """[{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}]""" else "[]")
+                    path == "/ssh/connections" && request.method == "GET" -> json("""[{"id":"ssh1","name":"Home server","host":"192.168.1.10","port":22,"username":"robin","auth":"key","hasSecret":true,"hostKey":null,"agents":["a1"],"approval":"ask","enabled":true,"status":"unknown","lastError":null,"lastOkAt":null}]""")
+                    path == "/ssh/connections/ssh1/test" -> json(if ("true" in (request.body?.utf8() ?: "")) """{"ok":true,"hostKey":"SHA256:abcDEF","trusted":true,"error":null}""" else """{"ok":false,"hostKey":"SHA256:abcDEF","trusted":false,"error":"Hôte inconnu"}""")
                     path == "/opencode/instances/oc9/projects" -> json("""[{"id":"p1","worktree":"/home/dev/botcircle","name":"botcircle"}]""")
                     path == "/opencode/sessions" && request.method == "GET" -> json(if (paired) """[{"instanceId":"oc9","instanceName":"devbox","reachable":true,"sessions":[{"id":"ses_term","title":"Started in the terminal","directory":"/home/dev/botcircle","updatedAt":1,"busy":false,"additions":0,"deletions":0,"files":0,"taskId":null}]}]""" else "[]")
                     path == "/opencode/sessions" -> json(codeTask.replace("\"tk2\"", "\"tk7\"").replace("\"requestedBy\":\"agent\"", "\"requestedBy\":\"user\""))
@@ -343,6 +345,24 @@ class ScreensTest {
         compose.onNodeWithContentDescription("Write to Ari…").performTextInput("/help")
         compose.onNodeWithContentDescription("Send").performClick()
         waitFor("All commands")
+    }
+
+    /** #52: SSH machines in Settings → Connections; the host key is confirmed before anything else. */
+    @Test fun sshMachinesAreVerifiedBeforeUse() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Circles").performClick()
+        tab("Settings")
+        compose.onNodeWithText("Connections").performClick()
+        compose.onNodeWithText("SSH").performClick()
+        waitFor("Home server")
+        waitFor("Host not verified yet")
+        waitFor("Allowed: Ari")
+        compose.onNodeWithText("Test").performClick()
+        waitFor("SHA256:abcDEF")
+        compose.onNodeWithText("Trust this host").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/ssh/connections/ssh1/test" && "true" in it.second } }
+        shoot("ssh-dark")
     }
 
     @Test fun workStaysOutOfTheThreadAndOpensInItsPanel() {
