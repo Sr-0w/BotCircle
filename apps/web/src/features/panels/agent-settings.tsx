@@ -41,8 +41,9 @@ type View = "home" | "permissions" | "data" | "advanced";
  * A Circle's details (#53): a short summary (name renamed in place, state, description, real model) and four
  * entries. Permissions (what it may do) and Data & connections (what it can reach) are separate pages.
  */
-export function AgentSettings({ agent, onOpenTab }: { agent: AgentDTO; onOpenTab?: (tab: string) => void }) {
+export function AgentSettings({ agent, onOpenTab, request }: { agent: AgentDTO; onOpenTab?: (tab: string) => void; request?: { view: View; n: number } | null }) {
   const [view, setView] = useState<View>("home");
+  useEffect(() => { if (request) setView(request.view); }, [request]);
   const [picking, setPicking] = useState(false);
   useEffect(() => setView("home"), [agent.id]);
 

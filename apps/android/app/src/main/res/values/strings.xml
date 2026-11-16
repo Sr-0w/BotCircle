@@ -83,6 +83,20 @@
     <string name="clear_title">Reset %1$s?</string>
     <string name="clear_title_chat">Start over?</string>
     <string name="close">Close</string>
+    <string name="cmd_clear">Start a blank thread (the current one is archived)</string>
+    <string name="cmd_clear_chat">Start over with the same settings</string>
+    <string name="cmd_help">All commands</string>
+    <string name="cmd_model">Change the model</string>
+    <string name="cmd_new_chat">New chat (this one stays in the list)</string>
+    <string name="cmd_stop">Stop the current answer (tasks keep going)</string>
+    <string name="cmd_stop_none">No answer running: tasks are stopped from their card.</string>
+    <string name="cmd_tasks">Tasks and interventions</string>
+    <string name="cmd_think_none">The model %1$s has no reasoning levels.</string>
+    <string name="cmd_tools">What it may do (permissions)</string>
+    <string name="cmd_web_off">Web search off</string>
+    <string name="cmd_web_on">Web search on</string>
+    <string name="cmd_web_state_off">Web search: off</string>
+    <string name="cmd_web_state_on">Web search: on</string>
     <string name="code">Code</string>
     <string name="code_add">Add an instance</string>
     <string name="code_add_manual">Address and password</string>
@@ -185,6 +199,8 @@
     <string name="codex_connect">Connect ChatGPT</string>
     <string name="codex_enter_code">Enter this code on the official page:</string>
     <string name="codex_open">Open ChatGPT</string>
+    <string name="commands">Commands</string>
+    <string name="commands_note">Type / in the field. @ to ask a Circle, + to attach files.</string>
     <string name="companion">Companion</string>
     <string name="companion_details">Companion details</string>
     <string name="companions">Companions</string>
@@ -331,6 +347,7 @@
     <string name="no_answer">(no answer)</string>
     <string name="no_provider">No provider configured: add one in Settings → Model providers.</string>
     <string name="not_sent">Message not sent</string>
+    <string name="ok">OK</string>
     <string name="onboarding_key_body">Companions think with a model from OpenRouter. Your key is encrypted on your server and never shown again.</string>
     <string name="onboarding_key_title">Add your OpenRouter key</string>
     <string name="onboarding_model_body">Pick the default model. Each companion can change it later, just by asking.</string>

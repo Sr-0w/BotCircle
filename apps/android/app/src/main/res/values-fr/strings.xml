@@ -83,6 +83,20 @@
     <string name="clear_title">Réinitialiser %1$s ?</string>
     <string name="clear_title_chat">Repartir de zéro ?</string>
     <string name="close">Fermer</string>
+    <string name="cmd_clear">Repartir sur un fil vierge (l’actuel est archivé)</string>
+    <string name="cmd_clear_chat">Repartir de zéro avec les mêmes réglages</string>
+    <string name="cmd_help">Toutes les commandes</string>
+    <string name="cmd_model">Changer le modèle</string>
+    <string name="cmd_new_chat">Nouveau chat (celui-ci reste dans la liste)</string>
+    <string name="cmd_stop">Arrêter la réponse en cours (les tâches continuent)</string>
+    <string name="cmd_stop_none">Aucune réponse en cours : les tâches s’arrêtent depuis leur carte.</string>
+    <string name="cmd_tasks">Tâches et interventions</string>
+    <string name="cmd_think_none">Le modèle %1$s ne propose pas de niveaux de raisonnement.</string>
+    <string name="cmd_tools">Ce qu’il a le droit de faire (permissions)</string>
+    <string name="cmd_web_off">Recherche web coupée</string>
+    <string name="cmd_web_on">Recherche web activée</string>
+    <string name="cmd_web_state_off">Recherche web : coupée</string>
+    <string name="cmd_web_state_on">Recherche web : activée</string>
     <string name="code">Code</string>
     <string name="code_add">Ajouter une instance</string>
     <string name="code_add_manual">Adresse et mot de passe</string>
@@ -185,6 +199,8 @@
     <string name="codex_connect">Connecter ChatGPT</string>
     <string name="codex_enter_code">Entre ce code sur la page officielle :</string>
     <string name="codex_open">Ouvrir ChatGPT</string>
+    <string name="commands">Commandes</string>
+    <string name="commands_note">Tape / dans le champ. @ pour solliciter un Circle, + pour joindre des fichiers.</string>
     <string name="companion">Compagnon</string>
     <string name="companion_details">Fiche du compagnon</string>
     <string name="companions">Compagnons</string>
@@ -331,6 +347,7 @@
     <string name="no_answer">(sans réponse)</string>
     <string name="no_provider">Aucun fournisseur configuré : ajoute-en un dans Paramètres → Fournisseurs de modèles.</string>
     <string name="not_sent">Message non envoyé</string>
+    <string name="ok">OK</string>
     <string name="onboarding_key_body">Les compagnons réfléchissent avec un modèle OpenRouter. Ta clé est chiffrée sur ton serveur et n’est plus jamais affichée.</string>
     <string name="onboarding_key_title">Ajoute ta clé OpenRouter</string>
     <string name="onboarding_model_body">Choisis le modèle par défaut. Chaque compagnon pourra en changer plus tard, il suffit de demander.</string>

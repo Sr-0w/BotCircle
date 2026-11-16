@@ -105,7 +105,11 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
   const archives = useReload(() => api.archives(agent.id), (e) => e.type === "conversation.reset", [agent.id]);
   const [tab, setTab] = useState("work");
   const activeTasks = useStore((s) => s.tasks.filter((task) => task.agentId === agent.id && ACTIVE_TASK_STATUSES.includes(task.status)).length);
-  useEffect(() => onWorkPanelRequested(() => setTab("work")), []);
+  const [settingsView, setSettingsView] = useState<{ view: "permissions"; n: number } | null>(null);
+  useEffect(() => onWorkPanelRequested((requested) => {
+    if (requested === "permissions") { setTab("profile"); setSettingsView((v) => ({ view: "permissions", n: (v?.n ?? 0) + 1 })); return; }
+    setTab(requested ?? "work");
+  }), []);
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full min-h-0 flex-col gap-0">
@@ -188,7 +192,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
       </TabsContent>
 
       <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-3">
-        <AgentSettings agent={agent} onOpenTab={setTab} />
+        <AgentSettings agent={agent} onOpenTab={setTab} request={settingsView} />
       </TabsContent>
     </Tabs>
   );

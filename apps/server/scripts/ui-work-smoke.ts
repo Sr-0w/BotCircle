@@ -397,6 +397,24 @@ try {
   await page.getByRole('button', { name: 'Envoyer la modification' }).click();
   await page.locator('[data-general-chat] [data-edited]').getByText(/Modifié/).waitFor({ timeout: 30_000 });
   await page.locator('[data-general-chat] [id^="message-"] p.whitespace-pre-wrap').getByText('@Dev résume la réunion de vendredi en trois points').first().waitFor();
+  // #46 : la palette « / » agit sur les vrais réglages du chat ; rien n'est envoyé au modèle.
+  const before46 = await page.locator('[data-general-chat] [id^="message-"]').count();
+  await chatBox.fill('/');
+  await page.locator('[data-slash-palette]').getByText('/think').waitFor();
+  await chatBox.fill('/web ');
+  await page.locator('[data-slash-palette]').getByText('/web off').waitFor();
+  await chatBox.fill('/web off'); await chatBox.press('Enter');
+  await page.locator('[data-chat-web="off"]').waitFor();
+  await chatBox.fill('/web on'); await chatBox.press('Enter');
+  await page.locator('[data-chat-web="on"]').waitFor();
+  await chatBox.fill('/help'); await chatBox.press('Enter');
+  await page.locator('[data-commands-help]').getByText('/clear').waitFor();
+  await shot('slash-help');
+  await page.keyboard.press('Escape');
+  await chatBox.fill('/model'); await chatBox.press('Enter');
+  await page.getByRole('textbox', { name: /Rechercher un modèle/ }).waitFor().catch(async () => { await page.locator('[data-model-menu]').waitFor(); });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('[data-general-chat] [id^="message-"]').count(), before46);
   // Épingler : le chat reste en tête de liste.
   const row = page.getByRole('navigation', { name: 'Chats' }).locator('.group\\/chat').first();
   await row.hover();

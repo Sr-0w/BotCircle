@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { ModelMenu } from './model-menu';
 
 const modelCache = new Map<string, Promise<ModelInfo[]>>();
-const modelsOf = (provider: ModelConfig['provider']) => {
+export const modelsOf = (provider: ModelConfig['provider']) => {
   if (!modelCache.has(provider)) modelCache.set(provider, (provider === 'codex' ? api.codexModels() : provider === 'ollama' ? api.ollamaModels() : api.openrouterModels()).catch(() => []));
   return modelCache.get(provider)!;
 };
@@ -20,9 +20,11 @@ const shortName = (model: string) => model.split('/').pop() ?? model;
  * The chat's own controls, in the field: its model (for the next answers), the reasoning effort when the model has
  * one, and web search. Web search off is enforced on the server: the model is not given the web tools.
  */
-export function ChatControls({ chat }: { chat: ChatDTO }) {
+export function ChatControls({ chat, pickerRequest = 0 }: { chat: ChatDTO; pickerRequest?: number }) {
   const chats = useStore((s) => s.chats);
   const [picking, setPicking] = useState(false);
+  // /model opens the same picker.
+  useEffect(() => { if (pickerRequest) setPicking(true); }, [pickerRequest]);
   const [info, setInfo] = useState<ModelInfo | null>(null);
   const model = chat.effectiveModel;
   useEffect(() => { let active = true; void modelsOf(model.provider).then((list) => active && setInfo(list.find((m) => m.id === model.model) ?? null)); return () => { active = false; }; }, [model.provider, model.model]);
@@ -64,8 +66,9 @@ export function ChatControls({ chat }: { chat: ChatDTO }) {
 }
 
 /** A companion's model, from its conversation's field: the same picker, favourites first. */
-export function AgentModelControl({ agent }: { agent: { id: string; model: ModelConfig | null; effectiveModel: ModelConfig } }) {
+export function AgentModelControl({ agent, pickerRequest = 0 }: { agent: { id: string; model: ModelConfig | null; effectiveModel: ModelConfig }; pickerRequest?: number }) {
   const [picking, setPicking] = useState(false);
+  useEffect(() => { if (pickerRequest) setPicking(true); }, [pickerRequest]);
   const [info, setInfo] = useState<ModelInfo | null>(null);
   const model = agent.effectiveModel;
   useEffect(() => { let active = true; void modelsOf(model.provider).then((list) => active && setInfo(list.find((m) => m.id === model.model) ?? null)); return () => { active = false; }; }, [model.provider, model.model]);

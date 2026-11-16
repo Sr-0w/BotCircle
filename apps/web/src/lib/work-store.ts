@@ -35,13 +35,15 @@ export function useWork(agentId: string): WorkState {
 const PANEL_EVENT = "opendots:work-panel";
 
 /** Ouvre le panneau du compagnon sur l'onglet « Travail ». */
-export function openWorkPanel() {
-  window.dispatchEvent(new Event(PANEL_EVENT));
+/** Opens the side panel, on its work tab or on another one (`tasks`, `permissions`…, from `/` commands). */
+export function openWorkPanel(tab?: string) {
+  window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: tab }));
 }
 
-export function onWorkPanelRequested(fn: () => void) {
-  window.addEventListener(PANEL_EVENT, fn);
-  return () => window.removeEventListener(PANEL_EVENT, fn);
+export function onWorkPanelRequested(fn: (tab?: string) => void) {
+  const listener = (event: Event) => fn((event as CustomEvent<string | undefined>).detail);
+  window.addEventListener(PANEL_EVENT, listener);
+  return () => window.removeEventListener(PANEL_EVENT, listener);
 }
 
 const CODE_EVENT = "opendots:code-workspace";

@@ -13,7 +13,10 @@ import { t } from '@/lib/i18n';
 import { ChatActionsContext } from './cards';
 import { Composer, isChatImage } from './composer';
 import { liveStep, MessageView } from './message-parts';
-import { ChatControls } from './chat-controls';
+import { toast } from 'sonner';
+import { ChatControls, modelsOf } from './chat-controls';
+import { CommandsHelp } from './commands-help';
+import type { SlashCommand } from './composer';
 import { ClearDialog } from './clear-dialog';
 import { ThinkingOrb, type OrbState } from '@/components/thinking-orb';
 
@@ -72,6 +75,30 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
 
   const busy = status === 'submitted' || status === 'streaming';
   const [clearing, setClearing] = useState(false);
+  const [modelRequest, setModelRequest] = useState(0), [helping, setHelping] = useState(false);
+  async function patchChat(change: Parameters<typeof api.updateChat>[1], done: string) {
+    try { const updated = await api.updateChat(info.id, change); setStoreChats(allChats.map((c) => (c.id === updated.id ? updated : c))); toast.success(done); }
+    catch (e) { toast.error((e as Error).message); }
+  }
+  async function setThinking(arg?: string) {
+    const model = info.effectiveModel;
+    const known = (await modelsOf(model.provider)).find((m) => m.id === model.model);
+    if (!known?.reasoning) { toast.error(t('Le modèle {v0} ne propose pas de niveaux de raisonnement.', { v0: model.model })); return; }
+    await patchChat({ model: { ...model, reasoning: arg === 'auto' || !arg ? null : (arg as 'low' | 'medium' | 'high') } }, t('Raisonnement : {v0}', { v0: arg ?? 'auto' }));
+  }
+  // #46: the `/` palette of a general chat — each command changes the chat's real settings.
+  const commands: SlashCommand[] = [
+    { name: 'new', description: t('Nouveau chat (celui-ci reste dans la liste)'), run: () => void api.createChat().then((fresh) => { setStoreChats([fresh, ...allChats]); window.location.hash = `#/chat/${fresh.id}`; }).catch((e) => toast.error(e.message)) },
+    { name: 'clear', description: t('Repartir de zéro avec les mêmes réglages'), run: () => setClearing(true) },
+    { name: 'model', description: t('Changer le modèle de ce chat'), run: () => setModelRequest((n) => n + 1) },
+    { name: 'web', description: t('Recherche web : {v0}', { v0: info.webSearch ? t('activée') : t('coupée') }), args: [{ value: 'on', label: t('Activer') }, { value: 'off', label: t('Couper (les outils web sont retirés)') }, { value: 'status', label: t('État actuel') }],
+      run: (arg) => { if (arg === 'status' || !arg) { toast(t('Recherche web : {v0}', { v0: info.webSearch ? t('activée') : t('coupée') })); return; } void patchChat({ webSearch: arg === 'on' }, arg === 'on' ? t('Recherche web activée pour ce chat') : t('Recherche web coupée pour ce chat')); } },
+    { name: 'think', description: t('Effort de raisonnement'), args: [{ value: 'auto', label: t('Auto') }, { value: 'low', label: t('Faible') }, { value: 'medium', label: t('Moyen') }, { value: 'high', label: t('Élevé') }], run: (arg) => void setThinking(arg) },
+    { name: 'tools', description: t('Outils de ce chat : recherche web {v0}, Circles via @', { v0: info.webSearch ? t('activée') : t('coupée') }), run: () => toast(t('Outils de ce chat : recherche web {v0}, Circles via @', { v0: info.webSearch ? t('activée') : t('coupée') })) },
+    { name: 'tasks', description: t('Les interventions des Circles dans ce chat'), run: () => openWorkPanel('tasks') },
+    { name: 'stop', description: busy ? t('Arrêter la réponse en cours (les interventions continuent)') : t('Rien à arrêter'), unavailable: busy ? undefined : t('Aucune réponse en cours : les interventions s’arrêtent depuis leur carte.'), run: () => { void api.stopChat(info.id); chat.stop(); } },
+    { name: 'help', description: t('Toutes les commandes'), run: () => setHelping(true) },
+  ];
   const allChats = useStore((s) => s.chats);
   const last = messages[messages.length - 1];
   useEffect(() => { publishWork(info.id, messages, busy && last?.role === 'assistant' ? last.id : null); }, [info.id, messages, busy, last]);
@@ -97,7 +124,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
               onEdit={busy ? undefined : (id, text) => void sendMessage({ text, messageId: id }, { body: { editOf: id } })}
               onRegenerate={!busy && index === messages.length - 1 && message.role === 'assistant' && !message.metadata?.agentId ? () => void chat.regenerate() : undefined} />)}
             {busy && (
-              <button type="button" onClick={openWorkPanel} title={t('Voir le travail en cours')} className="flex w-fit max-w-full items-center gap-2 rounded-full py-1 pr-2 text-left text-sm" data-live-status>
+              <button type="button" onClick={() => openWorkPanel()} title={t('Voir le travail en cours')} className="flex w-fit max-w-full items-center gap-2 rounded-full py-1 pr-2 text-left text-sm" data-live-status>
                 <ThinkingOrb state={orbState(status, last)} label={step?.title ?? t('En réflexion…')} />
                 <span className="min-w-0 truncate"><Shimmer>{step?.title ?? t('En réflexion…')}</Shimmer></span>
               </button>
@@ -117,8 +144,8 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             busy={busy}
             autoFocus
             mentions={mentions}
-            tools={<ChatControls chat={info} />}
-            onCommand={(text) => { if (text.toLowerCase() !== '/clear') return false; setClearing(true); return true; }}
+            tools={<ChatControls chat={info} pickerRequest={modelRequest} />}
+            commands={commands}
             placeholder={t('Écrire un message, @ pour un compagnon…')}
             onSubmit={async (text, attachments) => {
               if (busy) await chat.stop();
@@ -137,6 +164,7 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
             onStop={() => { void api.stopChat(info.id); chat.stop(); }}
           />
         </div></FloatingComposer></div>
+        {helping && <CommandsHelp commands={commands} onClose={() => setHelping(false)} />}
         {clearing && <ClearDialog chat name={info.title} busy={busy} onClose={() => setClearing(false)}
           onConfirm={async () => {
             const fresh = await api.createChat({ model: info.model });

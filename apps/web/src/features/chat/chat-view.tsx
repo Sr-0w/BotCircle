@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AgentModelControl } from './chat-controls';
+import { AgentModelControl, modelsOf } from './chat-controls';
+import { toast } from 'sonner';
+import { CommandsHelp } from './commands-help';
+import type { SlashCommand } from './composer';
 import { ClearDialog } from './clear-dialog';
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
@@ -104,8 +107,30 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
   }, [agent.id, status, messages.length]);
 
   const [reply, setReply] = useState<MessageReplyRef | null>(null);
-  const [clearing, setClearing] = useState(false);
   const busy = status === "submitted" || status === "streaming";
+  const [clearing, setClearing] = useState(false);
+  const [modelRequest, setModelRequest] = useState(0), [helping, setHelping] = useState(false);
+  // #46: the `/` palette of a Circle's conversation — real actions; nothing here is sent to the model.
+  const commands: SlashCommand[] = [
+    { name: 'clear', description: t('Repartir sur un fil vierge (l’actuel est archivé)'), run: () => setClearing(true) },
+    { name: 'new', description: t('Nouveau fil avec {v0} (l’actuel est archivé)', { v0: agent.name }), run: () => setClearing(true) },
+    { name: 'model', description: t('Changer le modèle de {v0}', { v0: agent.name }), run: () => setModelRequest((n) => n + 1) },
+    { name: 'think', description: t('Effort de raisonnement'), args: [{ value: 'auto', label: t('Auto') }, { value: 'low', label: t('Faible') }, { value: 'medium', label: t('Moyen') }, { value: 'high', label: t('Élevé') }],
+      run: (arg) => void setThinking(arg) },
+    { name: 'tools', description: t('Ce que {v0} a le droit de faire', { v0: agent.name }), run: () => openWorkPanel('permissions') },
+    { name: 'web', description: t('La recherche web de {v0}', { v0: agent.name }), args: [{ value: 'on', label: t('Autoriser') }, { value: 'off', label: t('Couper') }],
+      run: (arg) => void api.updateAgent(agent.id, { permissions: { ...agent.permissions, web: arg !== 'off' } }).then(() => toast.success(arg === 'off' ? t('Recherche web coupée pour {v0}', { v0: agent.name }) : t('Recherche web autorisée pour {v0}', { v0: agent.name }))).catch((e) => toast.error(e.message)) },
+    { name: 'tasks', description: t('Ses tâches en cours et terminées'), run: () => openWorkPanel('tasks') },
+    { name: 'stop', description: busy ? t('Arrêter la réponse en cours (les tâches continuent)') : t('Rien à arrêter'), unavailable: busy ? undefined : t('Aucune réponse en cours : les tâches s’arrêtent depuis leur carte.'), run: () => { void api.stop(agent.id); chat.stop(); } },
+    { name: 'help', description: t('Toutes les commandes'), run: () => setHelping(true) },
+  ];
+  async function setThinking(arg?: string) {
+    const model = agent.effectiveModel;
+    const info = (await modelsOf(model.provider)).find((m) => m.id === model.model);
+    if (!info?.reasoning) { toast.error(t('Le modèle {v0} ne propose pas de niveaux de raisonnement.', { v0: model.model })); return; }
+    try { await api.updateAgent(agent.id, { model: { ...model, reasoning: arg === 'auto' || !arg ? null : (arg as 'low' | 'medium' | 'high') } }); toast.success(t('Raisonnement : {v0}', { v0: arg ?? 'auto' })); }
+    catch (e) { toast.error((e as Error).message); }
+  }
   const actions = useMemo(
     () => ({
       busy,
@@ -153,7 +178,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
             />
           ))}
           {busy && (
-            <button type="button" onClick={openWorkPanel} title={t("Voir le travail en cours")} className="flex w-fit max-w-full items-center gap-2.5 rounded-full py-1 pr-2 text-left text-sm" data-live-status>
+            <button type="button" onClick={() => openWorkPanel()} title={t("Voir le travail en cours")} className="flex w-fit max-w-full items-center gap-2.5 rounded-full py-1 pr-2 text-left text-sm" data-live-status>
               <DotAvatar color={agent.color} state={waiting ? "thinking" : agent.state === "available" ? "working" : agent.state} size={18} />
               <span className="min-w-0 truncate"><Shimmer>{liveLabel}</Shimmer></span>
               {!!step?.count && <span className="shrink-0 text-muted-foreground text-xs">· {t("{count} actions", { count: step.count })}</span>}
@@ -180,8 +205,8 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           autoFocus
           reply={reply}
           onClearReply={() => setReply(null)}
-          tools={<AgentModelControl agent={agent} />}
-          onCommand={(text) => { if (text.toLowerCase() !== '/clear') return false; setClearing(true); return true; }}
+          tools={<AgentModelControl agent={agent} pickerRequest={modelRequest} />}
+          commands={commands}
           placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
           onSubmit={async (text, attachments) => {
             // Sent while the companion works: the message steers the work in progress (#55). Only this client stops
@@ -208,6 +233,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           }}
         />
       </div></FloatingComposer></div>
+      {helping && <CommandsHelp commands={commands} onClose={() => setHelping(false)} />}
       {clearing && <ClearDialog name={agent.name} busy={busy} onClose={() => setClearing(false)}
         onConfirm={async () => { await api.clearConversation(agent.id, agent.mainConversationId); setMessages([]); setReply(null); }} />}
     </div>

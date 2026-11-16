@@ -328,6 +328,23 @@ class ScreensTest {
         assertEquals("""{"instanceId":"oc9","directory":"/home/dev/botcircle","instruction":"Add a parser test."}""", posts.first { it.first == "/opencode/sessions" }.second)
     }
 
+    /** #46: `/` opens a palette of real actions; a command is never sent to the model. */
+    @Test fun slashCommandsAreRealActions() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Write to Ari…").performTextInput("/")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("slash-palette")).fetchSemanticsNodes().isNotEmpty() }
+        waitFor("/think")
+        waitFor("/tools")
+        compose.onNodeWithContentDescription("Write to Ari…").performTextReplacement("/web off")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/agents/a1" && "\"web\":false" in it.second } }
+        assertTrue(posts.none { it.first == "/agents/a1/chat" })
+        compose.onNodeWithContentDescription("Write to Ari…").performTextInput("/help")
+        compose.onNodeWithContentDescription("Send").performClick()
+        waitFor("All commands")
+    }
+
     @Test fun workStaysOutOfTheThreadAndOpensInItsPanel() {
         launch(ThemeMode.DARK)
         waitFor("12,418 lines")

@@ -14,18 +14,25 @@ export function formatBytes(size: number) { return size < 1024 ? `${size} o` : s
 
 type DraftFile = { id: string; file: File; preview: string | null };
 export type MentionTarget = { id: string; name: string; color?: string; description?: string };
+/**
+ * A `/` command (#46): a real action of the app, never a prompt for the model. Typed by the user only; text coming
+ * from a message, a file or a tool is never parsed as a command.
+ */
+export type SlashCommand = { name: string; description: string; args?: { value: string; label: string }[]; unavailable?: string; run: (arg?: string) => void };
 
 /**
  * File picker, drag-and-drop and paste share one draft. Images keep their preview; any other file is listed
  * with its name and size and sent unchanged. `mentions` enables @companion completion.
  */
-export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand }: {
+export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand, commands }: {
   onSubmit: (text: string, files: File[]) => void | Promise<void>;
   onStop: () => void; busy: boolean; placeholder: string; autoFocus?: boolean;
   /** The conversation's own controls (model, effort, web…), under the text. */
   tools?: ReactNode;
   /** Handles a typed command (`/clear`…); returns true when it was one. */
   onCommand?: (text: string) => boolean;
+  /** The `/` palette of this conversation. */
+  commands?: SlashCommand[];
   reply?: { preview: string } | null;
   onClearReply?: () => void;
   mentions?: MentionTarget[];
@@ -55,7 +62,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
     const text = value.trim();
     if ((!text && !draft.current.length) || submitting.current) return;
     // A command typed by the user (e.g. /clear) only opens its own confirmation; it is never sent as a message.
-    if (!draft.current.length && onCommand?.(text)) { setValue(''); return; }
+    if (!draft.current.length && (runCommand(text) || onCommand?.(text))) { setValue(''); return; }
     submitting.current = true; setUploading(true); setError('');
     try {
       await onSubmit(text, draft.current.map((item) => item.file));
@@ -63,6 +70,44 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
       replace([]); setValue('');
     } catch (error) { setError(error instanceof Error ? error.message : t('Impossible de joindre les fichiers. Réessaie.')); } // the draft is kept
     finally { submitting.current = false; setUploading(false); }
+  }
+
+  // `/` palette: the whole draft is a command being typed — its name, then its argument.
+  const [active, setActive] = useState(0), [dismissed, setDismissed] = useState(false);
+  useEffect(() => setDismissed(false), [value]);
+  const slash = useMemo(() => {
+    if (!commands?.length || files.length || dismissed) return null;
+    const match = /^\/([\p{L}-]*)(?:\s+(\S*))?$/u.exec(value);
+    if (!match) return null;
+    const name = match[1].toLowerCase();
+    if (match[2] === undefined) {
+      const options = commands.filter((c) => c.name.startsWith(name));
+      return options.length ? { kind: 'name' as const, options } : null;
+    }
+    const command = commands.find((c) => c.name === name);
+    const args = command?.args?.filter((a) => a.value.startsWith(match[2]!.toLowerCase())) ?? [];
+    return command && args.length ? { kind: 'arg' as const, command, args } : null;
+  }, [value, commands, files.length, dismissed]);
+  useEffect(() => setActive(0), [slash?.kind, slash?.kind === 'name' ? slash.options.length : slash?.args.length]);
+  function runCommand(text: string): boolean {
+    const match = /^\/([\p{L}-]+)(?:\s+(\S+))?\s*$/u.exec(text);
+    const command = match && commands?.find((c) => c.name === match[1].toLowerCase());
+    if (!command) return false;
+    if (command.unavailable) { setError(command.unavailable); return true; }
+    if (command.args?.length && match![2] && !command.args.some((a) => a.value === match![2]!.toLowerCase())) { setError(t('Valeurs possibles : {v0}', { v0: command.args.map((a) => a.value).join(', ') })); return true; }
+    setError('');
+    command.run(match![2]?.toLowerCase());
+    return true;
+  }
+  function choose(index: number) {
+    if (!slash) return;
+    if (slash.kind === 'name') {
+      const command = slash.options[index];
+      if (command.args?.length && !command.unavailable) { setValue(`/${command.name} `); pendingCaret.current = command.name.length + 2; return; }
+      if (runCommand(`/${command.name}`)) setValue('');
+      return;
+    }
+    if (runCommand(`/${slash.command.name} ${slash.args[index].value}`)) setValue('');
   }
 
   // @mention completion: the word being typed at the caret, if it starts with "@".
@@ -97,6 +142,21 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
     onDrop={(event) => { if (event.dataTransfer.files.length) { event.preventDefault(); add(Array.from(event.dataTransfer.files)); } setDragging(false); }}
     className={cn('quiet-glass relative flex w-full flex-col gap-2 rounded-3xl border p-2 shadow-sm transition-shadow', 'focus-within:border-ring/60 focus-within:shadow-md', dragging && 'border-ring ring-2 ring-ring/30')}>
     <input ref={picker} type="file" multiple className="hidden" aria-label={t('Choisir des fichiers')} onChange={(event) => { add(Array.from(event.target.files ?? [])); event.target.value = ''; }} />
+ {slash && <div role="listbox" aria-label={t('Commandes')} data-slash-palette className="absolute bottom-full left-3 mb-2 w-80 max-w-[calc(100%-1.5rem)] overflow-hidden rounded-xl border bg-popover p-1 shadow-md">
+      {slash.kind === 'name' ? slash.options.map((command, index) => (
+        <button key={command.name} type="button" role="option" aria-selected={index === active} onMouseDown={(event) => { event.preventDefault(); choose(index); }}
+          className={cn('flex w-full items-baseline gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent', index === active && 'bg-accent', command.unavailable && 'opacity-60')}>
+          <span className="shrink-0 font-medium font-mono">/{command.name}</span>
+          <span className="min-w-0 truncate text-muted-foreground text-xs">{command.unavailable ?? command.description}</span>
+        </button>
+      )) : slash.args.map((arg, index) => (
+        <button key={arg.value} type="button" role="option" aria-selected={index === active} onMouseDown={(event) => { event.preventDefault(); choose(index); }}
+          className={cn('flex w-full items-baseline gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent', index === active && 'bg-accent')}>
+          <span className="shrink-0 font-medium font-mono">/{slash.command.name} {arg.value}</span>
+          <span className="min-w-0 truncate text-muted-foreground text-xs">{arg.label}</span>
+        </button>
+      ))}
+    </div>}
     {mention && <div role="listbox" aria-label={t('Compagnons')} className="absolute bottom-full left-3 mb-2 w-64 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{option.color && <DotAvatar color={option.color} size={18} />}<span className="min-w-0"><span className="block font-medium">@{option.name}</span>{option.description && <span className="block truncate text-muted-foreground text-xs">{option.description}</span>}</span></button>)}</div>}
     {reply && <div className="flex items-start gap-2 px-3 pt-2 text-xs"><div className="min-w-0 flex-1 border-l-2 border-foreground/30 pl-2"><p className="font-medium">{t('En réponse à')}</p><p className="truncate text-muted-foreground">{reply.preview || t('Message')}</p></div><Button type="button" size="icon-xs" variant="ghost" aria-label={t('Annuler la réponse')} onClick={onClearReply}><XIcon /></Button></div>}
     {files.length > 0 && <div className="flex flex-wrap gap-2 px-2 pt-2" aria-label={t('Fichiers joints')}>{files.map((item) => <div key={item.id} className="relative">
@@ -126,6 +186,17 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
         }}
         onKeyDown={(event) => {
           if (mention && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey) { event.preventDefault(); pick(mention.options[0].name); return; }
+          if (slash) {
+            const count = slash.kind === 'name' ? slash.options.length : slash.args.length;
+            if (event.key === 'ArrowDown') { event.preventDefault(); setActive((i) => (i + 1) % count); return; }
+            if (event.key === 'ArrowUp') { event.preventDefault(); setActive((i) => (i - 1 + count) % count); return; }
+            if (event.key === 'Escape') { event.preventDefault(); setDismissed(true); return; }
+            if ((event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.nativeEvent.isComposing) {
+              // A complete command typed in full runs as is; otherwise the highlighted entry is chosen.
+              if (event.key === 'Enter' && runCommand(value.trim())) { event.preventDefault(); setValue(''); return; }
+              event.preventDefault(); choose(Math.min(active, count - 1)); return;
+            }
+          }
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); }
         }}
         placeholder={placeholder} aria-label={placeholder} className="max-h-[220px] min-h-9 flex-1 resize-none bg-transparent py-2 text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground" />

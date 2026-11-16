@@ -175,6 +175,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     var workSheet by remember(agent.id) { mutableStateOf(false) }
     var editing by remember(agent.id) { mutableStateOf<Pair<String, String>?>(null) }
     var clearing by remember(agent.id) { mutableStateOf(false) }
+    var modelRequest by remember(agent.id) { mutableStateOf(0) }
+    var helping by remember(agent.id) { mutableStateOf(false) }
     var taskSheet by remember(agent.id) { mutableStateOf<String?>(null) }
     var accessSheet by remember(agent.id) { mutableStateOf<String?>(null) }
     val fileActions = rememberFileActions(app)
@@ -338,6 +340,35 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         taskSheet?.let { id -> TaskSheet(app, ui, id) { taskSheet = null } }
         accessSheet?.let { id -> ArtifactSheet(app, ui, id) { accessSheet = null } }
 
+        // #46: the `/` palette — real actions of the app, typed by the user only; never sent to the model.
+        val commands = slashCommands(app, agent, general, chat.busy, onClear = { clearing = true }, onModel = { modelRequest += 1 }, onTasks = { workSheet = true }, onStop = session::stop, onHelp = { helping = true }, onTools = onOpenCompanion)
+        val slashMatch = remember(draft) { Regex("^/([\\p{L}-]*)(?:\\s+(\\S*))?$").find(draft) }
+        val slashOptions = remember(slashMatch, commands) { slashMatch?.takeIf { it.groupValues[0].none { ch -> ch == ' ' } }?.let { m -> commands.filter { it.name.startsWith(m.groupValues[1].lowercase()) } }.orEmpty() }
+        val slashCommand = remember(slashMatch, commands) { slashMatch?.takeIf { ' ' in it.groupValues[0] }?.let { m -> commands.firstOrNull { it.name == m.groupValues[1].lowercase() } } }
+        val slashArgs = remember(slashCommand, slashMatch) { slashCommand?.args?.filter { it.first.startsWith(slashMatch!!.groupValues[2].lowercase()) }.orEmpty() }
+        fun runSlash(text: String): Boolean {
+            val m = Regex("^/([\\p{L}-]+)(?:\\s+(\\S+))?\\s*$").find(text.trim()) ?: return false
+            val command = commands.firstOrNull { it.name == m.groupValues[1].lowercase() } ?: return false
+            val arg = m.groupValues[2].lowercase().ifBlank { null }
+            when {
+                command.unavailable != null -> app.notify(command.unavailable)
+                command.args.isNotEmpty() && arg != null && command.args.none { it.first == arg } -> app.notify(command.args.joinToString(" · ") { it.first })
+                else -> command.run(arg)
+            }
+            return true
+        }
+
+        if (helping) DotDialog(
+            title = stringResource(R.string.commands), onDismiss = { helping = false }, confirmLabel = stringResource(R.string.ok), onConfirm = { helping = false }, dismissLabel = stringResource(R.string.cancel),
+            message = stringResource(R.string.commands_note),
+        ) {
+            commands.forEach { command ->
+                Row(Modifier.padding(vertical = 2.dp)) {
+                    Text("/${command.name}", style = Dot.type.label, color = Dot.colors.textPrimary, modifier = Modifier.width(72.dp))
+                    Text(command.unavailable ?: command.description, style = Dot.type.caption, color = Dot.colors.textSecondary)
+                }
+            }
+        }
         // @mention: the word being typed at the end of the draft, completed from the companions' names.
         val mentionable = remember(ui.agents, general != null) { if (general == null) emptyList() else ui.agents.filter { it.named } }
         val mentionQuery = remember(draft) { MENTION_TAIL.find(draft)?.groupValues?.get(2) }
@@ -363,12 +394,28 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 onStop = session::stop,
                 onSend = {
                     // `/clear` typed alone is a command, not a message: it asks before starting over.
-                    if (draft.trim() == "/clear" && images.isEmpty()) { draft = ""; clearing = true; return@DotComposer }
+                    if (images.isEmpty() && runSlash(draft)) { draft = ""; return@DotComposer }
                     session.send(draft, images.mapNotNull { it.attachment }, reply)
                     draft = ""; reply = null; images.clear()
                 },
-                header = if (reply == null && images.isEmpty() && suggestions.isEmpty()) null else {
+                header = if (reply == null && images.isEmpty() && suggestions.isEmpty() && slashOptions.isEmpty() && slashArgs.isEmpty()) null else {
                     {
+                        if (slashOptions.isNotEmpty() || slashArgs.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(bottom = DotSpacing.xs).testTag("slash-palette")) {
+                            if (slashArgs.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                                slashArgs.forEach { (value, label) -> DotFilterChip("/${slashCommand!!.name} $value", selected = false, onClick = { draft = ""; runSlash("/${slashCommand.name} $value") }) }
+                            } else slashOptions.take(6).forEach { command ->
+                                Row(
+                                    Modifier.fillMaxWidth().clip(DotShapes.medium).clickable(role = Role.Button) {
+                                        if (command.args.isNotEmpty() && command.unavailable == null) draft = "/${command.name} " else { draft = ""; runSlash("/${command.name}") }
+                                    }.heightIn(min = 40.dp).padding(horizontal = DotSpacing.s),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("/${command.name}", style = Dot.type.label, color = if (command.unavailable != null) Dot.colors.textTertiary else Dot.colors.textPrimary)
+                                    Spacer(Modifier.width(DotSpacing.s))
+                                    Text(command.unavailable ?: command.description, style = Dot.type.caption, color = Dot.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
                         if (suggestions.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = DotSpacing.xs), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
                             suggestions.forEach { target -> DotFilterChip("@" + target.name, selected = false, onClick = { draft = draft.dropLast(mentionQuery.orEmpty().length + 1) + "@" + target.name + " " }) }
                         }
@@ -390,7 +437,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                         canAttach = images.size < FILES_MAX_COUNT, onAttach = { picker.launch(arrayOf("*/*")) },
                         onAsk = if (general != null && mentionable.isNotEmpty()) ({ if (mentionQuery == null) draft = if (draft.isEmpty() || draft.last().isWhitespace()) "$draft@" else "$draft @" }) else null,
                     )
-                    if (general != null) ChatControls(app, general) else AgentModelChip(app, agent)
+                    if (general != null) ChatControls(app, general, modelRequest) else AgentModelChip(app, agent, modelRequest)
                 },
             )
         }
@@ -568,12 +615,13 @@ private fun orbStateOf(last: ChatMessage?, status: ChatStatus): OrbState {
 
 /** A general chat's own controls, in its field: model (for the next answers), effort when the model has one, web search. */
 @Composable
-private fun ChatControls(app: AppState, chat: GeneralChat) {
+private fun ChatControls(app: AppState, chat: GeneralChat, modelRequest: Int = 0) {
     val c = Dot.colors
     val model = chat.effectiveModel
     val info by produceState<ModelInfo?>(null, model.provider, model.model) { value = runCatching { app.client.models(model.provider).firstOrNull { it.id == model.model } }.getOrNull() }
     var effortMenu by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
+    LaunchedEffect(modelRequest) { if (modelRequest > 0) picking = true }
     if (picking) ModelSheet(app, model, onDismiss = { picking = false }, onDefault = if (chat.model != null) ({ picking = false; app.updateChat(chat.id, buildJsonObject { put("model", kotlinx.serialization.json.JsonNull) }) }) else null) { m ->
         picking = false
         app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", m.provider); put("model", m.id); if (m.reasoning && model.reasoning != null) put("reasoning", model.reasoning) } })
@@ -674,11 +722,12 @@ private fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Uni
 
 /** A companion's model, from its conversation's field: the same picker, favourites first. */
 @Composable
-private fun AgentModelChip(app: AppState, agent: Agent) {
+private fun AgentModelChip(app: AppState, agent: Agent, modelRequest: Int = 0) {
     val c = Dot.colors
     val model = agent.effectiveModel
     val info by produceState<ModelInfo?>(null, model.provider, model.model) { value = runCatching { app.client.models(model.provider).firstOrNull { it.id == model.model } }.getOrNull() }
     var picking by remember { mutableStateOf(false) }
+    LaunchedEffect(modelRequest) { if (modelRequest > 0) picking = true }
     if (picking) ModelSheet(app, model, onDismiss = { picking = false }, onDefault = if (agent.model != null) ({ picking = false; app.updateAgent(agent.id, buildJsonObject { put("model", kotlinx.serialization.json.JsonNull) }) }) else null) { m ->
         picking = false
         app.updateAgent(agent.id, buildJsonObject { putJsonObject("model") { put("provider", m.provider); put("model", m.id); if (m.reasoning && model.reasoning != null) put("reasoning", model.reasoning) } })
@@ -690,4 +739,49 @@ private fun AgentModelChip(app: AppState, agent: Agent) {
         Text(info?.name?.ifBlank { null } ?: model.model.substringAfterLast('/'), style = Dot.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         Icon(Icons.Outlined.ExpandMore, null, Modifier.size(14.dp), tint = c.textTertiary)
     }
+}
+
+
+/** A `/` command of a conversation (#46): a real action, never a prompt. */
+class SlashCommand(val name: String, val description: String, val args: List<Pair<String, String>> = emptyList(), val unavailable: String? = null, val run: (String?) -> Unit)
+
+@Composable
+private fun slashCommands(app: AppState, agent: Agent, general: GeneralChat?, busy: Boolean, onClear: () -> Unit, onModel: () -> Unit, onTasks: () -> Unit, onStop: () -> Unit, onHelp: () -> Unit, onTools: () -> Unit): List<SlashCommand> {
+    val efforts = listOf("auto" to stringResource(R.string.effort_auto), "low" to stringResource(R.string.effort_low), "medium" to stringResource(R.string.effort_medium), "high" to stringResource(R.string.effort_high))
+    val stop = SlashCommand("stop", stringResource(R.string.cmd_stop), unavailable = if (busy) null else stringResource(R.string.cmd_stop_none)) { onStop() }
+    val help = SlashCommand("help", stringResource(R.string.cmd_help)) { onHelp() }
+    val noReasoning = stringResource(R.string.cmd_think_none)
+    val webOn = stringResource(R.string.cmd_web_on); val webOff = stringResource(R.string.cmd_web_off)
+    val scope = rememberCoroutineScope()
+    fun think(model: app.dot.opendots.data.ModelConfig, arg: String?, apply: (kotlinx.serialization.json.JsonObject) -> Unit) {
+        scope.launch {
+            val info = runCatching { app.client.models(model.provider).firstOrNull { it.id == model.model } }.getOrNull()
+            if (info?.reasoning != true) { app.notify(noReasoning.format(model.model)); return@launch }
+            apply(buildJsonObject { putJsonObject("model") { put("provider", model.provider); put("model", model.model); if (arg == null || arg == "auto") put("reasoning", kotlinx.serialization.json.JsonNull) else put("reasoning", arg) } })
+        }
+    }
+    if (general != null) return listOf(
+        SlashCommand("new", stringResource(R.string.cmd_new_chat)) { app.createChat {} },
+        SlashCommand("clear", stringResource(R.string.cmd_clear_chat)) { onClear() },
+        SlashCommand("model", stringResource(R.string.cmd_model)) { onModel() },
+        SlashCommand("web", stringResource(if (general.webSearch) R.string.cmd_web_state_on else R.string.cmd_web_state_off), listOf("on" to webOn, "off" to webOff)) { arg ->
+            app.updateChat(general.id, buildJsonObject { put("webSearch", arg != "off") }) { app.notify(if (arg == "off") webOff else webOn) }
+        },
+        SlashCommand("think", stringResource(R.string.effort), efforts) { arg -> think(general.effectiveModel, arg) { app.updateChat(general.id, it) } },
+        SlashCommand("tasks", stringResource(R.string.cmd_tasks)) { onTasks() },
+        stop, help,
+    )
+    return listOf(
+        SlashCommand("clear", stringResource(R.string.cmd_clear)) { onClear() },
+        SlashCommand("new", stringResource(R.string.cmd_clear)) { onClear() },
+        SlashCommand("model", stringResource(R.string.cmd_model)) { onModel() },
+        SlashCommand("web", stringResource(if (agent.permissions.web) R.string.cmd_web_state_on else R.string.cmd_web_state_off), listOf("on" to webOn, "off" to webOff)) { arg ->
+            app.updateAgent(agent.id, buildJsonObject { putJsonObject("permissions") { put("web", arg != "off") } })
+            app.notify(if (arg == "off") webOff else webOn)
+        },
+        SlashCommand("think", stringResource(R.string.effort), efforts) { arg -> think(agent.effectiveModel, arg) { app.updateAgent(agent.id, it) } },
+        SlashCommand("tools", stringResource(R.string.cmd_tools)) { onTools() },
+        SlashCommand("tasks", stringResource(R.string.cmd_tasks)) { onTasks() },
+        stop, help,
+    )
 }
