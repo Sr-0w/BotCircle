@@ -19,15 +19,37 @@ export interface SshConnectionDTO {
   id: string; name: string; description: string; host: string; port: number; username: string; auth: 'key' | 'password';
   hasSecret: boolean; hostKey: string | null; agents: string[]; approval: 'ask' | 'auto'; enabled: boolean;
   status: 'unknown' | 'ok' | 'error'; lastError: string | null; lastOkAt: string | null;
+  /** The public half of its key (never the private one), and the command that authorises it on the remote machine. */
+  publicKey: string | null; installCommand: string | null; generatedKey: boolean;
+}
+
+/** OpenSSH public line of a private key (generated or pasted); null when it cannot be read (e.g. wrong passphrase). */
+function publicKeyOf(secret: Record<string, string>): string | null {
+  if (secret.publicKey) return secret.publicKey;
+  if (!secret.privateKey) return null;
+  try {
+    const parsed = ssh2.utils.parseKey(secret.privateKey, secret.passphrase);
+    const key = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!key || key instanceof Error) return null;
+    return `${key.type} ${key.getPublicSSH().toString('base64')} botcircle`;
+  } catch { return null; }
+}
+
+/** Idempotent: run once on the remote machine, as the user BotCircle connects as. */
+export function installCommand(publicKey: string): string {
+  const quoted = `'${publicKey.replace(/'/g, `'\\''`)}'`;
+  return `mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && (grep -qxF ${quoted} ~/.ssh/authorized_keys || echo ${quoted} >> ~/.ssh/authorized_keys)`;
 }
 
 export function toSshDTO(row: SshRow): SshConnectionDTO {
-  return { id: row.id, name: row.name, description: row.description, host: row.host, port: row.port, username: row.username, auth: row.auth, hasSecret: Boolean(row.secret), hostKey: row.hostKey, agents: row.agents, approval: row.approval, enabled: row.enabled, status: row.status, lastError: row.lastError, lastOkAt: row.lastOkAt?.toISOString() ?? null };
+  const secret = row.secret && row.auth === 'key' ? JSON.parse(decryptSecret(row.secret)) as Record<string, string> : {};
+  const publicKey = publicKeyOf(secret);
+  return { publicKey, installCommand: publicKey ? installCommand(publicKey) : null, generatedKey: Boolean(secret.generated), id: row.id, name: row.name, description: row.description, host: row.host, port: row.port, username: row.username, auth: row.auth, hasSecret: Boolean(row.secret), hostKey: row.hostKey, agents: row.agents, approval: row.approval, enabled: row.enabled, status: row.status, lastError: row.lastError, lastOkAt: row.lastOkAt?.toISOString() ?? null };
 }
 
 const HOST = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|\d{1,3}(?:\.\d{1,3}){3}|\[?[0-9a-fA-F:]+\]?)$/;
 
-export interface SshInput { name?: string; description?: string; host?: string; port?: number; username?: string; auth?: 'key' | 'password'; privateKey?: string | null; passphrase?: string | null; password?: string | null; agents?: string[]; approval?: 'ask' | 'auto'; enabled?: boolean }
+export interface SshInput { name?: string; description?: string; host?: string; port?: number; username?: string; auth?: 'key' | 'password'; privateKey?: string | null; generateKey?: boolean; passphrase?: string | null; password?: string | null; agents?: string[]; approval?: 'ask' | 'auto'; enabled?: boolean }
 
 export async function listSsh(): Promise<SshRow[]> { return db().select().from(schema.sshConnections).orderBy(desc(schema.sshConnections.createdAt)); }
 export async function getSsh(id: string): Promise<SshRow | null> { const [row] = await db().select().from(schema.sshConnections).where(eq(schema.sshConnections.id, id)); return row ?? null; }
@@ -41,14 +63,19 @@ export async function saveSsh(input: SshInput & { id?: string }): Promise<SshRow
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new SshError('Port invalide.');
   const username = (input.username ?? existing?.username ?? '').trim();
   if (!/^[a-zA-Z0-9._-]{1,64}$/.test(username)) throw new SshError('Nom d’utilisateur invalide.');
-  const auth = input.auth ?? existing?.auth ?? 'key';
+  const auth = input.generateKey ? 'key' : input.auth ?? existing?.auth ?? 'key';
   const previous = existing?.secret ? JSON.parse(decryptSecret(existing.secret)) as Record<string, string> : {};
   const secret: Record<string, string> = { ...previous };
-  if (input.privateKey !== undefined) { if (input.privateKey) secret.privateKey = input.privateKey.trim() + '\n'; else delete secret.privateKey; }
+  if (input.privateKey !== undefined) { delete secret.publicKey; delete secret.generated; if (input.privateKey) secret.privateKey = input.privateKey.trim() + '\n'; else delete secret.privateKey; }
+  // A key made here: ed25519, kept only encrypted on the server; the user gets its public half and the command to add it.
+  if (input.generateKey) {
+    const pair = ssh2.utils.generateKeyPairSync('ed25519', { comment: 'botcircle' });
+    secret.privateKey = pair.private.trim() + '\n'; secret.publicKey = pair.public.trim(); secret.generated = '1'; delete secret.passphrase;
+  }
   if (input.passphrase !== undefined) { if (input.passphrase) secret.passphrase = input.passphrase; else delete secret.passphrase; }
   if (input.password !== undefined) { if (input.password) secret.password = input.password; else delete secret.password; }
   if (auth === 'key' && secret.privateKey && !/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(secret.privateKey)) throw new SshError('Clé privée illisible : colle la clé complète (BEGIN … PRIVATE KEY).');
-  if (auth === 'key' && !secret.privateKey) throw new SshError('Ajoute la clé privée.');
+  if (auth === 'key' && !secret.privateKey) throw new SshError('Ajoute la clé privée, ou laisse BotCircle en créer une.');
   if (auth === 'password' && !secret.password) throw new SshError('Ajoute le mot de passe.');
   // Changing where it points invalidates the trusted host key.
   const moved = existing && (existing.host !== host || existing.port !== port);

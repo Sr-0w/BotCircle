@@ -509,6 +509,8 @@ data class SshConnection(
     val id: String, val name: String = "", val description: String = "", val host: String = "", val port: Int = 22, val username: String = "",
     val auth: String = "key", val hasSecret: Boolean = false, val hostKey: String? = null, val agents: List<String> = emptyList(),
     val approval: String = "ask", val enabled: Boolean = true, val status: String = "unknown", val lastError: String? = null, val lastOkAt: String? = null,
+    /** Public half of its key and the command that authorises it on the machine (never the private key). */
+    val publicKey: String? = null, val installCommand: String? = null, val generatedKey: Boolean = false,
 )
 
 @Immutable

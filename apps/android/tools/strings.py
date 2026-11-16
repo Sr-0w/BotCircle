@@ -2,6 +2,13 @@ import sys
 from xml.sax.saxutils import escape
 S = {
  "app_name": ("BotCircle", "BotCircle"),
+ "ssh_key_generate": ("Key created by BotCircle", "Clé créée par BotCircle"), "ssh_key_paste": ("Paste a private key", "Coller une clé privée"),
+ "ssh_key_generate_note": ("Recommended. BotCircle creates an ed25519 key and keeps it encrypted on the server; you only add its public key on the machine, with the command shown after saving.", "Recommandé. BotCircle crée une clé ed25519 et la garde chiffrée sur le serveur ; tu n’as qu’à ajouter sa clé publique sur la machine, avec la commande affichée après l’enregistrement."),
+ "ssh_key_rotate": ("Create a new key (the current one stops working)", "Créer une nouvelle clé (l’actuelle ne servira plus)"),
+ "ssh_install_note": ("On the machine, signed in as %1$s, run this command once to authorise BotCircle’s key:", "Sur la machine, connecté en tant que %1$s, exécute une fois cette commande pour autoriser la clé de BotCircle :"),
+ "ssh_copy_command": ("Copy the command", "Copier la commande"), "ssh_copy_public_key": ("Copy the public key", "Copier la clé publique"),
+ "ssh_command_copied": ("Command copied", "Commande copiée"), "ssh_public_key_copied": ("Public key copied", "Clé publique copiée"),
+ "ssh_private_stays": ("The private key stays encrypted on the BotCircle server and is never shown. Then tap Test.", "La clé privée reste chiffrée sur le serveur BotCircle et n’est jamais affichée. Ensuite, touche Tester."),
  "work_row_note": ("Its tasks, files and what it is doing now", "Ses tâches, ses fichiers et ce qu’il fait en ce moment"),
  "avatar_shape": ("Silhouette", "Silhouette"), "avatar_round": ("Round", "Rond"),
  "avatar_restore": ("Back to the previous silhouette", "Revenir à la silhouette précédente"),

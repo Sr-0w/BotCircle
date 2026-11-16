@@ -11,14 +11,15 @@ import { eq } from 'drizzle-orm';
 const hostKey = utils.generateKeyPairSync('ed25519');
 const userKey = utils.generateKeyPairSync('ed25519');
 const otherKey = utils.generateKeyPairSync('ed25519');
+const authorized: string[] = [userKey.public];
 let server: Server; let port = 0; let secondHostKey = utils.generateKeyPairSync('ed25519'); let hostKeyInUse = hostKey.private;
 function start(keyPem: string) {
   return new Promise<void>((resolve) => {
     server = new Server({ hostKeys: [keyPem] }, (client) => {
       client.on('error', () => {}); // refused handshakes (untrusted host key) are expected here
       client.on('authentication', (ctx) => {
-        const allowed = utils.parseKey(userKey.public) as any;
-        if (ctx.method === 'publickey' && ctx.username === 'robin' && ctx.key.algo === allowed.type && Buffer.compare(ctx.key.data, allowed.getPublicSSH()) === 0) return ctx.accept();
+        const ok = authorized.some((line) => { const allowed = utils.parseKey(line) as any; return ctx.key && ctx.key.algo === allowed.type && Buffer.compare(ctx.key.data, allowed.getPublicSSH()) === 0; });
+        if (ctx.method === 'publickey' && ctx.username === 'robin' && ok) return ctx.accept();
         if (ctx.method === 'password' && ctx.username === 'robin' && ctx.password === 'right-password') return ctx.accept();
         ctx.reject(['publickey', 'password']);
       }).on('ready', () => client.on('session', (accept) => accept().on('exec', (acceptExec, _reject, info) => {
@@ -52,6 +53,32 @@ describe('#52 : connexions SSH', () => {
     expect(await executeSsh(ready, 'sleep', { timeoutMs: 300 })).toMatchObject({ status: 'timeout', exitCode: null });
     const abort = new AbortController(); setTimeout(() => abort.abort(), 200);
     expect(await executeSsh(ready, 'sleep', { timeoutMs: 10_000, signal: abort.signal })).toMatchObject({ status: 'cancelled' });
+  });
+
+  it('BotCircle crée la clé : seule la clé publique sort, avec une commande d’ajout idempotente qui fonctionne', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { mkdtempSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    await expect(saveSsh({ name: 'Sans clé', host: '127.0.0.1', port, username: 'robin', auth: 'key' })).rejects.toThrow(/laisse BotCircle en créer une/);
+    const row = await saveSsh({ name: 'Clé générée', host: '127.0.0.1', port, username: 'robin', generateKey: true });
+    const dto = toSshDTO(row);
+    expect(dto).toMatchObject({ auth: 'key', generatedKey: true });
+    expect(dto.publicKey).toMatch(/^ssh-ed25519 AAAA\S+ botcircle$/);
+    expect(JSON.stringify(dto)).not.toContain('PRIVATE KEY');
+    expect(JSON.stringify(row)).not.toContain('PRIVATE KEY'); // stored encrypted
+    // The command, run twice in a real shell, adds the key exactly once.
+    const home = mkdtempSync(join(tmpdir(), 'ssh-home-'));
+    for (let i = 0; i < 2; i++) execFileSync('sh', ['-c', dto.installCommand!], { env: { HOME: home, PATH: process.env.PATH } });
+    expect(readFileSync(join(home, '.ssh/authorized_keys'), 'utf8')).toBe(`${dto.publicKey}\n`);
+    // Before the key is added the machine refuses it; after, BotCircle connects.
+    expect((await testSsh(row.id, true)).ok).toBe(false);
+    authorized.push(dto.publicKey!);
+    expect(await testSsh(row.id, true)).toMatchObject({ ok: true });
+    // A pasted key also shows its public half; regenerating replaces the key.
+    expect(toSshDTO(await saveSsh({ id: row.id, privateKey: otherKey.private })).publicKey?.split(' ')[1]).toBe(otherKey.public.split(' ')[1]);
+    const again = toSshDTO(await saveSsh({ id: row.id, generateKey: true }));
+    expect(again.publicKey).not.toBe(dto.publicKey);
   });
 
   it('mot de passe faux, mot de passe masqué dans la sortie, hôte injoignable', async () => {

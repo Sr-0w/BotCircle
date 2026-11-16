@@ -1,5 +1,13 @@
 package app.dot.opendots.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import app.dot.design.DotShapes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +63,7 @@ fun SshPage(app: AppState, ui: AppUiState, onBack: () -> Unit) {
     var pending by remember { mutableStateOf<Pair<String, String>?>(null) }
     var busy by remember { mutableStateOf(false) }
     val ok = stringResource(R.string.ssh_ok)
+    @Suppress("DEPRECATION") val clipboard = LocalClipboardManager.current
     suspend fun reload() { rows = runCatching { app.client.sshConnections() }.getOrDefault(emptyList()) }
     fun test(id: String, trust: Boolean) = scope.launch {
         busy = true
@@ -77,6 +86,7 @@ fun SshPage(app: AppState, ui: AppUiState, onBack: () -> Unit) {
                 Text(row.hostKey ?: stringResource(R.string.ssh_unverified), style = Dot.type.caption, color = if (row.hostKey == null) Dot.colors.danger else Dot.colors.textTertiary)
                 Text(if (row.agents.isEmpty()) stringResource(R.string.ssh_no_circle) else stringResource(R.string.ssh_circles, row.agents.mapNotNull { id -> ui.agents.firstOrNull { it.id == id }?.name }.joinToString(", ")), style = Dot.type.caption, color = Dot.colors.textSecondary)
                 row.lastError?.let { Text(it, style = Dot.type.caption, color = Dot.colors.danger) }
+                if (row.installCommand != null) SshPublicKey(row) { text, done -> clipboard.setText(AnnotatedString(text)); app.notify(done) }
                 if (pending?.first == row.id) Column(Modifier.padding(top = DotSpacing.s).testTag("ssh-trust")) {
                     Text(stringResource(R.string.ssh_trust_note), style = Dot.type.caption, color = Dot.colors.textSecondary)
                     Text(pending!!.second, style = Dot.type.caption, color = Dot.colors.textPrimary)
@@ -109,7 +119,9 @@ private fun SshForm(ui: AppUiState, existing: SshConnection?, onCancel: () -> Un
     var host by remember { mutableStateOf(existing?.host.orEmpty()) }
     var port by remember { mutableStateOf((existing?.port ?: 22).toString()) }
     var user by remember { mutableStateOf(existing?.username.orEmpty()) }
-    var auth by remember { mutableStateOf(existing?.auth ?: "key") }
+    // "generate": BotCircle creates the key (the default for a new machine; for an existing one, only when asked).
+    var auth by remember { mutableStateOf(if (existing == null || (existing.auth == "key" && existing.generatedKey)) "generate" else existing.auth) }
+    var rotate by remember { mutableStateOf(false) }
     var key by remember { mutableStateOf("") }
     var passphrase by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -120,11 +132,15 @@ private fun SshForm(ui: AppUiState, existing: SshConnection?, onCancel: () -> Un
         DotTextField(host, { host = it.take(255) }, label = stringResource(R.string.ssh_host), keyboardType = KeyboardType.Uri)
         DotTextField(user, { user = it.take(64) }, label = stringResource(R.string.ssh_user))
         DotTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = stringResource(R.string.ssh_port), keyboardType = KeyboardType.Number)
-        Row(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-            DotFilterChip(stringResource(R.string.ssh_key), selected = auth == "key", onClick = { auth = "key" }, radio = true)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+            DotFilterChip(stringResource(R.string.ssh_key_generate), selected = auth == "generate", onClick = { auth = "generate" }, radio = true)
+            DotFilterChip(stringResource(R.string.ssh_key_paste), selected = auth == "key", onClick = { auth = "key" }, radio = true)
             DotFilterChip(stringResource(R.string.ssh_password), selected = auth == "password", onClick = { auth = "password" }, radio = true)
         }
-        if (auth == "key") {
+        if (auth == "generate") {
+            if (existing != null) SwitchRow(stringResource(R.string.ssh_key_rotate), null, rotate) { rotate = it }
+            else Text(stringResource(R.string.ssh_key_generate_note), style = Dot.type.caption, color = Dot.colors.textSecondary)
+        } else if (auth == "key") {
             DotTextField(key, { key = it.take(20_000) }, label = stringResource(R.string.ssh_key), placeholder = if (existing != null) stringResource(R.string.ssh_keep_secret) else "-----BEGIN OPENSSH PRIVATE KEY-----", singleLine = false)
             DotTextField(passphrase, { passphrase = it.take(500) }, label = stringResource(R.string.ssh_passphrase), password = true)
         } else DotTextField(password, { password = it.take(500) }, label = stringResource(R.string.ssh_password), password = true, placeholder = if (existing != null) stringResource(R.string.ssh_keep_secret) else null)
@@ -139,7 +155,8 @@ private fun SshForm(ui: AppUiState, existing: SshConnection?, onCancel: () -> Un
             DotButton(stringResource(R.string.cancel), onCancel, style = ButtonStyle.Ghost)
             DotButton(stringResource(R.string.save), {
                 onSave(buildJsonObject {
-                    put("name", name); put("host", host); put("port", port.toIntOrNull() ?: 22); put("username", user); put("auth", auth); put("approval", approval)
+                    put("name", name); put("host", host); put("port", port.toIntOrNull() ?: 22); put("username", user); put("auth", if (auth == "generate") "key" else auth); put("approval", approval)
+                    if (auth == "generate" && (existing == null || rotate)) put("generateKey", true)
                     putJsonArray("agents") { agents.forEach { add(it) } }
                     if (auth == "key" && key.isNotBlank()) put("privateKey", key)
                     if (auth == "key" && passphrase.isNotBlank()) put("passphrase", passphrase)
@@ -147,5 +164,22 @@ private fun SshForm(ui: AppUiState, existing: SshConnection?, onCancel: () -> Un
                 })
             }, enabled = host.isNotBlank() && user.isNotBlank())
         }
+    }
+}
+
+/** The one command that authorises BotCircle's key on the machine, and the public key itself, each copied in one tap. */
+@Composable
+private fun SshPublicKey(row: SshConnection, onCopy: (text: String, done: String) -> Unit) {
+    val c = Dot.colors
+    val commandCopied = stringResource(R.string.ssh_command_copied)
+    val keyCopied = stringResource(R.string.ssh_public_key_copied)
+    Column(Modifier.padding(top = DotSpacing.s).fillMaxWidth().clip(DotShapes.medium).background(c.surfaceRaised).padding(DotSpacing.m).testTag("ssh-public-key"), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+        Text(stringResource(R.string.ssh_install_note, row.username), style = Dot.type.caption, color = c.textSecondary)
+        Text(row.installCommand.orEmpty(), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textPrimary, modifier = Modifier.fillMaxWidth().clip(DotShapes.small).background(c.background).padding(DotSpacing.s))
+        Row(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+            DotButton(stringResource(R.string.ssh_copy_command), { onCopy(row.installCommand.orEmpty(), commandCopied) }, compact = true, modifier = Modifier.testTag("ssh-copy-command"))
+            DotButton(stringResource(R.string.ssh_copy_public_key), { onCopy(row.publicKey.orEmpty(), keyCopied) }, style = ButtonStyle.Ghost, compact = true)
+        }
+        Text(stringResource(R.string.ssh_private_stays), style = Dot.type.caption, color = c.textTertiary)
     }
 }

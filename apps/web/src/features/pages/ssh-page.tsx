@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LoaderIcon, PlusIcon, ServerIcon, ShieldAlertIcon, ShieldCheckIcon } from 'lucide-react';
+import { CopyIcon, LoaderIcon, PlusIcon, ServerIcon, ShieldAlertIcon, ShieldCheckIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +10,8 @@ import { useStore } from '@/lib/store';
 import { t } from '@/lib/i18n';
 import { cn, formatDateTime } from '@/lib/utils';
 
-type Draft = { id?: string; name: string; description: string; host: string; port: string; username: string; auth: 'key' | 'password'; privateKey: string; passphrase: string; password: string; agents: string[]; approval: 'ask' | 'auto' };
-const empty: Draft = { name: '', description: '', host: '', port: '22', username: '', auth: 'key', privateKey: '', passphrase: '', password: '', agents: [], approval: 'ask' };
+type Draft = { id?: string; name: string; description: string; host: string; port: string; username: string; auth: 'generate' | 'key' | 'password'; privateKey: string; passphrase: string; password: string; agents: string[]; approval: 'ask' | 'auto'; rotate?: boolean };
+const empty: Draft = { name: '', description: '', host: '', port: '22', username: '', auth: 'generate', privateKey: '', passphrase: '', password: '', agents: [], approval: 'ask' };
 
 /**
  * #52: machines reachable over SSH. Secrets are entered here and never shown again; each machine lists the Circles
@@ -28,7 +28,7 @@ export function SshPage() {
     if (!draft) return;
     setBusy(true);
     try {
-      const body = { name: draft.name, description: draft.description, host: draft.host, port: Number(draft.port) || 22, username: draft.username, auth: draft.auth, agents: draft.agents, approval: draft.approval,
+      const body = { name: draft.name, description: draft.description, host: draft.host, port: Number(draft.port) || 22, username: draft.username, ...(draft.auth === 'generate' ? { auth: 'key', ...(draft.id && !draft.rotate ? {} : { generateKey: true }) } : { auth: draft.auth }), agents: draft.agents, approval: draft.approval,
         ...(draft.privateKey ? { privateKey: draft.privateKey } : {}), ...(draft.passphrase ? { passphrase: draft.passphrase } : {}), ...(draft.password ? { password: draft.password } : {}) };
       const saved = await api.saveSsh(draft.id ?? null, body);
       setDraft(null); reload(); void test(saved.id);
@@ -64,6 +64,7 @@ export function SshPage() {
             <p className="flex items-center gap-1.5 text-xs">{row.hostKey ? <><ShieldCheckIcon className="size-3.5 text-emerald-600" /><span className="font-mono text-muted-foreground">{row.hostKey}</span></> : <><ShieldAlertIcon className="size-3.5 text-amber-600" />{t('Hôte pas encore vérifié')}</>}</p>
             <p className="text-muted-foreground text-xs">{row.agents.length ? t('Circles autorisés : {v0}', { v0: row.agents.map((id) => agents.find((a) => a.id === id)?.name ?? '?').join(', ') }) : t('Aucun Circle autorisé')} · {row.approval === 'ask' ? t('chaque commande attend ton accord') : t('accès shell complet, sans validation')}{row.lastOkAt ? ` · ${t('dernière connexion {v0}', { v0: formatDateTime(row.lastOkAt) })}` : ''}</p>
             {row.lastError && <p className="text-destructive text-xs">{row.lastError}</p>}
+            {row.installCommand && <PublicKey row={row} />}
             {pending?.id === row.id && (
               <div className="space-y-2 rounded-xl border border-amber-500/40 p-3 text-xs" role="alert">
                 <p>{t('Première connexion : vérifie que cette empreinte est bien celle de la machine (ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub).')}</p>
@@ -73,7 +74,7 @@ export function SshPage() {
             )}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" disabled={testing === row.id} onClick={() => void test(row.id)}>{testing === row.id && <LoaderIcon className="animate-spin" />}{t('Tester')}</Button>
-              <Button size="sm" variant="ghost" onClick={() => setDraft({ ...empty, id: row.id, name: row.name, description: row.description, host: row.host, port: String(row.port), username: row.username, auth: row.auth, agents: row.agents, approval: row.approval })}>{t('Modifier')}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setDraft({ ...empty, id: row.id, name: row.name, description: row.description, host: row.host, port: String(row.port), username: row.username, auth: row.auth === 'key' && row.generatedKey ? 'generate' : row.auth, agents: row.agents, approval: row.approval })}>{t('Modifier')}</Button>
               <Button size="sm" variant="ghost" className="text-destructive" onClick={() => { if (confirm(t('Supprimer {v0} ?', { v0: row.name }))) void api.deleteSsh(row.id).then(reload); }}>{t('Supprimer')}</Button>
             </div>
           </section>
@@ -89,9 +90,12 @@ export function SshPage() {
             </div>
             <label className={cn(field, 'block')}>{t('Description (facultatif)')}<Input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
             <div className="flex gap-2 text-xs">
-              {(['key', 'password'] as const).map((auth) => <Button key={auth} type="button" size="sm" variant={draft.auth === auth ? 'secondary' : 'ghost'} onClick={() => setDraft({ ...draft, auth })}>{auth === 'key' ? t('Clé privée') : t('Mot de passe')}</Button>)}
+              {(['generate', 'key', 'password'] as const).map((auth) => <Button key={auth} type="button" size="sm" variant={draft.auth === auth ? 'secondary' : 'ghost'} onClick={() => setDraft({ ...draft, auth })}>{auth === 'generate' ? (draft.id ? t('Clé créée par BotCircle') : t('Clé créée par BotCircle')) : auth === 'key' ? t('Coller une clé privée') : t('Mot de passe')}</Button>)}
             </div>
-            {draft.auth === 'key' ? (<>
+            {draft.auth === 'generate' ? (
+              draft.id ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!draft.rotate} onChange={(e) => setDraft({ ...draft, rotate: e.target.checked })} />{t('Créer une nouvelle clé (l’actuelle ne servira plus ; ajoute la nouvelle clé publique sur la machine)')}</label> :
+              <p className="text-muted-foreground text-xs">{ t('Recommandé. BotCircle crée une clé ed25519 et la garde chiffrée sur le serveur ; tu n’as qu’à ajouter sa clé publique sur la machine, avec la commande affichée après l’enregistrement.')}</p>
+            ) : draft.auth === 'key' ? (<>
               <label className={cn(field, 'block')}>{t('Clé privée')}<Textarea rows={4} className="font-mono text-xs" value={draft.privateKey} onChange={(e) => setDraft({ ...draft, privateKey: e.target.value })} placeholder={draft.id ? t('Laisse vide pour garder la clé enregistrée') : '-----BEGIN OPENSSH PRIVATE KEY-----'} /></label>
               <label className={cn(field, 'block')}>{t('Phrase de passe (facultatif)')}<Input type="password" value={draft.passphrase} onChange={(e) => setDraft({ ...draft, passphrase: e.target.value })} autoComplete="off" /></label>
             </>) : <label className={cn(field, 'block')}>{t('Mot de passe')}<Input type="password" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} placeholder={draft.id ? t('Laisse vide pour garder le mot de passe enregistré') : ''} autoComplete="off" /></label>}
@@ -109,6 +113,25 @@ export function SshPage() {
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The public half of the machine's key and the one command that authorises it there, each with a copy button. */
+function PublicKey({ row }: { row: SshConnection }) {
+  const copy = (text: string, done: string) => void navigator.clipboard?.writeText(text).then(() => toast.success(done)).catch(() => toast.error(t('Copie impossible')));
+  return (
+    <div className="space-y-2 rounded-xl bg-muted/50 p-3 text-xs" data-ssh-public-key>
+      <p>{t('Sur la machine, connecté en tant que {v0}, exécute une fois cette commande pour autoriser la clé de BotCircle :', { v0: row.username })}</p>
+      <div className="flex items-start gap-2">
+        <pre tabIndex={0} className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-background p-2 font-mono text-[11px]">{row.installCommand}</pre>
+        <Button type="button" size="sm" variant="secondary" aria-label={t('Copier la commande')} onClick={() => copy(row.installCommand!, t('Commande copiée'))}><CopyIcon />{t('Copier')}</Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={row.publicKey ?? ''}>{row.publicKey}</span>
+        <Button type="button" size="sm" variant="ghost" onClick={() => copy(row.publicKey!, t('Clé publique copiée'))}>{t('Copier la clé publique')}</Button>
+      </div>
+      <p className="text-muted-foreground">{t('La clé privée reste chiffrée sur le serveur BotCircle et n’est jamais affichée. Ensuite, clique sur Tester.')}</p>
     </div>
   );
 }

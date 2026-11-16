@@ -10,7 +10,7 @@ export function sshRoutes() {
     name: z.string().max(80).optional(), description: z.string().max(300).optional(),
     host: z.string().max(255).optional(), port: z.number().int().min(1).max(65535).optional(), username: z.string().max(64).optional(),
     auth: z.enum(['key', 'password']).optional(),
-    privateKey: z.string().max(20_000).nullable().optional(), passphrase: z.string().max(500).nullable().optional(), password: z.string().max(500).nullable().optional(),
+    privateKey: z.string().max(20_000).nullable().optional(), generateKey: z.boolean().optional(), passphrase: z.string().max(500).nullable().optional(), password: z.string().max(500).nullable().optional(),
     agents: z.array(z.string()).max(50).optional(), approval: z.enum(['ask', 'auto']).optional(), enabled: z.boolean().optional(),
   }).strict();
   app.get('/connections', async (c) => c.json((await listSsh()).map(toSshDTO)));

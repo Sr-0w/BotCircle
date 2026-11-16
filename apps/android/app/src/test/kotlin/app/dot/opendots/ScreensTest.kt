@@ -8,6 +8,7 @@ import androidx.compose.ui.test.captureToImage
 import coil3.imageDecoderEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -162,7 +163,8 @@ class ScreensTest {
                     path == "/opencode/instances" && request.method == "GET" -> json(if (paired) """[{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}]""" else "[]")
                     path == "/homeassistant/instances" -> json("""[{"id":"mcp_ha","name":"Maison","base":"http://ha.local:8123","mode":"assist","auth":"oauth","status":"ok","lastError":null,"tools":["GetLiveContext","HassTurnOn"],"policy":{"agents":{},"chats":"none","sensitive":["lock","alarm_control_panel"],"areas":[],"domains":[]}}]""")
                     path == "/homeassistant/instances/mcp_ha/policy" -> json("""{"id":"mcp_ha","name":"Maison","base":"http://ha.local:8123","mode":"assist","auth":"oauth","status":"ok","tools":[],"policy":{"agents":{"a1":"control"}}}""")
-                    path == "/ssh/connections" && request.method == "GET" -> json("""[{"id":"ssh1","name":"Home server","host":"192.168.1.10","port":22,"username":"robin","auth":"key","hasSecret":true,"hostKey":null,"agents":["a1"],"approval":"ask","enabled":true,"status":"unknown","lastError":null,"lastOkAt":null}]""")
+                    path == "/ssh/connections" && request.method == "GET" -> json("""[{"id":"ssh1","name":"Home server","host":"192.168.1.10","port":22,"username":"robin","auth":"key","hasSecret":true,"hostKey":null,"agents":["a1"],"approval":"ask","enabled":true,"status":"unknown","lastError":null,"lastOkAt":null,"publicKey":"ssh-ed25519 AAAAC3Nza botcircle","installCommand":"mkdir -p ~/.ssh && echo 'ssh-ed25519 AAAAC3Nza botcircle' >> ~/.ssh/authorized_keys","generatedKey":true}]""")
+                    path == "/ssh/connections" -> json("""{"id":"ssh2","name":"New","host":"10.0.0.2","port":22,"username":"pi","auth":"key","hasSecret":true,"hostKey":null,"agents":[],"approval":"ask","enabled":true,"status":"unknown","lastError":null,"lastOkAt":null}""")
                     path == "/ssh/connections/ssh1/test" -> json(if ("true" in (request.body?.utf8() ?: "")) """{"ok":true,"hostKey":"SHA256:abcDEF","trusted":true,"error":null}""" else """{"ok":false,"hostKey":"SHA256:abcDEF","trusted":false,"error":"Hôte inconnu"}""")
                     path == "/opencode/instances/oc9/projects" -> json("""[{"id":"p1","worktree":"/home/dev/botcircle","name":"botcircle"}]""")
                     path == "/opencode/sessions" && request.method == "GET" -> json(if (paired) """[{"instanceId":"oc9","instanceName":"devbox","reachable":true,"sessions":[{"id":"ses_term","title":"Started in the terminal","directory":"/home/dev/botcircle","updatedAt":1,"busy":false,"additions":0,"deletions":0,"files":0,"taskId":null}]}]""" else "[]")
@@ -376,11 +378,24 @@ class ScreensTest {
         waitFor("Home server")
         waitFor("Host not verified yet")
         waitFor("Allowed: Ari")
+        // BotCircle's own key: the command that authorises it is copied in one tap.
+        waitFor("Copy the command")
+        compose.onNodeWithText("Copy the command").performClick()
+        waitFor("Command copied")
         compose.onNodeWithText("Test").performClick()
         waitFor("SHA256:abcDEF")
         compose.onNodeWithText("Trust this host").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/ssh/connections/ssh1/test" && "true" in it.second } }
         shoot("ssh-dark")
+        // A new machine gets a key made by BotCircle by default.
+        compose.onNodeWithText("Add a machine").also { runCatching { it.performScrollTo() } }.performClick()
+        waitFor("Key created by BotCircle")
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction())[1].performTextInput("10.0.0.2")
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction())[2].performTextInput("pi")
+        compose.onNodeWithText("Save").also { runCatching { it.performScrollTo() } }.performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/ssh/connections" } }
+        val body = posts.first { it.first == "/ssh/connections" }.second
+        assertTrue(body, "\"generateKey\":true" in body && "\"auth\":\"key\"" in body && "privateKey" !in body)
     }
 
     /** #39: Home Assistant rights are set Circle by Circle. */

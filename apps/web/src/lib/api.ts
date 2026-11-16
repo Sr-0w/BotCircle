@@ -121,7 +121,7 @@ export interface DesktopStatus { agentId: string; suspended: boolean; restartReq
 export interface HaInstance { id: string; name: string; base: string; mode: 'assist' | 'full'; auth: 'oauth' | 'token'; status: string; lastError: string | null; tools: string[]; policy: { agents: Record<string, 'none' | 'read' | 'control'>; chats: 'none' | 'read' | 'control'; sensitive: string[]; areas: string[]; domains: string[] } }
 
 /** #52: a machine reachable over SSH (secrets never returned). */
-export interface SshConnection { id: string; name: string; description: string; host: string; port: number; username: string; auth: 'key' | 'password'; hasSecret: boolean; hostKey: string | null; agents: string[]; approval: 'ask' | 'auto'; enabled: boolean; status: 'unknown' | 'ok' | 'error'; lastError: string | null; lastOkAt: string | null }
+export interface SshConnection { id: string; name: string; description: string; host: string; port: number; username: string; auth: 'key' | 'password'; hasSecret: boolean; hostKey: string | null; agents: string[]; approval: 'ask' | 'auto'; enabled: boolean; status: 'unknown' | 'ok' | 'error'; lastError: string | null; lastOkAt: string | null; publicKey: string | null; installCommand: string | null; generatedKey: boolean }
 
 export const api = {
   uploadImage: async (file: File) => {
