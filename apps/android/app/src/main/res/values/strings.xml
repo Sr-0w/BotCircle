@@ -485,6 +485,7 @@
     <string name="settings_server_note">Backend connection</string>
     <string name="setup_body">Connect a mailbox, add connectors or start a Circle’s computer from the web app.</string>
     <string name="setup_title">Go further</string>
+    <string name="share">Share</string>
     <string name="show">Show</string>
     <string name="show_work">Show the work</string>
     <string name="sign_in">Sign in</string>

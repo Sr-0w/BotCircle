@@ -90,6 +90,7 @@ import app.dot.opendots.data.fileKind
 import app.dot.opendots.data.formatBytes
 import app.dot.opendots.data.saveTo
 import app.dot.opendots.data.viewIntent
+import app.dot.opendots.data.shareIntent
 import kotlinx.coroutines.launch
 
 // --- Files ----------------------------------------------------------------------------------------
@@ -104,6 +105,8 @@ class FileActions(
     val fetch: suspend (Part.File) -> java.io.File = { error("unavailable") },
     /** Absolute address of a server path, for thumbnails loaded with the session. */
     val resolve: (String) -> String = { it },
+    /** Shares the downloaded copy (never the server address) through Android's share sheet. */
+    val share: (Part.File) -> Unit = {},
 )
 
 /** Opening hands the file to another app; saving copies it, unchanged, where the user chooses. */
@@ -135,6 +138,13 @@ fun rememberFileActions(app: AppState): FileActions {
             sizeOf = { id -> runCatching { app.client.artifact(id).size }.getOrNull() },
             fetch = { file -> fetchToCache(context, app.client, file) },
             resolve = app.client::resolve,
+            share = { file ->
+                scope.launch {
+                    runCatching { fetchToCache(context, app.client, file) }
+                        .onSuccess { local -> runCatching { context.startActivity(shareIntent(context, local, file.mediaType)) }.onFailure { app.notify(noApp) } }
+                        .onFailure { app.notify(it.message?.ifBlank { null } ?: failed) }
+                }
+            },
         )
     }
 }

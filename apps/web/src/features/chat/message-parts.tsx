@@ -1,3 +1,4 @@
+import { imageClick } from './image-lightbox';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { BellRingIcon, BotIcon, BrainIcon, CalendarClockIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardListIcon, ClockIcon, EyeIcon, FileTextIcon, GlobeIcon, KeyRoundIcon, MailIcon, MessagesSquareIcon, PlugIcon, SearchIcon, SparklesIcon, TerminalIcon, UserCogIcon, WebhookIcon } from "lucide-react";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
@@ -309,7 +310,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
             <MessageContent>
               {quote && <MessageQuote reply={quote} />}
               {message.metadata?.answer ? <AnswerBubble text={text} /> : text && <p className="whitespace-pre-wrap">{text}</p>}
-              {files.filter((part) => part.mediaType?.startsWith('image/')).map((part, index) => <a key={index} href={part.url} target="_blank" rel="noreferrer"><img src={part.url} alt={part.filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" /></a>)}
+              {files.filter((part) => part.mediaType?.startsWith('image/')).map((part, index) => <a key={index} href={part.url} target="_blank" rel="noreferrer" onClick={imageClick(part.url, part.filename)}><img src={part.url} alt={part.filename ?? t('Image jointe')} data-chat-image={part.url} className="max-h-64 max-w-full rounded-xl border" loading="lazy" /></a>)}
               <FileGroup align="end" files={files.filter((part) => !part.mediaType?.startsWith('image/')).map((part) => ({ url: part.url, filename: part.filename ?? t('Fichier'), mediaType: part.mediaType ?? 'application/octet-stream', artifactId: artifactIdFromUrl(part.url) }))} />
             </MessageContent>
           </Message>
@@ -344,8 +345,8 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
           </Message>
         </MessageActions>
       ) : (
-        <a key={bubble.key} data-bubble={bubble.key} href={(bubble.image as { url?: string }).url} target="_blank" rel="noreferrer" className="w-fit">
-          <img src={(bubble.image as { url?: string }).url} alt={(bubble.image as { filename?: string }).filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" />
+        <a key={bubble.key} data-bubble={bubble.key} href={(bubble.image as { url?: string }).url} target="_blank" rel="noreferrer" className="w-fit" onClick={imageClick((bubble.image as { url: string }).url, (bubble.image as { filename?: string }).filename)}>
+          <img data-chat-image={(bubble.image as { url?: string }).url} src={(bubble.image as { url?: string }).url} alt={(bubble.image as { filename?: string }).filename ?? t('Image jointe')} className="max-h-64 max-w-full rounded-xl border" loading="lazy" />
         </a>
       ))}
       {streaming && computerUse && owner && <Suspense fallback={null}><LiveComputer key={owner} agentId={owner} /></Suspense>}

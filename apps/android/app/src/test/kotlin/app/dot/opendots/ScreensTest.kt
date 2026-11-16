@@ -814,6 +814,16 @@ class ScreensTest {
         // The capture's blue background, within rounding of scaling and blending.
         assertTrue("pixel ${Integer.toHexString(sample)}", kotlin.math.abs(android.graphics.Color.red(sample) - 0x2E) < 24 && kotlin.math.abs(android.graphics.Color.green(sample) - 0x5A) < 24 && kotlin.math.abs(android.graphics.Color.blue(sample) - 0xAC) < 24)
         shoot("screenshot-shared-dark")
+        // #60: a tap opens the in-app viewer, never the browser; Back returns to the same place in the thread.
+        compose.onNode(androidx.compose.ui.test.hasTestTag("image-loaded")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("image-viewer")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(null, org.robolectric.Shadows.shadowOf(androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()).nextStartedActivity)
+        compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("image-viewer-photo")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Share")).fetchSemanticsNodes().isNotEmpty())
+        shoot("image-viewer-dark")
+        compose.onNodeWithContentDescription("Close").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("image-viewer")).fetchSemanticsNodes().isEmpty() }
+        waitFor("Here is my desktop.")
     }
 
     @Test fun signInThenEnter() {

@@ -18,7 +18,7 @@ function start(keyPem: string) {
     server = new Server({ hostKeys: [keyPem] }, (client) => {
       client.on('error', () => {}); // refused handshakes (untrusted host key) are expected here
       client.on('authentication', (ctx) => {
-        const ok = authorized.some((line) => { const allowed = utils.parseKey(line) as any; return ctx.key && ctx.key.algo === allowed.type && Buffer.compare(ctx.key.data, allowed.getPublicSSH()) === 0; });
+        const ok = authorized.some((line) => { const allowed = utils.parseKey(line) as any; const key = (ctx as any).key; return key && key.algo === allowed.type && Buffer.compare(key.data, allowed.getPublicSSH()) === 0; });
         if (ctx.method === 'publickey' && ctx.username === 'robin' && ok) return ctx.accept();
         if (ctx.method === 'password' && ctx.username === 'robin' && ctx.password === 'right-password') return ctx.accept();
         ctx.reject(['publickey', 'password']);

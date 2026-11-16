@@ -64,6 +64,15 @@ fun viewIntent(context: Context, local: File, mediaType: String): Intent {
     ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 }
 
+/** Shares a downloaded file with a read-only grant on that one copy: the server address and session never leave. */
+fun shareIntent(context: Context, local: File, mediaType: String): Intent {
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".files", local)
+    return Intent.createChooser(
+        Intent(Intent.ACTION_SEND).setType(mediaType.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+        local.name,
+    ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+}
+
 /** Copies a file of the thread, unchanged, to the place the user chose. */
 suspend fun saveTo(context: Context, client: OpenDotsClient, file: Part.File, destination: Uri) = withContext(Dispatchers.IO) {
     val local = fetchToCache(context, client, file)

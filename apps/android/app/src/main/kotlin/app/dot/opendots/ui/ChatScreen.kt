@@ -174,6 +174,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     var reply by remember(agent.id) { mutableStateOf<ReplyRef?>(null) }
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
     var workSheet by remember(agent.id) { mutableStateOf(false) }
+    // #60: the photo being looked at, in the in-app viewer (with the thread's other photos).
+    var viewing by remember(agent.id) { mutableStateOf<Part.File?>(null) }
     LaunchedEffect(workRequest) { if (workRequest > 0) workSheet = true }
     var editing by remember(agent.id) { mutableStateOf<Pair<String, String>?>(null) }
     var clearing by remember(agent.id) { mutableStateOf(false) }
@@ -224,7 +226,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             onNeedRequest = app::ensureRequest,
             onNeedDraft = app::ensureDraft,
             onOpenWeb = { ui.serverUrl.takeIf { it.isNotBlank() }?.let { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } } },
-            onOpenImage = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
+            onOpenImage = { file -> viewing = file },
             onShowWork = { workSheet = true },
             tasks = ui.tasks, onNeedTask = app::loadTask, onOpenTask = { taskSheet = it }, onTaskAction = app::taskAction, onOpenChat = onOpenChat,
             fileActions = fileActions, onFileAccess = { accessSheet = it }, attribution = general != null,
@@ -331,6 +333,10 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
 
         if (workSheet) WorkSheet(agent, chat, env) { workSheet = false }
+        viewing?.let { file ->
+            val photos = remember(chat.messages, file) { chat.messages.flatMap { m -> m.parts.filterIsInstance<Part.File>().filter { it.mediaType.startsWith("image/") } }.distinctBy { it.url }.let { list -> if (list.any { it.url == file.url }) list else list + file } }
+            ImageViewer(photos, photos.indexOfFirst { it.url == file.url }.coerceAtLeast(0), fileActions) { viewing = null }
+        }
         if (clearing) ClearDialog(
             name = agentDisplayName(agent), general = general != null, busy = chat.busy,
             onDismiss = { clearing = false },

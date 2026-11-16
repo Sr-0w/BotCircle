@@ -1,3 +1,4 @@
+import { imageClick } from './image-lightbox';
 import { useState, type MouseEvent } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { t } from '@/lib/i18n';
@@ -26,7 +27,7 @@ export function DesktopScreenshot({ output, afterAction }: { output: Observation
     });
   }
   return <figure className="max-w-xl space-y-1">
-    <a href={output.url} target="_blank" rel="noreferrer" className="block"><img src={output.url} alt={t('Capture du bureau privé')} className="max-w-full rounded-xl border" loading="lazy" onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} /></a>
+    <a href={output.url} target="_blank" rel="noreferrer" className="block" onClick={imageClick(output.url, t('Capture du bureau privé'))}><img data-chat-image={output.url} src={output.url} alt={t('Capture du bureau privé')} className="max-w-full rounded-xl border" loading="lazy" onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} /></a>
     <figcaption className="space-y-1 text-xs text-muted-foreground">
       <p>{caption}{output.visualChange === 'unchanged' && <> · {t('Écran inchangé')}</>}</p>
       <p>{size.width} × {size.height} px · {t('Origine en haut à gauche')}{output.cursor && <> · {t('Pointeur X11')} ({output.cursor.x}, {output.cursor.y})</>}</p>

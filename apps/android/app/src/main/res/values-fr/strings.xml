@@ -485,6 +485,7 @@
     <string name="settings_server_note">Connexion au serveur</string>
     <string name="setup_body">Connecte une boîte mail, ajoute des connecteurs ou démarre l’ordinateur d’un Circle depuis l’app web.</string>
     <string name="setup_title">Aller plus loin</string>
+    <string name="share">Partager</string>
     <string name="show">Afficher</string>
     <string name="show_work">Voir le travail</string>
     <string name="sign_in">Se connecter</string>

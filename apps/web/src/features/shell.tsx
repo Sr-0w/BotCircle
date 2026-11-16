@@ -1,3 +1,4 @@
+import { ImageLightbox } from './chat/image-lightbox';
 import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store";
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
@@ -369,6 +370,7 @@ export function Shell() {
       )}
       <Suspense fallback={null}>
         <DialogHost />
+        <ImageLightbox />
       </Suspense>
     </div>
   );

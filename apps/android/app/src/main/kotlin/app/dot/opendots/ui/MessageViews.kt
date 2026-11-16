@@ -114,7 +114,8 @@ class MessageEnv(
     val onNeedRequest: (String) -> Unit,
     val onNeedDraft: (String) -> Unit,
     val onOpenWeb: () -> Unit,
-    val onOpenImage: (String) -> Unit,
+    /** #60: opens the thread's photos in the in-app viewer, at this one. */
+    val onOpenImage: (Part.File) -> Unit,
     val onShowWork: () -> Unit = {},
     /** Background tasks by id, kept current by the server. */
     val tasks: Map<String, BgTask> = emptyMap(),
@@ -435,7 +436,7 @@ private fun AttachedImage(file: Part.File, env: MessageEnv) {
             .clip(DotShapes.medium)
             .background(if (loaded) Color.Transparent else Dot.colors.surface)
             .border(DotSpacing.hairline * 2, Dot.colors.border, DotShapes.medium)
-            .clickable(role = Role.Image, onClickLabel = stringResource(R.string.open)) { env.onOpenImage(url) }
+            .clickable(role = Role.Image, onClickLabel = stringResource(R.string.open)) { env.onOpenImage(file) }
             .testTag(if (failed) "image-failed" else if (loaded) "image-loaded" else "image-loading"),
         contentAlignment = Alignment.Center,
     ) {
