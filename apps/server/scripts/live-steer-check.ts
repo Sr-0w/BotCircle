@@ -82,6 +82,7 @@ try {
   const names = await new Promise<string>((resolve) => execFile('docker', ['ps', '-a', '--format', '{{.Names}}'], (_e, out) => resolve(String(out ?? ''))));
   for (const name of names.split('\n').filter((line) => line.startsWith('bc-live-steer'))) await new Promise((resolve) => execFile('docker', ['rm', '-f', name], resolve));
   await closeDatabase().catch(() => {});
-  await rm(dir, { recursive: true, force: true });
+  // Files written in the container belong to its user: removing them may need the container's rights.
+  await rm(dir, { recursive: true, force: true }).catch(() => console.log(`(dossier temporaire à supprimer : ${dir})`));
 }
 process.exit(failed ? 1 : 0);
