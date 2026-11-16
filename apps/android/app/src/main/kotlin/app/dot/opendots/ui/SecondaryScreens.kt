@@ -1,5 +1,13 @@
 package app.dot.opendots.ui
 
+import androidx.compose.material.icons.outlined.Timeline
+import androidx.compose.material.icons.outlined.Inbox
+import app.dot.design.components.UnreadDot
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,8 +81,13 @@ import app.dot.opendots.data.Activity
 /** The backdrop shared by a top-level page and the floating dock over it: the dock blurs what scrolls under it. */
 val LocalRootBackdrop = staticCompositionLocalOf<QuietBackdrop?> { null }
 
-/** Opens Settings from the header of the top-level pages (Settings is not a destination of the dock). */
-val LocalOpenSettings = staticCompositionLocalOf<(() -> Unit)?> { null }
+/**
+ * The two header actions of the top-level pages (#47, #59): Activity (work in progress, scheduled and recent) and the
+ * Inbox (decisions waiting for the user). They are not dock destinations.
+ */
+class RootActions(val onActivity: () -> Unit, val onInbox: () -> Unit, val working: Boolean, val waiting: Int)
+
+val LocalRootActions = staticCompositionLocalOf<RootActions?> { null }
 
 /**
  * A full page: content scrolling under the same frosted header as the conversation. With [onBack] it is a pushed page
@@ -82,11 +95,11 @@ val LocalOpenSettings = staticCompositionLocalOf<(() -> Unit)?> { null }
  * leaves room for at the end, and its header carries the Settings button.
  */
 @Composable
-fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, subtitle: String? = null, content: LazyListScope.() -> Unit) {
+fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, subtitle: String? = null, actions: (@Composable () -> Unit)? = null, content: LazyListScope.() -> Unit) {
     val shared = if (inTabs) LocalRootBackdrop.current else null
     val own = rememberQuietBackdrop()
     val backdrop = shared ?: own
-    val openSettings = if (inTabs && onBack == null) LocalOpenSettings.current else null
+    val root = if (inTabs && onBack == null) LocalRootActions.current else null
     Box(Modifier.fillMaxSize().background(Dot.colors.background)) {
         FrostedHeaderLayout(
             backdrop,
@@ -94,7 +107,21 @@ fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, sub
                 DotTopBar(
                     title = title, subtitle = subtitle,
                     navigation = if (onBack == null) null else { { Box(Modifier.padding(start = DotSpacing.s)) { BackButton(onBack) } } },
-                    actions = { if (openSettings != null) Box(Modifier.padding(end = DotSpacing.s)) { DotIconButton(Icons.Outlined.Settings, stringResource(R.string.settings), onClick = openSettings) } },
+                    actions = {
+                        Row(Modifier.padding(end = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
+                            actions?.invoke()
+                            if (root != null) {
+                                Box {
+                                    DotIconButton(Icons.Outlined.Timeline, stringResource(R.string.activity), onClick = root.onActivity)
+                                    if (root.working) UnreadDot(Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp), size = 6.dp)
+                                }
+                                Box {
+                                    DotIconButton(Icons.Outlined.Inbox, if (root.waiting > 0) stringResource(R.string.inbox_waiting, root.waiting) else stringResource(R.string.inbox), onClick = root.onInbox)
+                                    if (root.waiting > 0) CountBadge(root.waiting, Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp))
+                                }
+                            }
+                        }
+                    },
                 )
             },
         ) { padding ->
@@ -113,7 +140,7 @@ fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, sub
 // --- Scheduled tasks ---------------------------------------------------------------------------
 
 @Composable
-fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}) {
+fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}, onBack: (() -> Unit)? = null) {
     LaunchedEffect(Unit) { app.loadActivities() }
     val started = stringResource(R.string.task_started)
     var deleting by remember { mutableStateOf<Activity?>(null) }
@@ -122,7 +149,7 @@ fun TasksScreen(app: AppState, ui: AppUiState, onOpenCode: (String) -> Unit = {}
     val background = remember(ui.tasks) { ui.tasks.values.sortedByDescending { it.createdAt } }
     val running = background.filter { it.active }
     val past = background.filterNot { it.active }.take(20)
-    QuietPage(stringResource(R.string.tasks), onBack = null, inTabs = true) {
+    QuietPage(stringResource(R.string.activity), onBack = onBack, inTabs = onBack == null) {
         // Work handed to the background: what is running now, then what finished. Each card updates in place.
         listOf(R.string.tasks_running to running, R.string.tasks_finished to past).forEach { (label, list) ->
             if (list.isEmpty()) return@forEach
@@ -187,16 +214,24 @@ private fun TaskRow(activity: Activity, onToggle: (Boolean) -> Unit, onRun: () -
     }
 }
 
+/** A small count on a header action: only for decisions really waiting for the user. */
+@Composable
+private fun CountBadge(count: Int, modifier: Modifier = Modifier) {
+    Box(modifier.heightIn(min = 16.dp).widthIn(min = 16.dp).clip(CircleShape).background(Dot.colors.accent).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+        Text(if (count > 9) "9+" else count.toString(), style = Dot.type.caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
+    }
+}
+
 // --- Approvals ------------------------------------------------------------------------------------
 
 @Composable
-fun ApprovalsScreen(app: AppState, ui: AppUiState) {
+fun ApprovalsScreen(app: AppState, ui: AppUiState, onBack: (() -> Unit)? = null) {
     val env = remember(ui.approvals, ui.agents) {
         MessageEnv(ui.agents, ui.approvals, emptyMap(), emptyMap(), false, { it }, {}, {}, { _, _ -> }, { id, approve -> app.decide(id, approve) }, { _, _, _ -> }, {}, {}, {}, {})
     }
     val pending = ui.pendingApprovals
     val recent = remember(ui.approvals) { ui.approvals.values.filter { it.status != "pending" }.sortedByDescending { it.createdAt }.take(20) }
-    QuietPage(stringResource(R.string.approvals), onBack = null, inTabs = true) {
+    QuietPage(stringResource(R.string.inbox), onBack = onBack, inTabs = onBack == null) {
         if (pending.isEmpty() && recent.isEmpty()) item { EmptyState(Icons.Outlined.Shield, stringResource(R.string.approvals_empty_title), stringResource(R.string.approvals_empty_body)) }
         if (pending.isNotEmpty()) item { SectionLabel(stringResource(R.string.approvals_waiting)) }
         items(pending, key = { it.id }) { approval ->

@@ -12,6 +12,7 @@
     <string name="access_revoke">Accès retiré</string>
     <string name="access_share">Partagé</string>
     <string name="account">Compte</string>
+    <string name="activity">Activité</string>
     <string name="add">Ajouter</string>
     <string name="agent_behaviour">Comportement des agents</string>
     <string name="agent_behaviour_note">Limites de travail, autonomie et fuseau horaire</string>
@@ -53,11 +54,13 @@
     <string name="chat_model_own">choisi pour ce chat</string>
     <string name="chat_model_short">Modèle</string>
     <string name="chat_settings">Réglages du chat</string>
+    <string name="chat_tab">Chat</string>
     <string name="chat_title">Titre</string>
     <string name="chats">Chats</string>
     <string name="chats_empty_body">Un chat est un fil libre, qui n’appartient à aucun compagnon. Fais-en intervenir un avec @ quand tu en as besoin.</string>
     <string name="chats_empty_title">Aucun chat</string>
     <string name="chats_none_found">Aucun chat trouvé</string>
+    <string name="circles">Circles</string>
     <string name="clear_body">Une nouvelle conversation avec %1$s sera créée. L’ancienne restera dans l’historique.</string>
     <string name="clear_body_chat">Un nouveau chat vierge sera ouvert, avec les mêmes réglages. Celui-ci restera dans la liste.</string>
     <string name="clear_busy">Une réponse est en cours : arrête-la ou attends la fin avant de réinitialiser.</string>
@@ -72,6 +75,7 @@
     <string name="clear_title">Réinitialiser %1$s ?</string>
     <string name="clear_title_chat">Repartir de zéro ?</string>
     <string name="close">Fermer</string>
+    <string name="code">Code</string>
     <string name="code_add">Ajouter une instance</string>
     <string name="code_add_manual">Adresse et mot de passe</string>
     <string name="code_allow_always">Toujours autoriser</string>
@@ -79,19 +83,29 @@
     <string name="code_answer">Répondre</string>
     <string name="code_back_files">Retour aux fichiers</string>
     <string name="code_binary">Fichier binaire : pas d’aperçu.</string>
+    <string name="code_by">Par %1$s</string>
+    <string name="code_by_chat">Depuis un chat</string>
+    <string name="code_by_you">Par toi</string>
     <string name="code_cannot_read">Illisible pour l’instant.</string>
     <string name="code_check">Contrôler</string>
+    <string name="code_connect_instance">Connecter une machine</string>
     <string name="code_deny">Refuser</string>
     <string name="code_directory">Dossier du projet par défaut</string>
     <string name="code_directory_optional">Dossier du projet par défaut (facultatif)</string>
     <string name="code_edit">Modifier</string>
     <string name="code_effort_default">par défaut</string>
     <string name="code_effort_for">Effort pour %1$s</string>
+    <string name="code_empty_body">Les sessions que tu lances, et celles que tes Circles lancent sur tes machines connectées, apparaissent ici.</string>
+    <string name="code_empty_title">Aucune session de code</string>
     <string name="code_expose_note">Le plus simple : sur la machine de développement, lance `opencode pair --remote`, puis jumelle-la ici avec son lien ou son QR code ; ça marche même derrière un NAT. Sinon, avec une adresse et un mot de passe : OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0, joignable par le serveur BotCircle via un réseau privé, un tunnel SSH ou un reverse proxy HTTPS, jamais un port ouvert sans mot de passe.</string>
     <string name="code_file_too_large">Un fichier ne peut pas dépasser 10 Mo.</string>
     <string name="code_files_changed">Fichiers modifiés : %1$s</string>
+    <string name="code_filter_all">Toutes</string>
+    <string name="code_filter_circles">Circles</string>
+    <string name="code_filter_mine">Les miennes</string>
     <string name="code_instances_note">Les machines de développement où tes compagnons délèguent du code</string>
     <string name="code_link">Lien affiché par opencode pair</string>
+    <string name="code_manage_instances">Machines connectées</string>
     <string name="code_model">Modèle</string>
     <string name="code_model_none">Aucun modèle trouvé.</string>
     <string name="code_model_search">Chercher un modèle…</string>
@@ -186,6 +200,7 @@
     <string name="delete">Supprimer</string>
     <string name="details">Détails</string>
     <string name="discard">Abandonner</string>
+    <string name="earlier">Plus tôt</string>
     <string name="edit">Modifier</string>
     <string name="edit_message">Modifier le message</string>
     <string name="edit_note">La suite de la conversation sera mise de côté (conservée) et une nouvelle réponse partira de ce message.</string>
@@ -232,6 +247,8 @@
     <string name="hide">Masquer</string>
     <string name="image_open_anyway">Ouvrir</string>
     <string name="image_unavailable">Image indisponible</string>
+    <string name="inbox">Boîte de réception</string>
+    <string name="inbox_waiting">Boîte de réception, %1$d en attente</string>
     <string name="intervention">intervention</string>
     <string name="interventions">Interventions</string>
     <string name="journal">Journal</string>
@@ -453,6 +470,7 @@
     <string name="theme_system">Système</string>
     <string name="timezone">Fuseau horaire</string>
     <string name="timezone_note">Sert aux planifications et à l’heure que voient les compagnons.</string>
+    <string name="today">Aujourd’hui</string>
     <string name="tool_a_page">une page</string>
     <string name="tool_activity_create">Crée une activité</string>
     <string name="tool_activity_delete">Supprime une activité</string>
@@ -515,6 +533,7 @@
     <string name="write_to_companion">Écrire à ton compagnon…</string>
     <string name="writing_reply">Rédige sa réponse…</string>
     <string name="yes">oui</string>
+    <string name="yesterday">Hier</string>
     <string name="you">Toi</string>
     <string name="zoom_in">Zoomer</string>
     <string name="zoom_out">Dézoomer</string>

@@ -327,6 +327,15 @@ export function createApi() {
     return c.json({ ok: true });
   });
 
+  // #47: the user chooses their primary Circle; every client updates its navigation avatar.
+  api.put('/agents/:id/primary', async (c) => {
+    const agent = await getAgent(c.req.param('id'));
+    if (!agent || agent.archived) return c.json({ error: 'Introuvable' }, 404);
+    await setSetting('agents.primary', agent.id);
+    for (const row of await listAgentRows()) publish({ type: 'agent.updated', agent: await toAgentDTO(row) });
+    return c.json({ ok: true });
+  });
+
   api.post('/agents/:id/read', async (c) => {
     const agent = await getAgent(c.req.param('id'));
     if (!agent) return c.json({ error: 'Introuvable' }, 404);

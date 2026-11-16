@@ -328,6 +328,8 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
 
     suspend fun chats(query: String? = null): List<GeneralChat> =
         get("/chats" + (query?.takeIf { it.isNotBlank() }?.let { "?q=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""))
+    /** Makes [agentId] the primary Circle (its avatar stands for Circles in the navigation). */
+    suspend fun setPrimaryAgent(agentId: String) { json("PUT", "/agents/$agentId/primary") }
     suspend fun createChat(): GeneralChat = OdJson.decodeFromJsonElement(json("POST", "/chats", buildJsonObject { }))
     /** `/clear` on a companion: archives its main thread (kept, readable) and opens an empty one. */
     suspend fun clearConversation(agentId: String, conversationId: String) {

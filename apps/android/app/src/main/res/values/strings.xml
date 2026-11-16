@@ -12,6 +12,7 @@
     <string name="access_revoke">Access revoked</string>
     <string name="access_share">Shared</string>
     <string name="account">Account</string>
+    <string name="activity">Activity</string>
     <string name="add">Add</string>
     <string name="agent_behaviour">Agent behaviour</string>
     <string name="agent_behaviour_note">Work limits, autonomy and time zone</string>
@@ -53,11 +54,13 @@
     <string name="chat_model_own">chosen for this chat</string>
     <string name="chat_model_short">Model</string>
     <string name="chat_settings">Chat settings</string>
+    <string name="chat_tab">Chat</string>
     <string name="chat_title">Title</string>
     <string name="chats">Chats</string>
     <string name="chats_empty_body">A chat is a free thread that belongs to no companion. Call one in with @ when you need it.</string>
     <string name="chats_empty_title">No chats yet</string>
     <string name="chats_none_found">No chat found</string>
+    <string name="circles">Circles</string>
     <string name="clear_body">A new conversation with %1$s starts. The previous one stays in the history.</string>
     <string name="clear_body_chat">A blank chat opens with the same settings. This one stays in the list.</string>
     <string name="clear_busy">An answer is running: stop it or wait before resetting.</string>
@@ -72,6 +75,7 @@
     <string name="clear_title">Reset %1$s?</string>
     <string name="clear_title_chat">Start over?</string>
     <string name="close">Close</string>
+    <string name="code">Code</string>
     <string name="code_add">Add an instance</string>
     <string name="code_add_manual">Address and password</string>
     <string name="code_allow_always">Always allow</string>
@@ -79,19 +83,29 @@
     <string name="code_answer">Answer</string>
     <string name="code_back_files">Back to files</string>
     <string name="code_binary">Binary file: no preview.</string>
+    <string name="code_by">By %1$s</string>
+    <string name="code_by_chat">From a chat</string>
+    <string name="code_by_you">By you</string>
     <string name="code_cannot_read">This cannot be read right now.</string>
     <string name="code_check">Check</string>
+    <string name="code_connect_instance">Connect a machine</string>
     <string name="code_deny">Deny</string>
     <string name="code_directory">Default project directory</string>
     <string name="code_directory_optional">Default project directory (optional)</string>
     <string name="code_edit">Edit</string>
     <string name="code_effort_default">default</string>
     <string name="code_effort_for">Effort for %1$s</string>
+    <string name="code_empty_body">Sessions you start, and those your Circles start on your connected machines, appear here.</string>
+    <string name="code_empty_title">No coding session yet</string>
     <string name="code_expose_note">Simplest: on the development machine, run `opencode pair --remote`, then pair here with its link or QR code; it works even behind a NAT. Otherwise, with an address and a password: OPENCODE_SERVER_PASSWORD=… opencode serve --hostname 0.0.0.0, reachable by the BotCircle server through a private network, an SSH tunnel or an HTTPS reverse proxy, never an open port without a password.</string>
     <string name="code_file_too_large">A file can’t exceed 10 MB.</string>
     <string name="code_files_changed">Files changed: %1$s</string>
+    <string name="code_filter_all">All</string>
+    <string name="code_filter_circles">Circles</string>
+    <string name="code_filter_mine">Mine</string>
     <string name="code_instances_note">Development machines your companions delegate code to</string>
     <string name="code_link">Link printed by opencode pair</string>
+    <string name="code_manage_instances">Connected machines</string>
     <string name="code_model">Model</string>
     <string name="code_model_none">No model found.</string>
     <string name="code_model_search">Search models…</string>
@@ -186,6 +200,7 @@
     <string name="delete">Delete</string>
     <string name="details">Details</string>
     <string name="discard">Discard</string>
+    <string name="earlier">Earlier</string>
     <string name="edit">Edit</string>
     <string name="edit_message">Edit the message</string>
     <string name="edit_note">The rest of the conversation will be set aside (kept) and a new answer will start from this message.</string>
@@ -232,6 +247,8 @@
     <string name="hide">Hide</string>
     <string name="image_open_anyway">Open</string>
     <string name="image_unavailable">Image unavailable</string>
+    <string name="inbox">Inbox</string>
+    <string name="inbox_waiting">Inbox, %1$d waiting</string>
     <string name="intervention">contribution</string>
     <string name="interventions">Contributions</string>
     <string name="journal">Journal</string>
@@ -453,6 +470,7 @@
     <string name="theme_system">System</string>
     <string name="timezone">Time zone</string>
     <string name="timezone_note">Used for schedules and the time companions see.</string>
+    <string name="today">Today</string>
     <string name="tool_a_page">a page</string>
     <string name="tool_activity_create">Creates an activity</string>
     <string name="tool_activity_delete">Deletes an activity</string>
@@ -515,6 +533,7 @@
     <string name="write_to_companion">Write to your companion…</string>
     <string name="writing_reply">Writing its reply…</string>
     <string name="yes">yes</string>
+    <string name="yesterday">Yesterday</string>
     <string name="you">You</string>
     <string name="zoom_in">Zoom in</string>
     <string name="zoom_out">Zoom out</string>

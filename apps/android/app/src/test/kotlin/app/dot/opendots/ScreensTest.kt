@@ -299,11 +299,14 @@ class ScreensTest {
         shoot("work-dark")
     }
 
-    /** Dock destinations are spoken labels (only the active one shows its text); Settings is the header button. */
+    /** Dock destinations are spoken labels (only the active one shows its text). */
     private fun tab(label: String) {
-        if (label == "Settings") compose.onNodeWithContentDescription("Settings").performClick()
-        else compose.onNode(androidx.compose.ui.test.hasContentDescription(label) and isSelectable()).performClick()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription(label) and isSelectable()).performClick()
     }
+
+    /** #47/#59: Activity and the Inbox are header actions of the top-level pages, not dock destinations. */
+    private fun openActivity() = compose.onNodeWithContentDescription("Activity").performClick()
+    private fun openInbox() = compose.onNode(androidx.compose.ui.test.hasContentDescription("Inbox", substring = true)).performClick()
 
     @Test fun pagesReplaceTheDrawer() {
         launch(ThemeMode.DARK)
@@ -313,25 +316,32 @@ class ScreensTest {
         waitFor("Venty")
         waitFor("Reads an email")
         shoot("companions-dark")
-        tab("Tasks")
+        // #59: the dock, left to right, is exactly Circles · Chat · Code · Settings; only the active one shows its label.
+        val dock = compose.onAllNodes(isSelectable()).fetchSemanticsNodes().map { it.config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].first() }
+        assertEquals(listOf("Circles", "Chat", "Code", "Settings"), dock)
+        waitFor("Circles")
+        assertTrue(!compose.onAllNodesWithTextCompat("Settings"))
+        // Activity and the Inbox open from the header and return to the tab.
+        openActivity()
         waitFor("Weekly recap")
         shoot("tasks-dark")
-        tab("Approvals")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Venty")
+        openInbox()
         waitFor("Pousser (git push)")
         shoot("approvals-dark")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Venty")
+        tab("Code")
+        waitFor("Connected machines")
+        shoot("code-dark")
         tab("Settings")
         waitFor("OLED black")
         shoot("settings-dark")
-        // #44: Settings is a page opened from the header; Back returns to the tab, then to Companions.
-        assertTrue(compose.onAllNodes(hasTestTag("dock")).fetchSemanticsNodes().isEmpty())
-        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        waitFor("Pousser (git push)")
+        // Settings is a destination: the dock stays; Back returns to Circles.
+        assertTrue(compose.onAllNodes(hasTestTag("dock")).fetchSemanticsNodes().isNotEmpty())
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("Venty")
-        // The dock: four destinations, only the active one shows its label.
-        assertEquals(4, compose.onAllNodes(isSelectable()).fetchSemanticsNodes().size)
-        waitFor("Companions")
-        assertTrue(!compose.onAllNodesWithTextCompat("Approvals"))
         compose.onNodeWithText("Ari").performClick()
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companion details").performClick()
@@ -345,7 +355,7 @@ class ScreensTest {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companions").performClick()
-        tab("Chats")
+        tab("Chat")
         waitFor("Friday meeting")
         compose.onNodeWithText("Friday meeting").performClick()
         waitFor("Anything else about that meeting?")
@@ -398,7 +408,7 @@ class ScreensTest {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companions").performClick()
-        tab("Chats")
+        tab("Chat")
         waitFor("Friday meeting")
         shoot("chats-dark")
         compose.onNodeWithText("Friday meeting").performClick()
@@ -427,7 +437,7 @@ class ScreensTest {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companions").performClick()
-        tab("Tasks")
+        openActivity()
         waitFor("Summarise the Friday meeting")
         waitFor("Finished")
         waitFor("Weekly recap")
@@ -482,7 +492,7 @@ class ScreensTest {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Companions").performClick()
-        tab("Tasks")
+        openActivity()
         // #43: one compact card with the official logo, the real state and what the session really changed.
         waitFor("Refactor the settings")
         waitFor("Running · OpenCode")

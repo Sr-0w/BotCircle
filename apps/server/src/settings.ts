@@ -12,6 +12,8 @@ interface SettingsShape {
   'models.default': ModelConfig;
   /** Favourite models, shown first in every model picker. */
   'models.favorites': { provider: string; model: string }[];
+  /** The user's primary Circle (#47, #59): its avatar stands for Circles in the navigation. */
+  'agents.primary': string;
   'ollama.url': string;
   'engine.paused': boolean;
   'engine.turnStepLimit': number;

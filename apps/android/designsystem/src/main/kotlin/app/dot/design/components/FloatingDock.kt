@@ -85,7 +85,8 @@ fun DotFloatingDock(items: List<DotBottomBarItem>, selected: Int, onSelect: (Int
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box {
-                    Icon(item.icon, null, Modifier.size(22.dp), tint = tint)
+                    val custom = item.iconContent
+                    if (custom != null) Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { custom(tint) } else Icon(item.icon, null, Modifier.size(22.dp), tint = tint)
                     if (item.badge) UnreadDot(Modifier.align(Alignment.TopEnd).padding(start = 18.dp), size = 7.dp)
                 }
                 AnimatedVisibility(active, enter = fadeIn(tween(duration)) + expandHorizontally(tween(duration)), exit = fadeOut(tween(duration / 2)) + shrinkHorizontally(tween(duration))) {

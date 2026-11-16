@@ -1,3 +1,4 @@
+import { getSetting } from '../settings.ts';
 import { and, asc, count, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import {
   DEFAULT_PERMISSIONS,
@@ -126,7 +127,7 @@ export async function effectiveModel(row: AgentRow): Promise<ModelConfig> {
   return row.model ?? (await getDefaultModel());
 }
 
-export async function toAgentDTO(row: AgentRow): Promise<AgentDTO> {
+export async function toAgentDTO(row: AgentRow, primary?: string | null): Promise<AgentDTO> {
   const convId = await mainConversationId(row.id);
   const [last] = await db()
     .select({ text: schema.messages.textContent, createdAt: schema.messages.createdAt })
@@ -166,10 +167,24 @@ export async function toAgentDTO(row: AgentRow): Promise<AgentDTO> {
     unread: Number(unread),
     mainConversationId: convId,
     archived: row.archived,
+    primary: row.id === (primary === undefined ? await primaryAgentId() : primary),
   };
 }
 
 export async function listAgents(): Promise<AgentDTO[]> {
   const rows = await listAgentRows();
-  return Promise.all(rows.map(toAgentDTO));
+  const primary = await primaryAgentId(rows);
+  return Promise.all(rows.map((row) => toAgentDTO(row, primary)));
+}
+
+/**
+ * The primary Circle: the one the user chose, else the first Circle they created themselves, else the oldest
+ * active one. Never a hard-coded name, never the last one visited.
+ */
+export async function primaryAgentId(rows?: AgentRow[]): Promise<string | null> {
+  const active = (rows ?? await listAgentRows()).filter((a) => !a.archived);
+  const chosen = await getSetting('agents.primary');
+  if (chosen && active.some((a) => a.id === chosen)) return chosen;
+  const byAge = [...active].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  return (byAge.find((a) => a.createdBy === 'user') ?? byAge[0])?.id ?? null;
 }

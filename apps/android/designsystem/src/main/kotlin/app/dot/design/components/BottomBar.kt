@@ -32,7 +32,13 @@ import app.dot.design.rememberDotHaptics
 import app.dot.design.rememberReducedMotion
 
 @Immutable
-class DotBottomBarItem(val icon: ImageVector, val label: String, val badge: Boolean = false)
+class DotBottomBarItem(
+    val icon: ImageVector,
+    val label: String,
+    val badge: Boolean = false,
+    /** Draws the destination's own image (e.g. an avatar) instead of [icon]; receives the current tint. */
+    val iconContent: (@androidx.compose.runtime.Composable (androidx.compose.ui.graphics.Color) -> Unit)? = null,
+)
 
 /**
  * The quiet bottom navigation of top-level pages: the page colour, a hairline on top, an outlined glyph and a label per

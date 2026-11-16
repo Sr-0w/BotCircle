@@ -320,6 +320,9 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     fun selectChat(chatId: String) = _state.update { it.copy(currentChatId = chatId) }
 
+    /** #47: the Circle whose avatar stands for Circles in the dock. */
+    fun setPrimaryAgent(agentId: String) = act { client.setPrimaryAgent(agentId) }
+
     fun createChat(onCreated: () -> Unit) = act {
         val chat = client.createChat()
         _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }

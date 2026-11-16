@@ -57,7 +57,12 @@ import app.dot.design.components.DotFloatingDock
 import app.dot.design.components.DockMargin
 import app.dot.design.components.rememberQuietBackdrop
 import app.dot.opendots.ui.LocalRootBackdrop
-import app.dot.opendots.ui.LocalOpenSettings
+import app.dot.opendots.ui.LocalRootActions
+import app.dot.opendots.ui.RootActions
+import app.dot.opendots.ui.CodeSessionsPage
+import app.dot.opendots.ui.CompanionOrb
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.platform.testTag
 import app.dot.design.components.DotBottomBarItem
 import app.dot.design.components.DotSnackbar
@@ -161,16 +166,35 @@ fun OpenDotsRoot(app: AppState, ui: AppUiState) {
 
 
 /** Top-level destinations, shown with the bottom navigation bar. */
-private enum class Tab { Chats, Companions, Tasks, Approvals }
+/**
+ * The dock, left to right (#47, #59): Circles · Chat · Code · Settings. This enum is the one ordered list the dock,
+ * the selection and the back behaviour all read; Tasks and Approvals are header actions (Activity, Inbox), not tabs.
+ */
+internal enum class Tab { Circles, Chat, Code, Settings }
+
+@Composable
+private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
+    Tab.Circles -> {
+        // The primary Circle's own animated avatar stands for Circles, selected or not.
+        val primary = ui.agents.firstOrNull { it.primary } ?: ui.agents.minByOrNull { it.createdAt }
+        DotBottomBarItem(
+            Icons.Outlined.ChatBubbleOutline, stringResource(R.string.circles), badge = ui.agents.any { it.unread > 0 },
+            iconContent = primary?.let { agent -> { _ -> CompanionOrb(agent, size = 26.dp) } },
+        )
+    }
+    Tab.Chat -> DotBottomBarItem(Icons.Outlined.Forum, stringResource(R.string.chat_tab))
+    Tab.Code -> DotBottomBarItem(Icons.Outlined.Code, stringResource(R.string.code))
+    Tab.Settings -> DotBottomBarItem(Icons.Outlined.Settings, stringResource(R.string.settings))
+}
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team)
+private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team }
+private enum class Page { None, Chat, Profile, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
-    var tab by rememberSaveable { mutableStateOf(Tab.Companions) }
+    var tab by rememberSaveable { mutableStateOf(Tab.Circles) }
     // The app reopens on the conversation it was left on; Back leads to the Companions page.
     var page by rememberSaveable { mutableStateOf(if (ui.currentAgentId != null) Page.Chat else Page.None) }
     // The code workspace opens from a task card anywhere; Back returns to the page that opened it.
@@ -194,13 +218,14 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             Page.CodeWorkspace -> codeFrom
             Page.ChatSettings -> Page.GeneralChat
             // Pages opened from Settings return to it; Settings returns to the tab it was opened from.
-            Page.Catalog, Page.Providers, Page.AgentBehaviour, Page.CodeInstances, Page.Team -> Page.Settings
+            // Settings is a tab: its pages return to it (the tab stays selected).
+            Page.Catalog, Page.Providers, Page.AgentBehaviour, Page.CodeInstances, Page.Team -> Page.None
             else -> Page.None
         }
     }
     // Predictive back: the system animates these; they only decide where "back" leads.
     BackHandler(enabled = page != Page.None) { back() }
-    BackHandler(enabled = page == Page.None && tab != Tab.Companions) { tab = Tab.Companions }
+    BackHandler(enabled = page == Page.None && tab != Tab.Circles) { tab = Tab.Circles }
 
     AnimatedContent(
         targetState = page,
@@ -224,21 +249,21 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 // The top-level page scrolls under a floating glass dock; both share one blur source.
                 val backdrop = rememberQuietBackdrop()
                 Box(Modifier.fillMaxSize()) {
-                    CompositionLocalProvider(LocalRootBackdrop provides backdrop, LocalOpenSettings provides { page = Page.Settings }) {
+                    val rootActions = RootActions(
+                        onActivity = { page = Page.Activity }, onInbox = { page = Page.Inbox },
+                        working = ui.activeTasks.any { it.status == "running" },
+                        waiting = ui.pendingApprovals.size + ui.activeTasks.count { it.status == "waiting_for_user" },
+                    )
+                    CompositionLocalProvider(LocalRootBackdrop provides backdrop, LocalRootActions provides rootActions) {
                         when (tab) {
-                            Tab.Companions -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
-                            Tab.Chats -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
-                            Tab.Tasks -> TasksScreen(app, ui, onOpenCode = openCode)
-                            Tab.Approvals -> ApprovalsScreen(app, ui)
+                            Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
+                            Tab.Chat -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
+                            Tab.Code -> CodeSessionsPage(ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances })
+                            Tab.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenTeam = { page = Page.Team })
                         }
                     }
                     DotFloatingDock(
-                        items = listOf(
-                            DotBottomBarItem(Icons.Outlined.Forum, stringResource(R.string.chats)),
-                            DotBottomBarItem(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.companions), badge = ui.agents.any { it.unread > 0 }),
-                            DotBottomBarItem(Icons.Outlined.CalendarMonth, stringResource(R.string.tasks_short), badge = ui.activeTasks.any { it.status == "waiting_for_user" }),
-                            DotBottomBarItem(Icons.Outlined.Shield, stringResource(R.string.approvals), badge = ui.pendingApprovals.isNotEmpty()),
-                        ),
+                        items = Tab.entries.map { dockItem(it, ui) },
                         selected = tab.ordinal,
                         onSelect = { tab = Tab.entries[it] },
                         backdrop = backdrop,
@@ -246,7 +271,10 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                     )
                 }
             }
-            current == Page.Settings -> SettingsScreen(app, ui, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenTeam = { page = Page.Team }, onBack = ::back)
+            // Settings is the fourth tab now; an old saved page lands on it.
+            current == Page.Settings -> LaunchedEffect(Unit) { tab = Tab.Settings; page = Page.None }
+            current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back)
+            current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back)
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
             current == Page.Providers -> ProvidersPage(app, onBack = ::back, onChooseModel = { page = Page.DefaultModel })
             current == Page.DefaultModel -> DefaultModelPage(app, onBack = ::back)

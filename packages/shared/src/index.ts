@@ -95,6 +95,8 @@ export interface AgentDTO {
   stateDetail: string | null;
   createdBy: string;
   createdAt: string;
+  /** The user's primary Circle (#47): its avatar stands for Circles in the navigation. */
+  primary?: boolean;
   updatedAt: string;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;

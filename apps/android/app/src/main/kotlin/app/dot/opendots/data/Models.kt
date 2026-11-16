@@ -78,6 +78,9 @@ data class Agent(
     val lastMessagePreview: String? = null,
     val unread: Int = 0,
     val mainConversationId: String = "",
+    /** The user's primary Circle: its avatar stands for Circles in the dock (#47, #59). */
+    val primary: Boolean = false,
+    val createdAt: String = "",
     val archived: Boolean = false,
 ) {
     val busy: Boolean get() = state in BUSY_STATES
@@ -386,6 +389,8 @@ data class BgTask(
     /** `opencode`: the work happens in a remote OpenCode session, opened in the code workspace. */
     val provider: String = "worker",
     val external: TaskExternal? = null,
+    /** Who started it: `user` (from a chat or Code), `assistant` (a general chat) or `agent` (a Circle). */
+    val requestedBy: String = "agent",
     /** Model asked for this task at its creation (null: the companion's). */
     val model: ModelConfig? = null,
     /** Model that really served the task. */
