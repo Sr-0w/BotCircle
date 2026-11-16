@@ -31,6 +31,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /** Run with :app:testDebugUnitTest; these are not claimed executed without a JDK/SDK. */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class TemporaryChatTest {
     private val id = "tmp_" + "a".repeat(48)
     private val model = ModelConfig(provider = "ollama", model = "fixture")

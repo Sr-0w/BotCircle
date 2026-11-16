@@ -48,6 +48,28 @@ jobs:
       - name: Compile release and run unit and Compose tests
         working-directory: apps/android
         run: ./gradlew --no-daemon :app:compileReleaseKotlin :app:testDebugUnitTest --stacktrace
+      - name: Enable emulator acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Launch APK on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: |
+            mkdir -p apps/android/app/build/emulator
+            adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n app.dot.opendots/.MainActivity > apps/android/app/build/emulator/launch.txt
+            adb shell uiautomator dump /sdcard/botcircle-startup.xml
+            adb pull /sdcard/botcircle-startup.xml apps/android/app/build/emulator/startup.xml
+            adb exec-out screencap -p > apps/android/app/build/emulator/startup.png
+            adb logcat -d -s AndroidRuntime:E > apps/android/app/build/emulator/crash.log
+            adb shell pidof app.dot.opendots > apps/android/app/build/emulator/pid.txt
+            grep -q 'Server address' apps/android/app/build/emulator/startup.xml
+            if grep -q 'FATAL EXCEPTION' apps/android/app/build/emulator/crash.log; then exit 1; fi
       - name: Upload validation APK and test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -58,6 +80,7 @@ jobs:
             apps/android/app/build/reports/tests/
             apps/android/app/build/test-results/
             apps/android/app/build/shots/
+            apps/android/app/build/emulator/
           retention-days: 7
       - name: Publish pre-release
         if: inputs.validation_only != true

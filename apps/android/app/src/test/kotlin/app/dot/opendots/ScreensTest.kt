@@ -21,6 +21,7 @@ import app.dot.design.ThemeMode
 import app.dot.design.catalog.QuietCatalogScreen
 import app.dot.opendots.data.MemorySessionStore
 import app.dot.opendots.data.OpenDotsClient
+import app.dot.opendots.data.ChatTarget
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -36,6 +37,8 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import org.junit.runner.RunWith
@@ -68,6 +71,9 @@ class ScreensTest {
     private var onboarded = true
     private var signedIn = true
     private var paired = false
+    private var temporaryFixture = false
+    private val temporaryId = "tmp_" + "b".repeat(48)
+    @Volatile private var temporaryMessages = "[]"
     private var codeModel = """{"providerID":"openai","id":"gpt-5","variant":null,"name":"GPT-5","input":["text","image"]}"""
 
     private val agents = """[
@@ -120,6 +126,20 @@ class ScreensTest {
                     if (request.headers["x-opendots-client"] != "1") return json("""{"error":"Client non reconnu"}""", 403)
                 }
                 return when {
+                    path == "/temporary-chats" -> {
+                        temporaryMessages = "[]"
+                        json("""{"id":"$temporaryId","expiresAt":${System.currentTimeMillis() + 600_000},"messages":[],"busy":false}""")
+                    }
+                    path == "/temporary-chats/$temporaryId/turn" -> {
+                        temporaryMessages = """[{"role":"user","content":"temporary test question"},{"role":"assistant","content":"Temporary answer","model":{"provider":"ollama","model":"llama4"}}]"""
+                        MockResponse.Builder().addHeader("Content-Type", "text/event-stream")
+                            .body("event: delta\ndata: \"Temporary answer\"\n\nevent: done\ndata: {}\n\n").build()
+                    }
+                    path == "/temporary-chats/$temporaryId" && request.method == "DELETE" -> {
+                        temporaryMessages = "[]"; json("""{"ok":true}""")
+                    }
+                    path == "/temporary-chats/$temporaryId" -> json("""{"id":"$temporaryId","expiresAt":${System.currentTimeMillis() + 600_000},"messages":$temporaryMessages,"busy":false}""")
+                    path == "/models/ollama" && temporaryFixture -> json("""[{"id":"llama4","name":"Temporary fixture","provider":"ollama"}]""")
                     path == "/auth/me" -> json(if (signedIn) """{"account":{"id":"usr_1","email":"robin@example.com","role":"admin"},"registrationOpen":true}""" else """{"account":null,"registrationOpen":true}""")
                     path == "/auth/login" -> { signedIn = true; MockResponse.Builder().code(200).addHeader("Set-Cookie", "opendots_session=tok123; Path=/; HttpOnly").body("""{"account":{"id":"usr_1","email":"robin@example.com","role":"admin"}}""").build() }
                     path == "/avatars/presets" -> json("""[{"id":"circle","label":"Cercle","points":[[50,5],[95,50],[50,95],[5,50]],"roundness":1},{"id":"house","label":"Maison","points":[[50,6],[94,42],[94,94],[6,94],[6,42]],"roundness":0.35}]""")
@@ -535,7 +555,7 @@ class ScreensTest {
 
     /** #38: a general chat has its own controls in its field; answers can be regenerated, messages edited, versions read. */
     @Test fun aGeneralChatHasItsControlsVersionsEditAndRegenerate() {
-        launch(ThemeMode.DARK)
+        val app = launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Circles").performClick()
         tab("Chat")
@@ -576,9 +596,14 @@ class ScreensTest {
         // A new answer to the latest message.
         compose.onNodeWithContentDescription("Regenerate").performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/chat" && "\"regenerate\":true" in it.second } }
+        // Edit is deliberately unavailable while regenerating. Seeing the old user
+        // text alone does not mean the streamed turn and history resync finished.
+        compose.waitUntil(10_000) { !app.session(ChatTarget.General("ch1")).state.value.busy }
+        compose.waitForIdle()
         // Editing a message sends it again, naming the one it replaces.
         compose.waitUntil(10_000) { compose.onAllNodesWithTextCompat("@Dev summarise the Friday meeting") }
         compose.onNodeWithText("@Dev summarise the Friday meeting").performTouchInput { longClick() }
+        waitFor("Edit")
         compose.onNodeWithText("Edit").performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("edit-sheet"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("edit-sheet")))[0].performTextReplacement("@Dev summarise Friday in three points")
@@ -614,6 +639,41 @@ class ScreensTest {
         compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/chat" } }
         assertTrue("\"text\":\"@Dev\"" in posts.first { it.first == "/chats/ch1/chat" }.second)
         assertTrue(posts.none { it.first == "/agents/a3/chat" })
+    }
+
+    @Test fun temporaryChatStreamsSurvivesNavigationAndClosesWithoutTouchingNormalChats() {
+        temporaryFixture = true
+        val app = launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Circles").performClick()
+        tab("Chat")
+        waitFor("Friday meeting")
+        val normalBefore = app.state.value.chats
+        tapUntil("Temporary chat", "Start temporary chat")
+        compose.onNodeWithText("Start temporary chat").performScrollTo().performClick()
+        waitFor("Choose a model")
+        compose.onNodeWithText("Choose a model").performScrollTo().performClick()
+        compose.onNodeWithText("Ollama").performScrollTo().performClick()
+        waitFor("Temporary fixture")
+        compose.onNodeWithText("Temporary fixture").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Temporary message").performScrollTo().performTextInput("temporary test question")
+        compose.onNodeWithTag("temporary-send").performScrollTo().performClick()
+        waitFor("Temporary answer")
+        shoot("temporary-chat-dark")
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Friday meeting")
+        tapUntil("Temporary chat", "Temporary answer")
+        compose.onNodeWithText("Close and forget").performScrollTo().performClick()
+        waitFor("This temporary thread will be lost.")
+        compose.onNodeWithText("Cancel").performClick()
+        waitFor("Temporary answer")
+        compose.onNodeWithText("Close and forget").performScrollTo().performClick()
+        compose.onNode(hasText("Close and forget") and hasAnyAncestor(isDialog())).performClick()
+        waitFor("Start temporary chat")
+        compose.waitUntil(10_000) { posts.any { it.first == "/temporary-chats/$temporaryId" } }
+        assertEquals(normalBefore, app.state.value.chats)
+        assertTrue(app.temporaryChat.state.value.snapshot == null)
+        assertTrue(posts.none { it.first == "/chats/ch1/chat" || it.first == "/agents/a1/chat" })
     }
 
     @Test fun aTaskShowsItsRealStateAndJournal() {
