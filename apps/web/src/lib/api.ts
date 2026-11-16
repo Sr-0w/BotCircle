@@ -45,6 +45,9 @@ import type { Account } from './account';
 
 export type ODMessage = UIMessage<MessageMetadata>;
 
+export type NotificationCategory = 'messages' | 'tasks' | 'approvals' | 'code' | 'scheduled';
+export interface NotificationPrefs { enabled: boolean; categories: Record<NotificationCategory, boolean>; mutedAgents: string[]; mutedChats: string[]; quietHours: { start: string; end: string; timezone: string } | null; preview: boolean }
+export interface PushDevice { id: string; kind: 'webpush' | 'unifiedpush'; label: string; createdAt: string; lastOkAt: string | null; failures: number; endpointHost: string }
 export interface SearchHit { messageId: string; conversationId: string; seq: number; role: 'user' | 'assistant'; kind: 'chat' | 'circle'; agentId: string | null; title: string; archived: boolean; current: boolean; snippet: string; highlights: [number, number][]; createdAt: string; score: number }
 
 export class ApiError extends Error {
@@ -194,6 +197,14 @@ export const api = {
   chats: (q?: string) => request<ChatDTO[]>('GET', `/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createChat: (input: { title?: string; model?: ModelConfig | null } = {}) => request<ChatDTO>('POST', '/chats', input),
   updateChat: (id: string, patch: { title?: string; model?: ModelConfig | null; webSearch?: boolean; pinned?: boolean }) => request<ChatDTO>('PATCH', `/chats/${id}`, patch),
+  // #64: notifications
+  vapidKey: () => request<{ publicKey: string }>('GET', '/notifications/vapid'),
+  notificationPrefs: () => request<NotificationPrefs>('GET', '/notifications/prefs'),
+  setNotificationPrefs: (patch: Partial<NotificationPrefs>) => request<NotificationPrefs>('PUT', '/notifications/prefs', patch),
+  pushSubscriptions: () => request<PushDevice[]>('GET', '/notifications/subscriptions'),
+  addPushSubscription: (body: { kind: 'webpush' | 'unifiedpush'; endpoint: string; p256dh: string; auth: string; label?: string }) => request<{ id: string }>('POST', '/notifications/subscriptions', body),
+  removePushSubscription: (id: string) => request<{ ok: boolean }>('DELETE', `/notifications/subscriptions/${id}`),
+  testPush: (subscriptionId?: string) => request<{ results: { id: string; ok: boolean; error?: string }[] }>('POST', '/notifications/test', subscriptionId ? { subscriptionId } : {}),
   archivedChats: () => request<ChatDTO[]>('GET', '/chats?archived=1'),
   chat: (id: string) => request<ChatDTO>('GET', `/chats/${id}`),
   archiveChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/archive`),

@@ -1,10 +1,13 @@
 import { ImageLightbox } from './chat/image-lightbox';
 import { ConfirmHost } from '@/lib/confirm';
+import { focusMessage } from '@/lib/search-focus';
+import { listenForNavigation } from '@/lib/push';
+import { openDialog } from '@/lib/dialogs';
 import { openSearch, SearchDialog } from './search/search-dialog';
 import { ThreadSearchBar } from './search/thread-search';
 import { archiveConversation, deleteConversation, restoreConversation } from '@/lib/conversation-actions';
 import { ConversationMenu } from './conversation-menu';
-import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store";
+import { onCodeWorkspaceRequested, onWorkPanelRequested, openCodeWorkspace } from "@/lib/work-store";
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
@@ -36,7 +39,8 @@ const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ def
 type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean } | { view: "temporary" };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
 function parseHash(): Route {
-  const h = window.location.hash.replace(/^#\/?/, "");
+  // #64: a notification can add "?m=<message>" (open at that message); the route itself ignores it.
+  const h = window.location.hash.replace(/^#\/?/, "").replace(/\?.*$/, "");
   if (h === 'chats/temporary') return { view: 'temporary' };
   if (LEGACY_PAGES.includes(h)) return { view: 'settings', section: h as SettingsSection };
   if (h === 'settings' || h.startsWith('settings/')) {
@@ -257,6 +261,24 @@ export function Shell() {
   const agents = useStore((s) => s.agents);
   const [route, go] = useRoute();
   const [navOpen, setNavOpen] = useState(false);
+  // #64: links from notifications — a task, a code session, or a conversation at a message (?m=).
+  const agentsForLinks = useStore((s) => s.agents);
+  useEffect(() => {
+    const open = () => {
+      const [path, query] = window.location.hash.replace(/^#\/?/, '').split('?');
+      const task = /^task\/(.+)$/.exec(path), code = /^code\/(.+)$/.exec(path);
+      if (task) { openDialog({ kind: 'task', taskId: task[1] }); window.history.replaceState(null, '', '#/'); window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
+      if (code) { openCodeWorkspace(code[1]); window.history.replaceState(null, '', '#/'); window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
+      const m = new URLSearchParams(query ?? '').get('m');
+      if (!m) return;
+      const chat = /^chat\/(.+)$/.exec(path), agent = /^agent\/(.+)$/.exec(path);
+      const conversationId = chat?.[1] ?? agentsForLinks.find((a) => a.id === agent?.[1])?.mainConversationId;
+      if (conversationId) window.setTimeout(() => focusMessage({ conversationId, messageId: m, terms: [] }), 50);
+    };
+    open(); listenForNavigation();
+    window.addEventListener('hashchange', open);
+    return () => window.removeEventListener('hashchange', open);
+  }, [agentsForLinks.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [threadSearch, setThreadSearch] = useState(false);
   useEffect(() => setThreadSearch(false), [route.view, route.view === "settings" ? "" : (route as { id?: string | null }).id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Ctrl/⌘+F inside a conversation: find in this thread.

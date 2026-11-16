@@ -1,3 +1,4 @@
+import { thisBrowserPushId } from "@/lib/push";
 import { t } from "./i18n";
 import type { ServerEvent } from "@opendots/shared";
 import { getState } from "./store";
@@ -41,6 +42,8 @@ function show(title: string, body: string, agentId?: string) {
 }
 
 export function notifyFromEvent(e: ServerEvent) {
+  // #64: with Web Push on this browser, the service worker shows them (no duplicates from the open tab).
+  if (thisBrowserPushId()) return;
   if (!notificationsEnabled() || document.visibilityState === "visible") return;
   const agentName = (id?: string | null) => getState().agents.find((a) => a.id === id)?.name ?? t("Un Circle");
   if (e.type === "message.created" && e.author === "agent" && !e.hidden && e.agentId) {

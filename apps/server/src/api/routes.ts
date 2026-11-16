@@ -9,6 +9,7 @@ import { opencodeRoutes } from '../opencode/routes.ts';
 import { sshRoutes } from '../ssh/routes.ts';
 import { homeAssistantRoutes } from '../homeassistant/routes.ts';
 import { chatRoutes } from '../chats/routes.ts';
+import { notificationRoutes } from '../notifications/routes.ts';
 import { searchConversation, searchMessages } from '../conversations/search.ts';
 import { archiveCircleThread, deleteCircleThread, LifecycleError, restoreCircleThread } from '../conversations/lifecycle.ts';
 import { grantArtifact } from '../artifacts/service.ts';
@@ -137,6 +138,7 @@ export function createApi() {
   api.route('/ssh', sshRoutes());
   api.route('/homeassistant', homeAssistantRoutes());
   api.route('/chats', chatRoutes());
+  api.route('/notifications', notificationRoutes());
   api.route('/temporary-chats', temporaryRoutes());
 
   api.get('/bootstrap', async (c) => {

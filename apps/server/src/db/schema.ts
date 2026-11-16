@@ -528,3 +528,38 @@ export const opencodeExchanges = pgTable(
   },
   (t) => [index('opencode_exchanges_task_idx').on(t.taskId, t.seq)],
 );
+
+/** #64: one notification per real lifecycle transition (deduplicated by [dedupeKey]); Activity / Inbox stay the source of truth. */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    dedupeKey: text('dedupe_key').notNull(),
+    category: text('category').$type<'messages' | 'tasks' | 'approvals' | 'code' | 'scheduled'>().notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    target: jsonb('target').$type<NotificationTarget>().notNull(),
+    sensitive: boolean('sensitive').notNull().default(true),
+    status: text('status').$type<'active' | 'closed'>().notNull().default('active'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('notifications_dedupe_idx').on(t.dedupeKey)],
+);
+export interface NotificationTarget { kind: 'circle' | 'chat' | 'task' | 'code' | 'approval' | 'request' | 'activity'; id: string; agentId?: string | null; messageId?: string | null }
+
+/** #64: a device or browser that receives pushes (Web Push from a browser, UnifiedPush from Android). */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').$type<'webpush' | 'unifiedpush'>().notNull(),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh'),
+    auth: text('auth'),
+    label: text('label').notNull().default(''),
+    failures: integer('failures').notNull().default(0),
+    lastOkAt: ts('last_ok_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint)],
+);

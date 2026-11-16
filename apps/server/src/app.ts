@@ -3,12 +3,16 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { config } from './config.ts';
 import { createApi } from './api/routes.ts';
+import { startNotifications } from './notifications/service.ts';
 import { authRoutes, requireAccount } from './auth/routes.ts';
 import { activateAccount } from './auth/runtime.ts';
 import type { AccountContext } from './auth/context.ts';
 
 /** One guarded entry point, also used by integration tests. */
+let notifications: (() => void) | null = null;
 export function createApplication(activate: (account: AccountContext) => Promise<void> = activateAccount) {
+  // #64: one server-wide listener turns lifecycle events into notifications, inside each account.
+  notifications ??= startNotifications();
   const app = new Hono();
   app.use('*', async (c, next) => {
     c.header('X-Content-Type-Options', 'nosniff');

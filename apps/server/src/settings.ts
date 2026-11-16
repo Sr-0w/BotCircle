@@ -10,6 +10,8 @@ interface SettingsShape {
   [key: `desktop.bot.${string}`]: { enabled: boolean; manualControl?: boolean; slot?: number; password?: string; runtimeId?: string };
   'openrouter.key': string; // chiffré
   'models.default': ModelConfig;
+  /** #64: notification preferences (categories, mutes, quiet hours, lock-screen preview). */
+  'notifications.prefs': Record<string, unknown>;
   /** Favourite models, shown first in every model picker. */
   'models.favorites': { provider: string; model: string }[];
   /** #54: the user's first and last name, used as trusted context by every agent. */

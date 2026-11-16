@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { ArrowLeftIcon, BotIcon, CalendarClockIcon, ChevronRightIcon, CpuIcon, KeyRoundIcon, LoaderIcon, MonitorIcon, PaletteIcon, PlugIcon, SearchIcon, ShieldCheckIcon, SparklesIcon, UsersIcon, ServerIcon, HouseIcon } from 'lucide-react';
+import { ArrowLeftIcon, BellIcon, BotIcon, CalendarClockIcon, ChevronRightIcon, CpuIcon, KeyRoundIcon, LoaderIcon, MonitorIcon, PaletteIcon, PlugIcon, SearchIcon, ShieldCheckIcon, SparklesIcon, UsersIcon, ServerIcon, HouseIcon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
 const OpencodeNavIcon = ({ className }: { className?: string }) => <OpencodeLogo size={16} className={className} />;
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,6 +9,7 @@ import { useAccount } from '@/lib/account';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { ProfileCard } from '../profile-card';
+import { NotificationsPage } from './notifications-page';
 import { SettingsPanel } from '../settings-dialog';
 import { ApprovalCard } from '../chat/approval-card';
 const ConnectorsPage = lazy(() => import('./connectors-page').then(m => ({ default: m.ConnectorsPage })));
@@ -20,13 +21,14 @@ const SshPage = lazy(() => import('./ssh-page').then(m => ({ default: m.SshPage 
 const OpencodePage = lazy(() => import('./opencode-page').then(m => ({ default: m.OpencodePage })));
 const TeamView = lazy(() => import('../team-view').then(m => ({ default: m.TeamView })));
 
-export const SETTINGS_SECTIONS = ['general', 'providers', 'models', 'agents', 'skills', 'opencode', 'ssh', 'homeassistant', 'connectors', 'computer', 'tools', 'tasks', 'team', 'approvals'] as const;
+export const SETTINGS_SECTIONS = ['general', 'notifications', 'providers', 'models', 'agents', 'skills', 'opencode', 'ssh', 'homeassistant', 'connectors', 'computer', 'tools', 'tasks', 'team', 'approvals'] as const;
 /** Anciennes adresses : elles mènent toujours quelque part. */
 export const SETTINGS_ALIASES: Record<string, SettingsSection> = { credentials: 'providers', keys: 'providers' };
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 // #54: grouped like Android — you, intelligence, connections, then what is activity rather than settings.
 const sections = [
   { id: 'general', label: 'Profil et apparence', icon: PaletteIcon, group: 'Personnalisation', description: 'Ton nom pour tes Circles, ton compte, le thème.' },
+  { id: 'notifications', label: 'Notifications', icon: BellIcon, group: 'Personnalisation', description: 'Ce qui te prévient, sur quels appareils, et quand te laisser tranquille.' },
   { id: 'providers', label: 'Fournisseurs de modèles', icon: KeyRoundIcon, group: 'IA et modèles', description: 'OpenRouter, ChatGPT / Codex et Ollama : leur connexion et leur état, au même endroit.' },
   { id: 'models', label: 'Modèle par défaut', icon: CpuIcon, group: 'IA et modèles', description: 'Le modèle par défaut, son raisonnement et son routage.' },
   { id: 'agents', label: 'Comportement des agents', icon: BotIcon, group: 'IA et modèles', description: 'Limites de travail, autonomie et fuseau horaire.' },
@@ -77,7 +79,7 @@ export function SettingsPage({ section, onSectionChange }: { section: SettingsSe
         {accountSection ? <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-3xl space-y-6 p-5 sm:p-8"><div><p className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">{t('Paramètres')}<ChevronRightIcon className="size-3" />{t(selected.group)}</p><h1 className="text-2xl font-semibold tracking-tight">{t(selected.label)}</h1><p className="mt-1 text-sm text-muted-foreground">{t(selected.description)}</p></div>
           {section === 'general' && <ProfileCard />}
           <SettingsPanel key={section} section={section as 'general' | 'providers' | 'models' | 'agents' | 'tools'} onOpenSection={onSectionChange} />
-        </div></div> : section === 'opencode' ? <OpencodePage /> : section === 'ssh' ? <SshPage /> : section === 'homeassistant' ? <HomeAssistantPage /> : section === 'connectors' ? <ConnectorsPage /> : section === 'computer' ? <ComputerPage /> : section === 'tasks' ? <TasksPage /> : section === 'skills' ? <SkillsPage /> : section === 'team' ? <TeamView /> : <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-3xl space-y-5 p-5 sm:p-8"><h1 className="flex items-center gap-2 text-2xl font-semibold"><ShieldCheckIcon className="size-5" />{t('Validations')}</h1><p className="text-sm text-muted-foreground">{t('Les actions en attente de ton accord et les dernières décisions.')}</p>{!pending.length && <div className="rounded-2xl border p-8 text-center text-sm text-muted-foreground">{t('Rien n’attend ta validation.')}</div>}{pending.map(a => <ApprovalCard key={a.id} approvalId={a.id} />)}{approvals.some(a => a.status !== 'pending') && <h2 className="pt-4 text-sm font-medium text-muted-foreground">{t('Récemment')}</h2>}{approvals.filter(a => a.status !== 'pending').slice(0, 8).map(a => <ApprovalCard key={a.id} approvalId={a.id} />)}</div></div>}
+        </div></div> : section === 'notifications' ? <NotificationsPage /> : section === 'opencode' ? <OpencodePage /> : section === 'ssh' ? <SshPage /> : section === 'homeassistant' ? <HomeAssistantPage /> : section === 'connectors' ? <ConnectorsPage /> : section === 'computer' ? <ComputerPage /> : section === 'tasks' ? <TasksPage /> : section === 'skills' ? <SkillsPage /> : section === 'team' ? <TeamView /> : <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-3xl space-y-5 p-5 sm:p-8"><h1 className="flex items-center gap-2 text-2xl font-semibold"><ShieldCheckIcon className="size-5" />{t('Validations')}</h1><p className="text-sm text-muted-foreground">{t('Les actions en attente de ton accord et les dernières décisions.')}</p>{!pending.length && <div className="rounded-2xl border p-8 text-center text-sm text-muted-foreground">{t('Rien n’attend ta validation.')}</div>}{pending.map(a => <ApprovalCard key={a.id} approvalId={a.id} />)}{approvals.some(a => a.status !== 'pending') && <h2 className="pt-4 text-sm font-medium text-muted-foreground">{t('Récemment')}</h2>}{approvals.filter(a => a.status !== 'pending').slice(0, 8).map(a => <ApprovalCard key={a.id} approvalId={a.id} />)}</div></div>}
         </TabsContent>
       </Suspense>
     </div>
