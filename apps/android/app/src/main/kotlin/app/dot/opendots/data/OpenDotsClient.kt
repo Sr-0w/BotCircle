@@ -2,6 +2,7 @@ package app.dot.opendots.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
@@ -52,7 +53,7 @@ fun normalizeServerUrl(input: String): HttpUrl? {
  * cookie for identity, the `x-opendots-client` header on every call, server-sent events for realtime, and the AI SDK
  * UI-message stream for a companion's turn.
  */
-class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient = OkHttpClient()) {
+class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient = OkHttpClient()) : TemporaryChatApi {
 
     private val jar = object : CookieJar {
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
@@ -110,6 +111,49 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         raw(method, path, body?.toString()?.toRequestBody(JSON))
 
     private suspend inline fun <reified T> get(path: String): T = OdJson.decodeFromJsonElement(json("GET", path))
+
+    // --- Temporary chat: RAM-only server state; no normal history/upload endpoints. ----------
+    private fun temporaryPath(id: String): String {
+        require(Regex("^tmp_[a-f0-9]{48}$").matches(id)) { "Invalid temporary session" }
+        return "/temporary-chats/$id"
+    }
+
+    override suspend fun createTemporaryChat(): TemporarySnapshot =
+        OdJson.decodeFromJsonElement(json("POST", "/temporary-chats"))
+
+    override suspend fun temporaryChat(id: String): TemporarySnapshot = get(temporaryPath(id))
+    override suspend fun deleteTemporaryChat(id: String) { json("DELETE", temporaryPath(id)) }
+    override suspend fun stopTemporaryChat(id: String) { json("POST", "${temporaryPath(id)}/stop") }
+
+    override fun temporaryTurn(id: String, text: String, model: ModelConfig): Flow<TemporaryEvent> = callbackFlow {
+        require(model.provider in setOf("openrouter", "ollama") && model.model.isNotBlank())
+        require(text.isNotBlank() && text.length <= 16_000)
+        // Explicit schema: do not accidentally send providerOrder, attachments, tools or mentions.
+        val body = buildJsonObject {
+            put("text", text)
+            putJsonObject("model") {
+                put("provider", model.provider); put("model", model.model)
+                model.reasoning?.let { put("reasoning", it) }
+            }
+        }.toString().toRequestBody(JSON)
+        val call = streaming.newCall(Request.Builder().url(url("${temporaryPath(id)}/turn"))
+            .header("Accept", "text/event-stream").header("Cache-Control", "no-store").post(body).build())
+        val worker = Thread {
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) throw ApiException("Temporary request failed", response.code)
+                    readTemporaryEvents(response.body.source()) { trySendBlocking(it).getOrThrow() }
+                }
+                close()
+            } catch (e: Exception) {
+                // SDK, proxy and parse errors may embed input/output; never forward their diagnostics.
+                close(ApiException("Temporary stream interrupted", (e as? ApiException)?.status ?: 0))
+            }
+        }
+        worker.isDaemon = true
+        worker.start()
+        awaitClose { call.cancel() }
+    }.flowOn(Dispatchers.IO)
 
     // --- Server & account ------------------------------------------------------------
 
@@ -463,4 +507,3 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         val EMPTY = ByteArray(0).toRequestBody(null)
     }
 }
-

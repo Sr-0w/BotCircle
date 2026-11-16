@@ -98,6 +98,7 @@ import app.dot.design.components.LocalReduceTransparency
 import app.dot.design.rememberReducedMotion
 import app.dot.opendots.ui.ApprovalsScreen
 import app.dot.opendots.ui.ChatScreen
+import app.dot.opendots.ui.TemporaryChatPage
 import app.dot.opendots.ui.CompanionProfilePage
 import app.dot.opendots.ui.CompanionsPage
 import app.dot.opendots.ui.ModelPickerPage
@@ -110,6 +111,9 @@ import app.dot.opendots.ui.StartingScreen
 import app.dot.opendots.ui.TasksScreen
 import app.dot.opendots.ui.UnreachableScreen
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import app.dot.design.components.DotDialog
 
 class MainActivity : ComponentActivity() {
     private val app: AppState by viewModels {
@@ -142,9 +146,11 @@ class MainActivity : ComponentActivity() {
 fun OpenDotsRoot(app: AppState, ui: AppUiState) {
     // Realtime only while visible.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val activity = LocalContext.current as? android.app.Activity
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) app.setForeground(true) else if (event == Lifecycle.Event.ON_STOP) app.setForeground(false)
+            if (event == Lifecycle.Event.ON_START) app.setForeground(true)
+            else if (event == Lifecycle.Event.ON_STOP) app.setForeground(false, configurationChange = activity?.isChangingConfigurations == true)
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -196,10 +202,14 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
 private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.Ssh, Page.HomeAssistant, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Ssh, HomeAssistant, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Ssh, HomeAssistant, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox, TemporaryChat }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
+    val temporaryActive by remember(app) {
+        app.temporaryChat.state.map { it.snapshot != null }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = false)
+    var confirmTemporaryExit by remember { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf(Tab.Circles) }
     // The app reopens on the conversation it was left on; Back leads to the Companions page.
     var page by rememberSaveable { mutableStateOf(if (ui.currentAgentId != null) Page.Chat else Page.None) }
@@ -246,6 +256,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     // Predictive back: the system animates these; they only decide where "back" leads.
     BackHandler(enabled = page != Page.None) { back() }
     BackHandler(enabled = page == Page.None && tab != Tab.Circles) { tab = Tab.Circles }
+    BackHandler(enabled = page == Page.None && tab == Tab.Circles && temporaryActive) { confirmTemporaryExit = true }
 
     AnimatedContent(
         targetState = page,
@@ -265,7 +276,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         var companionJournal by remember { mutableStateOf(false) }
         val chatPage = current == Page.GeneralChat || current == Page.ChatSettings || current == Page.ChatModel
         when {
-            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && !chatPage && current !in SETTINGS_PAGES) -> {
+            current == Page.None || (chatPage && chat == null) || (agent == null && current != Page.Catalog && current != Page.TemporaryChat && !chatPage && current !in SETTINGS_PAGES) -> {
                 // The top-level page scrolls under a floating glass dock; both share one blur source.
                 val backdrop = rememberQuietBackdrop()
                 Box(Modifier.fillMaxSize()) {
@@ -277,7 +288,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                     CompositionLocalProvider(LocalRootBackdrop provides backdrop, LocalRootActions provides rootActions) {
                         when (tab) {
                             Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
-                            Tab.Chat -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
+                            Tab.Chat -> ChatsPage(app, ui, onTemporary = { page = Page.TemporaryChat }) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
                             Tab.Code -> CodeSessionsPage(app, ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { app.newCodeSession(onNoMachine = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace } })
                             Tab.Settings -> SettingsScreen(app, ui, onOpenSection = { settingsSection = it; page = Page.SettingsSection })
                         }
@@ -310,6 +321,9 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
                 onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
             )
+            current == Page.TemporaryChat -> TemporaryChatPage(app, onBack = ::back, onNormalChat = {
+                app.createChat { page = Page.GeneralChat }
+            })
             current == Page.ChatSettings -> ChatSettingsPage(app, ui, chat!!, onBack = ::back, onChangeModel = { modelFromChat = false; page = Page.ChatModel }, onDeleted = { page = Page.None })
             current == Page.ChatModel -> ModelPickerPage(app, chat!!.title, chat.effectiveModel, onBack = ::back) { provider, model ->
                 app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model) } })
@@ -328,4 +342,16 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             else -> DesktopScreen(app, agent!!, onBack = ::back)
         }
     }
+    if (confirmTemporaryExit) DotDialog(
+        title = stringResource(R.string.temporary_exit_title),
+        message = stringResource(R.string.temporary_exit_note),
+        confirmLabel = stringResource(R.string.temporary_close),
+        dismissLabel = stringResource(R.string.cancel),
+        onDismiss = { confirmTemporaryExit = false },
+        onConfirm = {
+            confirmTemporaryExit = false
+            app.temporaryChat.discard()
+            (context as? android.app.Activity)?.finish()
+        },
+    )
 }

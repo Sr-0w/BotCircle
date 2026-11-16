@@ -72,7 +72,7 @@ import androidx.compose.material.icons.outlined.Archive
  * joins one when it is called by name.
  */
 @Composable
-fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
+fun ChatsPage(app: AppState, ui: AppUiState, onTemporary: () -> Unit = {}, onOpen: (GeneralChat) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var found by remember { mutableStateOf<List<GeneralChat>?>(null) }
     // Search covers titles and content, on the server.
@@ -93,6 +93,8 @@ fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
                 if (ui.chats.isNotEmpty()) SearchField(query, { query = it }, Modifier.weight(1f).padding(end = DotSpacing.m), placeholder = stringResource(R.string.search_chats)) else Spacer(Modifier.weight(1f))
                 DotButton(stringResource(R.string.new_chat), { app.createChat { app.state.value.currentChat?.let(onOpen) } }, icon = Icons.Outlined.Add, compact = true)
             }
+            DotButton(stringResource(R.string.temporary_chat), onTemporary, style = ButtonStyle.Ghost, compact = true,
+                modifier = Modifier.padding(horizontal = DotSpacing.gutter).testTag("temporary-chat-action"))
         }
         if (shown.isEmpty()) item {
             EmptyState(Icons.Outlined.Forum, stringResource(if (query.isBlank()) R.string.chats_empty_title else R.string.chats_none_found), if (query.isBlank()) stringResource(R.string.chats_empty_body) else "")

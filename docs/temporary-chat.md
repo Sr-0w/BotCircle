@@ -9,8 +9,10 @@ routes, chat history/archive controls, settings and Code workspace. Temporary
 chat is a separate destination in its Chats section. **Start normal chat**
 creates a new empty general chat through the production API without copying or
 converting the temporary transcript; returning to Temporary Chat retains its
-in-session context until close/expiry. Native Android temporary-mode integration
-is not part of this increment. Do not label mobile Web as Android parity.
+in-session context until close/expiry. Native Android now has a dedicated
+temporary page and session implementation; its compilation and device testing
+remain pending (see `apps/android/README.md`). Do not label mobile Web testing
+as native Android validation.
 Existing Circle history is unchanged. Circle temporary conversations remain
 deliberately unsupported.
 
@@ -101,8 +103,8 @@ Responses, including SSE, are `Cache-Control: no-store`.
 
 SSE events: `delta` (JSON string), `done`, `stopped`, `failure` (fixed JSON string).
 Concurrent sends return 409. Expired, discarded or inaccessible sessions return
-404, never fall back to a normal conversation. Native Android temporary-mode
-integration with this API remains to be implemented.
+404, never fall back to a normal conversation. The native Android temporary page
+uses this same contract, including named SSE events and cancellation.
 
 ## Validation and remaining acceptance work
 
@@ -169,10 +171,25 @@ Code workspace and existing package scripts.
   `Test Files 31 passed (31)`, `Tests 271 passed | 2 skipped (273)`,
   exit 0, 84.74 seconds. The two Docker tests remain unvalidated.
 
+### SRV03 follow-up and Android implementation, 2026-11-16
+
+After host-key verification, the bundle containing `72a0811` was tested in the
+separate `/home/fedora/sol-test-clone`, not the running application directory:
+
+- Docker regression tests: `1 passed` file, `2 passed` tests, 24.63 seconds.
+- Complete root `pnpm test`: `50 passed` files, `364 passed` tests, no skipped
+  tests, exit 0, 205.09 seconds. This resolved the Gentoo Docker validation gap;
+  `72a0811` was then pushed fast-forward to the production branch.
+- Android was added without changing server/Web source. Static resource,
+  contract/lifecycle and Kotlin syntax checks pass; ten JUnit tests are defined
+  but not executed. The attempted Gradle compile stopped before compilation:
+  no Java/JAVA_HOME or Android SDK was found. No native APK/device validation is
+  claimed. The existing release workflow builds APKs but was not dispatched.
+
 | Criterion | Status / coverage |
 | --- | --- |
 | Web action, visible indicator, model, streaming, SPA continuity | Backend + desktop/mobile Web smoke |
-| Native Android action and native lifecycle | **Not implemented**; Android source is present on the production baseline |
+| Native Android action and native lifecycle | Implemented; static checks only, Kotlin/Compose compilation and device validation pending |
 | Completed context, no normal/archive/memory/profile/job writes | Backend test compares durable table snapshots and preserves a normal Circle thread |
 | Global search/index/export exclusion | Structural separation; real production general-chat search and archive exclusion also checked in Chromium |
 | Stop, close, expiry, timeout, logout, disconnect, restart and redacted provider errors | Backend tests; real HTTP stop, close cancel/confirm and reload also in Chromium |
