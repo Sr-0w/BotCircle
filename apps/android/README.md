@@ -63,6 +63,90 @@ Settings → Quiet UI catalog shows every token and component, plus a scrolling 
 
 The tests drive the real app against a fake BotCircle engine and write a PNG of each screen to `app/build/shots`.
 
+## Temporary general chats (#57)
+
+Chats → **Temporary chat** opens a separate native page, with a persistent
+temporary/no-history header and an explanation before starting. OpenRouter and
+Ollama can be selected independently for each send. Completed turns and streaming
+text use only the temporary API; no hidden Circle or normal chat is created.
+**Start normal chat** explicitly creates a new, empty durable chat and never
+copies/converts the temporary transcript.
+
+- Server contract: `POST /api/temporary-chats`, `GET`/`DELETE /:id`,
+  `POST /:id/turn` (`text`, `model`) and `POST /:id/stop`. The turn stream uses
+  named `delta`/`done`/`stopped`/`failure` SSE events, not the normal AI SDK stream.
+  The ordinary account cookie and client header apply; the server also scopes
+  each temporary ID to that exact login session.
+- Transcript, partial answer, draft, model and ID live only in the AppState
+  ViewModel's dedicated `TemporaryChatSession`. They never enter SessionStore,
+  saved instance state, normal chat/archived lists, search, uploads, global
+  message events or analytics. The navigation enum may restore the *empty page*
+  after process death, never an old transcript or ordinary conversation.
+- Back/in-app navigation and configuration changes keep the RAM session.
+  Backgrounding cancels a live turn and pauses polling. On foreground/reconnect,
+  only completed turns are fetched; sends are never replayed automatically.
+  Inspect the authoritative context before retrying after an uncertain network
+  completion. Stop targets only this temporary session.
+- Explicit **Close and forget** requires confirmation and clears local state
+  immediately, cancels inference and attempts authenticated deletion. The final
+  Android Back exit also warns if a temporary session remains. ViewModel
+  disposal, logout, an unauthorized session or changing server clears it.
+  Deletion is best effort with a five-second bound; process death, no network
+  or a lost cleanup request relies on the server's expiry.
+- Actual server retention is RAM-only: 10 minutes after creation/last accepted
+  send, at most 30 minutes from creation, with a 15-second sweep (which process
+  stalls can delay). Reads do not prolong it. Background/suspended Android
+  processes may retain stale RAM until resumed; expiry is checked on return.
+  This is logical deletion, not forensic erasure from runtime/OS memory.
+- Tools, Web search, Circle/plugin mentions, jobs, memory writes, uploads,
+  sharing, export and Codex are unavailable, just like the restricted Web mode.
+  Replies render as plain text (no automatic remote image requests). The
+  temporary page sets Android `FLAG_SECURE` for screenshots/recents and restores
+  the prior flag on leaving. OS/IME/third-party software are outside a secure
+  erasure guarantee.
+- Providers, proxies and configured remote Ollama operators can retain data under
+  their own policies. The mode is not anonymous and promises no third-party
+  zero retention. Neither upstream error bodies nor prompt fragments are shown
+  as diagnostics; the UI uses fixed localized error categories.
+
+### Validation of this increment
+
+The server baseline `72a0811` was tested in an isolated clone on SRV03:
+`pnpm --filter @opendots/server exec vitest run test/git-broker.test.ts` →
+**2 passed** (24.63 s); `pnpm test` → **50 files, 364 passed**, no skipped tests
+(205.09 s). These are backend tests, **not Android tests**.
+
+For Android, SRV03 has no `java` in PATH, no JAVA_HOME and no SDK in the usual
+locations; neither a JDK nor SDK was found on Gentoo either. The actual command
+`./gradlew --no-daemon :app:compileReleaseKotlin` on SRV03 stopped before
+compilation with `JAVA_HOME is not set and no 'java' command could be found`.
+No APK, Kotlin type-check, Compose test or physical-device validation is claimed.
+
+`TemporaryChatTest.kt` defines **10 unexecuted JUnit tests** for named SSE,
+strict transport/model scoping, cookie/header use, reconnect without replay,
+stop/background, clean restart, expiry and unauthorized cleanup. With a toolchain:
+
+```sh
+./gradlew --no-daemon :app:compileReleaseKotlin :app:testDebugUnitTest --tests '*TemporaryChatTest'
+```
+
+Static checks executed successfully on Gentoo: generated EN/FR resource parity,
+resource references, endpoint/cancellation/auth wiring, no durable-store/logging
+calls in the temporary state/screen, and tree-sitter Kotlin grammar parsing of
+eight source/test files. Syntax parsing is **not** Kotlin compilation.
+
+```sh
+python3 tools/strings.py app/src/main/res
+python3 tools/check_temporary_chat.py
+# Optional grammar parsing also needs tree-sitter==0.25.2, tree-sitter-kotlin==1.1.0.
+```
+
+The existing `.github/workflows/android-release.yml` installs Java 21 and the SDK,
+builds `:app:assembleDebug`, then publishes a pre-release. It only triggers on a
+change to `apps/android/RELEASE`, an `android-v*` tag or manual dispatch with a tag;
+an ordinary code push does not build an APK. It does not run unit tests.
+This increment does not change RELEASE or trigger publication.
+
 ## Strings
 
 `res/values{,-fr}/strings.xml` are generated: edit `tools/strings.py`, then run `python3 tools/strings.py app/src/main/res`.

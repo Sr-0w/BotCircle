@@ -1,5 +1,6 @@
 import { closeCodexClients, codexHome, codexAccount, codexClient, codexModels } from '../models/codex.ts';
 import { bodyLimit } from 'hono/body-limit';
+import { temporaryRoutes } from '../temporary/routes.ts';
 import { attachmentRoutes } from '../attachments/routes.ts';
 import { artifactRoutes } from '../artifacts/routes.ts';
 import { taskRoutes } from '../tasks/routes.ts';
@@ -136,6 +137,7 @@ export function createApi() {
   api.route('/ssh', sshRoutes());
   api.route('/homeassistant', homeAssistantRoutes());
   api.route('/chats', chatRoutes());
+  api.route('/temporary-chats', temporaryRoutes());
 
   api.get('/bootstrap', async (c) => {
     const dto: BootstrapDTO = {

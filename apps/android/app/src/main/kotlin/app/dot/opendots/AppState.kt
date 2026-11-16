@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.dot.opendots.chat.ChatSession
+import app.dot.opendots.chat.TemporaryChatSession
 import app.dot.opendots.data.Account
 import app.dot.opendots.data.Activity
 import app.dot.opendots.data.Agent
@@ -104,6 +105,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     val notices: SharedFlow<String> = _notices.asSharedFlow()
 
     private val sessions = HashMap<String, ChatSession>()
+    /** Separate RAM-only state. Never inserted into chats, archives or SessionStore. */
+    val temporaryChat = TemporaryChatSession(client, viewModelScope, onUnauthorized = ::unauthorized)
     private var eventsJob: Job? = null
     private var foreground = true
 
@@ -149,6 +152,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     }
 
     fun changeServer() {
+        temporaryChat.discard()
         stopListening()
         setStage(Stage.Server)
     }
@@ -156,6 +160,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun signIn(email: String, password: String, register: Boolean) = form { enter(client.signIn(email, password, register)) }
 
     fun signOut() {
+        temporaryChat.discard()
         stopListening()
         sessions.clear()
         viewModelScope.launch {
@@ -192,6 +197,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     private fun unauthorized() {
         if (_state.value.stage !is Stage.Main) return
+        temporaryChat.discard()
         stopListening()
         sessions.clear()
         client.forgetSession()
@@ -201,13 +207,19 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     // --- Realtime -----------------------------------------------------------------------
 
     /** The event stream only runs while the app is visible: companions keep working on the server either way. */
-    fun setForeground(visible: Boolean) {
+    fun setForeground(visible: Boolean, configurationChange: Boolean = false) {
+        if (!configurationChange) temporaryChat.foreground(visible)
         foreground = visible
         if (_state.value.stage !is Stage.Main) return
         if (visible) { listen(); refresh() } else stopListening()
     }
 
     private fun stopListening() { eventsJob?.cancel(); eventsJob = null }
+
+    override fun onCleared() {
+        temporaryChat.dispose()
+        super.onCleared()
+    }
 
     private fun listen() {
         if (eventsJob?.isActive == true || !foreground) return

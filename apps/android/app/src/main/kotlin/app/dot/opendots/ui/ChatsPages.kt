@@ -73,7 +73,7 @@ import androidx.compose.material.icons.outlined.Archive
  * joins one when it is called by name.
  */
 @Composable
-fun ChatsPage(app: AppState, ui: AppUiState, onSearch: (String) -> Unit = {}, onOpen: (GeneralChat) -> Unit) {
+fun ChatsPage(app: AppState, ui: AppUiState, onSearch: (String) -> Unit = {}, onTemporary: () -> Unit = {}, onOpen: (GeneralChat) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var found by remember { mutableStateOf<List<GeneralChat>?>(null) }
     // Search covers titles and content, on the server.
@@ -94,6 +94,8 @@ fun ChatsPage(app: AppState, ui: AppUiState, onSearch: (String) -> Unit = {}, on
                 if (ui.chats.isNotEmpty()) SearchField(query, { query = it }, Modifier.weight(1f).padding(end = DotSpacing.m), placeholder = stringResource(R.string.search_chats)) else Spacer(Modifier.weight(1f))
                 DotButton(stringResource(R.string.new_chat), { app.createChat { app.state.value.currentChat?.let(onOpen) } }, icon = Icons.Outlined.Add, compact = true)
             }
+            DotButton(stringResource(R.string.temporary_chat), onTemporary, style = ButtonStyle.Ghost, compact = true,
+                modifier = Modifier.padding(horizontal = DotSpacing.gutter).testTag("temporary-chat-action"))
         }
         // #58: the field filters chats; the full search covers every message of chats and Circles.
         if (query.isNotBlank()) item(key = "search-everywhere") {
