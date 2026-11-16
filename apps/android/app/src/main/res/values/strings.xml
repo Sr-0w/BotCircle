@@ -639,6 +639,7 @@
     <string name="work">Work</string>
     <string name="work_empty_body">Reasoning and tools show up here, never in the conversation.</string>
     <string name="work_empty_title">No recent work</string>
+    <string name="work_row_note">Its tasks, files and what it is doing now</string>
     <string name="work_title">%1$s’s work</string>
     <string name="worked">Worked</string>
     <string name="working">Working…</string>

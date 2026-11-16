@@ -101,7 +101,7 @@ export function AgentSettings({ agent, onOpenTab, request }: { agent: AgentDTO; 
       <button className={row} onClick={() => onOpenTab?.("files")}><span className="flex-1 text-sm">{t("Fichiers")}</span><ChevronRightIcon className="size-4 text-muted-foreground" /></button>
       <button className={row} onClick={() => onOpenTab?.("memory")}><span className="flex-1 text-sm">{t("Mémoire")}</span><ChevronRightIcon className="size-4 text-muted-foreground" /></button>
       <p className="mt-5 mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wide">{t("Ressources connectées")}</p>
-      <button className={row} onClick={() => (window.location.hash = "#/settings/computer")}><span className="flex-1 text-sm">{t("Ordinateur")}</span><ChevronRightIcon className="size-4 text-muted-foreground" /></button>
+      <button className={row} onClick={() => onOpenTab?.("work")}><span className="flex-1 text-sm">{t("Travail")}</span><ChevronRightIcon className="size-4 text-muted-foreground" /></button>
       <button className={row} onClick={() => (window.location.hash = "#/settings/connectors")}><span className="flex-1 text-sm">{t("Connecteurs")}</span><ChevronRightIcon className="size-4 text-muted-foreground" /></button>
     </div>
   );

@@ -2,6 +2,7 @@ import sys
 from xml.sax.saxutils import escape
 S = {
  "app_name": ("BotCircle", "BotCircle"),
+ "work_row_note": ("Its tasks, files and what it is doing now", "Ses tâches, ses fichiers et ce qu’il fait en ce moment"),
  "avatar_shape": ("Silhouette", "Silhouette"), "avatar_round": ("Round", "Rond"),
  "avatar_restore": ("Back to the previous silhouette", "Revenir à la silhouette précédente"),
  "avatar_shape_note": ("You can also ask this Circle to imagine its own shape: it will show you a preview before applying it.", "Tu peux aussi demander à ce Circle d’imaginer sa propre forme : il t’en montrera l’aperçu avant de l’appliquer."),

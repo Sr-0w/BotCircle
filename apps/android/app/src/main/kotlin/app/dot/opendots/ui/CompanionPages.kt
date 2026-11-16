@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DesktopWindows
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -208,7 +209,7 @@ private fun InlineName(agent: Agent, onSave: (String) -> Unit) {
 
 /** One section of a Circle's details. Permissions are what it may DO; Data & connections, what it can REACH. */
 @Composable
-fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenComputer: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onMakePrimary: () -> Unit = {}, loadPresets: suspend () -> List<AvatarPreset> = { emptyList() }, onSetAvatar: (String?) -> Unit = {}, onRestoreAvatar: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
+fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, onOpenWork: () -> Unit, onOpenFiles: () -> Unit, onOpenMemory: () -> Unit, onChangeModel: () -> Unit, onMakePrimary: () -> Unit = {}, loadPresets: suspend () -> List<AvatarPreset> = { emptyList() }, onSetAvatar: (String?) -> Unit = {}, onRestoreAvatar: () -> Unit = {}, onUpdate: (JsonObject) -> Unit) {
     val c = Dot.colors
     val title = stringResource(when (section) { CircleSection.Permissions -> R.string.permissions; CircleSection.Data -> R.string.circle_data; CircleSection.Advanced -> R.string.circle_advanced })
     QuietPage(title, onBack, subtitle = agentDisplayName(agent)) {
@@ -237,7 +238,7 @@ fun CircleSectionPage(agent: Agent, section: CircleSection, onBack: () -> Unit, 
                 }
                 item { SectionLabel(stringResource(R.string.circle_resources), Modifier.padding(top = DotSpacing.l)) }
                 item {
-                    ListRow(stringResource(R.string.computer_row), subtitle = stringResource(R.string.computer_row_note), icon = Icons.Outlined.DesktopWindows, onClick = onOpenComputer, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
+                    ListRow(stringResource(R.string.work), subtitle = stringResource(R.string.work_row_note), icon = Icons.Outlined.Checklist, onClick = onOpenWork, trailing = { Icon(Icons.Outlined.ChevronRight, null, tint = c.textTertiary) })
                     Hairline()
                 }
             }

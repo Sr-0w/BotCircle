@@ -639,6 +639,7 @@
     <string name="work">Travail</string>
     <string name="work_empty_body">Le raisonnement et les outils apparaissent ici, jamais dans la conversation.</string>
     <string name="work_empty_title">Aucun travail récent</string>
+    <string name="work_row_note">Ses tâches, ses fichiers et ce qu’il fait en ce moment</string>
     <string name="work_title">Travail de %1$s</string>
     <string name="worked">A travaillé</string>
     <string name="working">Travaille…</string>

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import app.dot.design.components.DotDialog
@@ -158,7 +159,7 @@ private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
 }
 
 @Composable
-fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}) {
+fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}, workRequest: Int = 0) {
     // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
     val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
     LaunchedEffect(session) { session.open() }
@@ -173,6 +174,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     var reply by remember(agent.id) { mutableStateOf<ReplyRef?>(null) }
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
     var workSheet by remember(agent.id) { mutableStateOf(false) }
+    LaunchedEffect(workRequest) { if (workRequest > 0) workSheet = true }
     var editing by remember(agent.id) { mutableStateOf<Pair<String, String>?>(null) }
     var clearing by remember(agent.id) { mutableStateOf(false) }
     var modelRequest by remember(agent.id) { mutableStateOf(0) }
@@ -255,7 +257,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         Box(Modifier.fillMaxSize()) {
             FrostedHeaderLayout(
                 backdrop = backdrop,
-                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenWork = { workSheet = true }, general = general != null) },
+                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null) },
             ) { padding ->
                 val direction = LocalLayoutDirection.current
                 // In landscape the navigation bar or a display cutout can sit beside the content.
@@ -455,7 +457,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
  * other, and in the middle the companion itself - its dot, with its name on a small glass pill underneath.
  */
 @Composable
-private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenWork: () -> Unit, general: Boolean = false) {
+private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenComputer: () -> Unit, onOpenWork: () -> Unit, general: Boolean = false) {
     val c = Dot.colors
     val elsewhere = ui.agents.any { it.id != agent.id && it.unread > 0 } || ui.pendingApprovals.isNotEmpty()
     val name = agentDisplayName(agent)
@@ -489,7 +491,10 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
             }
         }
         DotFloatingCapsule(Modifier.align(Alignment.TopEnd)) {
-            DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
+            // The Circle's computer is one tap away; its work lives in Data & connections (and the live status line).
+            // A general chat has no computer: its work stays here.
+            if (general) DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
+            else DotCapsuleButton(Icons.Outlined.DesktopWindows, stringResource(R.string.computer_row), onOpenComputer)
             DotCapsuleButton(Icons.Outlined.Tune, stringResource(R.string.companion_details), onOpenCompanion)
         }
     }

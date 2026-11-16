@@ -2,7 +2,7 @@ import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-import { MenuIcon, MessagesSquareIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
+import { MenuIcon, MessagesSquareIcon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
 import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -299,6 +299,10 @@ export function Shell() {
                   <span className="hidden sm:inline"> · {current.effectiveModel.model}</span>
                 </p>
               </div>
+              {/* The Circle's computer is one tap away; its work is in the panel (Détails › Données). */}
+              <Button variant="ghost" size="icon" aria-label={t("Ordinateur")} title={t("Ordinateur")} onClick={() => (window.location.hash = "#/settings/computer")}>
+                <MonitorIcon />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

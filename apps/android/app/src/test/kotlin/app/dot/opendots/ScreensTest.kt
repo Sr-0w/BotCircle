@@ -403,8 +403,12 @@ class ScreensTest {
         assertTrue(!compose.onAllNodesWithTextCompat("Worked for"))
         assertTrue(!compose.onAllNodesWithTextCompat("set_upstream"))
         waitFor("Pousser (git push)")
-        compose.onNodeWithContentDescription("Work").performClick()
-        waitFor("Worked for 12 s")
+        // The header gives the Circle's computer; its work is under Data & connections, and opens in the chat's panel.
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Computer")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Work")).fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithContentDescription("Circle details").performClick()
+        compose.onNodeWithText("Data & connections").performClick()
+        tapUntil("Work", "Worked for 12 s")
         shoot("work-dark")
     }
 

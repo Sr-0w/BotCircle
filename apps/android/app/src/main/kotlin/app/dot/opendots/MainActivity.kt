@@ -210,6 +210,10 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     var settingsSection by rememberSaveable { mutableStateOf(SettingsSection.Appearance) }
     // The chat model picker opens from the chat's field or from its settings; Back returns there.
     var modelFromChat by rememberSaveable { mutableStateOf(false) }
+    // The computer opens from the chat header (and "take control") or from Data & connections; Back returns there.
+    var desktopFromChat by rememberSaveable { mutableStateOf(false) }
+    // "Work" in Data & connections opens the chat with its work sheet.
+    var workRequest by remember { mutableStateOf(0) }
     val openCode = { taskId: String -> codeTask = taskId; codeFrom = page; page = Page.CodeWorkspace }
     val keyboard = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
@@ -221,7 +225,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
         page = when (page) {
             Page.CircleSection -> Page.Profile
             // The model is set under Advanced, the computer under Data & connections.
-            Page.Model, Page.Desktop -> if (circleSection != null) Page.CircleSection else Page.Profile
+            Page.Desktop -> if (desktopFromChat) Page.Chat else if (circleSection != null) Page.CircleSection else Page.Profile
+            Page.Model -> if (circleSection != null) Page.CircleSection else Page.Profile
             Page.Profile -> Page.Chat
             Page.ChatModel -> if (modelFromChat) Page.GeneralChat else Page.ChatSettings
             Page.DefaultModel -> Page.SettingsSection
@@ -300,7 +305,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.Team -> TeamExchangesPage(app, ui, onBack = ::back)
             current == Page.CodeInstances -> OpencodeInstancesPage(app, onBack = ::back)
             current == Page.CodeWorkspace && codeTask != null -> CodeWorkspacePage(app, ui, codeTask!!, onBack = ::back)
-            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); page = Page.Desktop }, onOpenCode = openCode, onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat })
+            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); desktopFromChat = true; page = Page.Desktop }, onOpenCode = openCode, onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat }, workRequest = workRequest)
             current == Page.GeneralChat -> ChatScreen(
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
                 onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
@@ -315,7 +320,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 if (companionJournal) JournalSheet(app, agent) { companionJournal = false }
             }
             current == Page.CircleSection -> {
-                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenComputer = { page = Page.Desktop }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }, onMakePrimary = { app.setPrimaryAgent(agent.id) }, loadPresets = app::avatarPresets, onSetAvatar = { app.setAvatar(agent.id, it) }, onRestoreAvatar = { app.restoreAvatar(agent.id) }) { patch -> app.updateAgent(agent.id, patch) }
+                CircleSectionPage(agent!!, circleSection ?: CircleSection.Permissions, onBack = ::back, onOpenWork = { circleSection = null; workRequest += 1; page = Page.Chat }, onOpenFiles = { companionFiles = true }, onOpenMemory = { companionMemory = true }, onChangeModel = { page = Page.Model }, onMakePrimary = { app.setPrimaryAgent(agent.id) }, loadPresets = app::avatarPresets, onSetAvatar = { app.setAvatar(agent.id, it) }, onRestoreAvatar = { app.restoreAvatar(agent.id) }) { patch -> app.updateAgent(agent.id, patch) }
                 if (companionMemory) MemorySheet(app, agent) { companionMemory = false }
                 if (companionFiles) FilesSheet(app, ui, stringResource(R.string.files), agentId = agent.id, conversationId = null) { companionFiles = false }
             }
