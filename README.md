@@ -17,8 +17,9 @@ history and memory. It expires after 10 minutes without a new send (30 minutes
 maximum), or is discarded on close/reload. Providers may retain data independently.
 Tools, uploads, jobs and Codex are disabled in this increment. “Start normal chat”
 creates a separate empty general chat, without copying the temporary transcript.
-Native Android has a matching temporary-mode implementation, but its Kotlin
-compilation and device validation remain pending; see [Android validation](apps/android/README.md#temporary-general-chats-57). This preview does
+Native Android has a matching implementation validated by Kotlin compilation,
+JUnit/Compose tests and emulator startup; physical-phone testing remains manual.
+See [Android validation](apps/android/README.md#temporary-general-chats-57). This preview does
 **not** complete issue #57. See the [retention policy, API and
 acceptance matrix](docs/temporary-chat.md).
 

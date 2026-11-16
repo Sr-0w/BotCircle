@@ -10,9 +10,9 @@ chat is a separate destination in its Chats section. **Start normal chat**
 creates a new empty general chat through the production API without copying or
 converting the temporary transcript; returning to Temporary Chat retains its
 in-session context until close/expiry. Native Android now has a dedicated
-temporary page and session implementation; its compilation and device testing
-remain pending (see `apps/android/README.md`). Do not label mobile Web testing
-as native Android validation.
+temporary page and session implementation, compiled and tested with JUnit,
+Compose and emulator startup in GitHub Actions (see `apps/android/README.md`).
+Testing on a physical phone and with live providers remains manual.
 Existing Circle history is unchanged. Circle temporary conversations remain
 deliberately unsupported.
 
@@ -186,10 +186,26 @@ separate `/home/fedora/sol-test-clone`, not the running application directory:
   no Java/JAVA_HOME or Android SDK was found. No native APK/device validation is
   claimed. The existing release workflow builds APKs but was not dispatched.
 
+### GitHub Android validation follow-up, 2026-11-16
+
+The release workflow now gates publication on debug APK build, release Kotlin
+compilation, unit/Compose tests and APK startup on an Android 36 emulator. The
+first alpha.34 runs compiled but exposed two Robolectric synchronization/selector
+issues; these were fixed without dropping the original assertions. The alpha.35
+and alpha.36 workflows succeeded and published installable APKs.
+
+The verified [alpha.36 run](https://github.com/Sr-0w/BotCircle/actions/runs/43859884734)
+at `93d9385` contains JUnit XML for **58 passing tests**, no failures/errors/skips:
+10 temporary session/transport tests, 14 protocol tests and 34 Compose screen
+tests, including the complete temporary UI scenario. Emulator evidence reports
+`Status: ok`, a live process and the initial connection screen, with an empty
+AndroidRuntime crash log. Temporary UI screenshots use synthetic mock data.
+This supersedes the initial local-only Android validation limitation above.
+
 | Criterion | Status / coverage |
 | --- | --- |
 | Web action, visible indicator, model, streaming, SPA continuity | Backend + desktop/mobile Web smoke |
-| Native Android action and native lifecycle | Implemented; static checks only, Kotlin/Compose compilation and device validation pending |
+| Native Android action and native lifecycle | Kotlin debug/release compilation and JUnit/Compose tests pass; APK starts on emulator; physical phone/live providers remain manual |
 | Completed context, no normal/archive/memory/profile/job writes | Backend test compares durable table snapshots and preserves a normal Circle thread |
 | Global search/index/export exclusion | Structural separation; real production general-chat search and archive exclusion also checked in Chromium |
 | Stop, close, expiry, timeout, logout, disconnect, restart and redacted provider errors | Backend tests; real HTTP stop, close cancel/confirm and reload also in Chromium |

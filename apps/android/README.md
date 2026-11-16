@@ -116,13 +116,29 @@ The server baseline `72a0811` was tested in an isolated clone on SRV03:
 **2 passed** (24.63 s); `pnpm test` → **50 files, 364 passed**, no skipped tests
 (205.09 s). These are backend tests, **not Android tests**.
 
-For Android, SRV03 has no `java` in PATH, no JAVA_HOME and no SDK in the usual
-locations; neither a JDK nor SDK was found on Gentoo either. The actual command
+The initial local Android attempt found no `java` in PATH, no JAVA_HOME or SDK on
+SRV03, and no JDK/SDK in the usual locations on Gentoo. The actual command
 `./gradlew --no-daemon :app:compileReleaseKotlin` on SRV03 stopped before
 compilation with `JAVA_HOME is not set and no 'java' command could be found`.
-No APK, Kotlin type-check, Compose test or physical-device validation is claimed.
+GitHub Actions subsequently provided the real Android build/test environment.
 
-`TemporaryChatTest.kt` defines **10 unexecuted JUnit tests** for named SSE,
+**Alpha.36 (`93d9385`) is compiled, tested and published.** The
+[successful workflow](https://github.com/Sr-0w/BotCircle/actions/runs/43859884734)
+ran `:app:assembleDebug`, `:app:compileReleaseKotlin` and
+`:app:testDebugUnitTest`: **58 tests passed, zero failures/errors/skips** (10
+temporary protocol/session tests, 14 protocol tests and 34 Compose screen tests).
+The temporary-chat Compose scenario opens the real native page against a mock
+HTTP engine, selects a model, streams a reply, returns after navigation, cancels
+then confirms close, and checks that normal chats remain untouched. Its screenshot
+is included in the workflow's `android-validation` artifact.
+
+The same workflow installed and cold-started the APK on an **Android 36 emulator**:
+`am start -W` returned `Status: ok`, the connection screen contained `Server
+address`, the app process remained alive, and the captured AndroidRuntime crash
+log was empty. This startup smoke is not a live-provider test or a test on a
+physical phone. Phone testing remains manual.
+
+`TemporaryChatTest.kt` contains **10 passing JUnit tests** for named SSE,
 strict transport/model scoping, cookie/header use, reconnect without replay,
 stop/background, clean restart, expiry and unauthorized cleanup. With a toolchain:
 
@@ -133,7 +149,7 @@ stop/background, clean restart, expiry and unauthorized cleanup. With a toolchai
 Static checks executed successfully on Gentoo: generated EN/FR resource parity,
 resource references, endpoint/cancellation/auth wiring, no durable-store/logging
 calls in the temporary state/screen, and tree-sitter Kotlin grammar parsing of
-eight source/test files. Syntax parsing is **not** Kotlin compilation.
+nine source/test files. Syntax parsing is **not** Kotlin compilation.
 
 ```sh
 python3 tools/strings.py app/src/main/res
@@ -141,11 +157,16 @@ python3 tools/check_temporary_chat.py
 # Optional grammar parsing also needs tree-sitter==0.25.2, tree-sitter-kotlin==1.1.0.
 ```
 
-The existing `.github/workflows/android-release.yml` installs Java 21 and the SDK,
-builds `:app:assembleDebug`, then publishes a pre-release. It only triggers on a
+The `.github/workflows/android-release.yml` installs Java 21 and the SDK, builds
+the debug APK, compiles release Kotlin, runs unit/Compose tests and launches the
+APK on an emulator **before** publishing a pre-release. Reports, test screenshots
+and emulator startup evidence are uploaded even if validation fails. It triggers on a
 change to `apps/android/RELEASE`, an `android-v*` tag or manual dispatch with a tag;
-an ordinary code push does not build an APK. It does not run unit tests.
-This increment does not change RELEASE or trigger publication.
+an ordinary code push without a RELEASE change does not publish an APK. Manual
+`validation_only: true` runs the same checks without a tag/release publication.
+The failed alpha.34 attempts did not publish; corrected alpha.35 and alpha.36
+passed and were published. The original failures were test synchronization/
+selector issues, not Kotlin compilation errors.
 
 ## Strings
 
@@ -153,5 +174,16 @@ This increment does not change RELEASE or trigger publication.
 
 ## Release
 
-Put the tag to publish (for example `android-v0.1.0-alpha.2`) in `RELEASE` and push: the
-`Android release` workflow builds the APK and publishes it as a GitHub pre-release.
+For **each new Android feature**, increment `versionCode`/`versionName` in
+`app/build.gradle.kts` (and the user-facing build metadata if present), and put
+the matching `android-v…` tag in `RELEASE`. Push these together: the `Android
+release` workflow publishes the APK as a GitHub pre-release only after build,
+tests and emulator startup succeed. Do not mark an APK as tested from static
+analysis alone. An already-green release does not need rebuilding just because
+validation documentation changes.
+
+The current APK is available from
+[alpha.36](https://github.com/Sr-0w/BotCircle/releases/tag/android-v0.1.0-alpha.36).
+These are debug-signed alpha APKs. If Android reports a signature mismatch with
+an older installation, that APK cannot be updated in place; uninstall/reinstall
+requires signing in again. Durable conversations remain on the server.

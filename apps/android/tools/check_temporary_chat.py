@@ -15,6 +15,7 @@ files = [
     src / "data/TemporaryChat.kt", src / "data/OpenDotsClient.kt",
     src / "chat/TemporaryChatSession.kt", src / "ui/TemporaryChatPage.kt",
     src / "ui/ChatsPages.kt", src / "AppState.kt", src / "MainActivity.kt", test,
+    root / "app/src/test/kotlin/app/dot/opendots/ScreensTest.kt",
 ]
 resources = []
 for locale in ("values", "values-fr"):
