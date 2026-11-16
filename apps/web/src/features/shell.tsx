@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useStore } from "@/lib/store";
 import { cn, plainPreview, relativeTime } from "@/lib/utils";
 import { ChatView } from "./chat/chat-view";
+import { TemporaryChat } from "./chat/temporary-chat";
 import { AgentPanel } from "./panels/agent-panel";
 import { DotAvatar } from "./dot-avatar";
 import { SettingsPage, SETTINGS_SECTIONS, type SettingsSection } from "./pages/settings-page";
@@ -24,10 +25,11 @@ import { useAccount } from '@/lib/account';
 // Pages et modales secondaires chargées à la demande.
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
-type Route = { view: "agent"; id: string | null } | { view: "settings"; section: SettingsSection };
+type Route = { view: "agent"; id: string | null } | { view: "settings"; section: SettingsSection } | { view: "temporary" };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
 function parseHash(): Route {
   const h = window.location.hash.replace(/^#\/?/, "");
+  if (h === 'chats/temporary') return { view: 'temporary' };
   if (LEGACY_PAGES.includes(h)) return { view: 'settings', section: h as SettingsSection };
   if (h === 'settings' || h.startsWith('settings/')) {
     const section = h.split('/')[1];
@@ -39,7 +41,7 @@ function parseHash(): Route {
 function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => { const on = () => setRoute(parseHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
-  return [route, next => { window.location.hash = next.view === 'agent' ? `/agent/${next.id}` : `/settings/${next.section}`; }];
+  return [route, next => { window.location.hash = next.view === 'temporary' ? '/chats/temporary' : next.view === 'agent' ? `/agent/${next.id}` : `/settings/${next.section}`; }];
 }
 
 const BUSY = ["thinking", "working", "collaborating", "awake"];
@@ -100,6 +102,9 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
         )}
       </div>
 
+      <div className="px-2 pb-3">
+        <SideButton active={route.view === 'temporary'} onClick={() => go({ view: 'temporary' })} icon={<PauseCircleIcon />}>Chat temporaire</SideButton>
+      </div>
       <div className="px-4 pb-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Compagnons")}</div>
       <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2">
         {agents.map((a) => (
@@ -196,7 +201,7 @@ export function Shell() {
             <MenuIcon />
           </Button>
           {route.view !== "agent" ? (
-            <span className="font-medium">{t("Paramètres")}</span>
+            <span className="font-medium">{route.view === 'temporary' ? 'Chat temporaire' : t("Paramètres")}</span>
           ) : current ? (
             <>
               <DotAvatar color={current.color} state={current.state} size={28} named={current.named} />
@@ -220,8 +225,9 @@ export function Shell() {
         </header>
 
         <div className="flex min-h-0 flex-1">
+          <TemporaryChat visible={route.view === 'temporary'} />
           <Suspense fallback={<div className="flex-1" />}>
-          {route.view === 'settings' ? (
+          {route.view === 'temporary' ? null : route.view === 'settings' ? (
             <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : current ? (
             <>
               <ChatView agent={current} />
