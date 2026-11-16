@@ -12,7 +12,11 @@ on:
     inputs:
       tag:
         description: 'Release tag to create (e.g. android-v0.1.0-alpha.1)'
-        required: true
+        required: false
+      validation_only:
+        description: 'Compile and test without creating a tag or publishing a release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -23,6 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Resolve tag
+        if: inputs.validation_only != true
         env:
           INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
@@ -40,7 +45,22 @@ jobs:
       - name: Build APK
         working-directory: apps/android
         run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Compile release and run unit and Compose tests
+        working-directory: apps/android
+        run: ./gradlew --no-daemon :app:compileReleaseKotlin :app:testDebugUnitTest --stacktrace
+      - name: Upload validation APK and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-validation
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/android/app/build/reports/tests/
+            apps/android/app/build/test-results/
+            apps/android/app/build/shots/
+          retention-days: 7
       - name: Publish pre-release
+        if: inputs.validation_only != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
