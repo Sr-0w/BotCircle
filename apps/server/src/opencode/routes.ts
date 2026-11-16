@@ -6,8 +6,7 @@ import { getTask, TaskError } from '../tasks/service.ts';
 import { OpencodeHttpError, OpencodeUnreachable, type PromptFile } from './client.ts';
 import {
   checkInstance, deleteInstance, getInstance, instanceProjects, instanceSessions, instructOpencode, listExchanges, listFiles, listInstances, OpencodeError, readFile,
-  pairInstance, replyPermission, replyQuestion, saveInstance, setTaskModel, syncTask, taskModels, toInstanceDTO, workspace,
-} from './service.ts';
+  pairInstance, replyPermission, replyQuestion, saveInstance, setTaskModel, syncTask, taskModels, toInstanceDTO, workspace, resumeAfterQuota, setAutoResume } from './service.ts';
 
 const instanceSchema = z.object({
   name: z.string().min(1).max(60), baseUrl: z.string().min(1).max(500), username: z.string().max(100).optional(),
@@ -66,7 +65,16 @@ export function opencodeRoutes() {
   app.get('/tasks/:id/models', async (c) => c.json(await taskModels(await task(c.req.param('id')))));
   app.post('/tasks/:id/model', async (c) => {
     const ref = z.object({ providerID: z.string().min(1).max(200), id: z.string().min(1).max(300), variant: z.string().max(60).nullable().optional() }).strict().parse(await c.req.json());
-    return c.json(await setTaskModel(await task(c.req.param('id')), ref));
+    const row = await task(c.req.param('id'));
+    const result = await setTaskModel(row, ref);
+    // #49: another model has its own quota: a session paused on a usage limit resumes on it right away.
+    if (row.status === 'paused' && row.external?.quota) await resumeAfterQuota(row.id, { manual: true });
+    return c.json(result);
+  });
+  app.post('/tasks/:id/auto-resume', async (c) => {
+    const { enabled } = z.object({ enabled: z.boolean() }).strict().parse(await c.req.json());
+    await setAutoResume(await task(c.req.param('id')), enabled);
+    return c.json({ ok: true });
   });
   app.post('/tasks/:id/permissions/:requestId', async (c) => {
     const { reply } = z.object({ reply: z.enum(['once', 'always', 'reject']) }).strict().parse(await c.req.json());

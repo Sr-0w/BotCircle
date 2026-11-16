@@ -56,6 +56,8 @@ export interface TaskProvider {
   cancel(row: TaskRow): Promise<void>;
   /** Transmet une consigne à la même session. */
   instruct(row: TaskRow, instruction: string, author: 'user' | 'companion'): Promise<void>;
+  /** Reprend maintenant une exécution distante en pause (#49 : limite d'usage), dans la même session. */
+  resume?(row: TaskRow): Promise<void>;
 }
 const providers = new Map<string, TaskProvider>();
 let externalName: ((instanceId: string) => Promise<string | null>) | null = null;
@@ -203,7 +205,9 @@ export async function pauseTask(taskId: string): Promise<TaskRow> {
 export async function resumeTask(taskId: string): Promise<TaskRow> {
   const row = await getTask(taskId);
   if (!row) throw new TaskError('Tâche introuvable.');
-  if (providers.has(row.provider)) throw new TaskError('Réponds à la demande d’OpenCode depuis l’espace de code, ou envoie-lui une consigne.');
+  const external = providers.get(row.provider);
+  if (external?.resume && row.status === 'paused') { await external.resume(row); return (await getTask(taskId))!; }
+  if (external) throw new TaskError('Réponds à la demande d’OpenCode depuis l’espace de code, ou envoie-lui une consigne.');
   if (row.status !== 'paused' && row.status !== 'waiting_for_user') throw new TaskError('Cette tâche n’est ni en pause ni en attente.');
   const updated = await updateTask(taskId, { status: 'queued', blocker: null, requiresUserInput: false });
   await addTaskEvent(taskId, 'status', 'Reprise demandée');

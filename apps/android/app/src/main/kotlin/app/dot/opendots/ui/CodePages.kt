@@ -370,6 +370,18 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                         verticalArrangement = Arrangement.spacedBy(DotSpacing.l),
                         modifier = Modifier.fillMaxSize().backdropSource(backdrop),
                     ) {
+                        // #49: paused on a usage limit; the same session resumes by itself, or now.
+                        val quota = space.task.external?.quota?.takeIf { space.task.status == "paused" }
+                        if (quota != null) item(key = "quota") {
+                            Column(Modifier.fillMaxWidth().clip(DotShapes.large).border(DotSpacing.hairline * 2, c.border, DotShapes.large).padding(DotSpacing.m).testTag("quota-banner")) {
+                                Text(space.task.blocker.orEmpty(), style = Dot.type.callout, color = c.textSecondary)
+                                Row(Modifier.fillMaxWidth().padding(top = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
+                                    DotFilterChip(stringResource(R.string.code_auto_resume), selected = quota.autoResume, onClick = { app.setCodeAutoResume(taskId, !quota.autoResume) })
+                                    Spacer(Modifier.weight(1f))
+                                    DotButton(stringResource(R.string.code_resume_now), { app.taskAction(taskId, "resume") }, style = ButtonStyle.Secondary, compact = true)
+                                }
+                            }
+                        }
                         if (!space.reachable) item(key = "offline") {
                             Row(verticalAlignment = Alignment.Top) {
                                 Icon(Icons.Outlined.CloudOff, null, Modifier.padding(top = 2.dp).size(14.dp), tint = c.textTertiary)

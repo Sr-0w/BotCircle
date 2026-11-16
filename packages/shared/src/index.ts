@@ -381,6 +381,21 @@ export interface TaskExternalRef {
   changes?: { files: number; additions: number; deletions: number } | null;
   /** Modèle choisi dans BotCircle pour cette session (OpenCode 1.x le reçoit avec chaque consigne). */
   model?: OpencodeModelRef | null;
+  /**
+   * #49: the session stopped on a provider usage limit and waits to resume in the same session. `resetAt` is only
+   * set when the provider gave one; `nextAttemptAt` is when BotCircle will try again (if `autoResume`).
+   */
+  quota?: {
+    /** The assistant message that hit the limit: a resume answers exactly this one, once. */
+    fingerprint: string;
+    kind: 'quota' | 'transient';
+    provider: string | null;
+    reason: string;
+    resetAt: number | null;
+    nextAttemptAt: number;
+    attempts: number;
+    autoResume: boolean;
+  } | null;
 }
 
 export interface TaskDTO {

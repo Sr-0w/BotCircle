@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, WifiOffIcon, WrenchIcon, XIcon } from 'lucide-react';
+import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, WifiOffIcon, WrenchIcon, XIcon, PauseCircleIcon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
 import { FloatingComposer } from '@/components/floating-composer';
 import { ACTIVE_TASK_STATUSES, OPENCODE_FILES_MAX_COUNT, type OpencodeCurrentModelDTO, type OpencodeModelDTO, type OpencodeDiffDTO, type OpencodeFileNodeDTO, type OpencodeMessageDTO, type OpencodePartDTO, type OpencodeWorkspaceDTO } from '@opendots/shared';
@@ -71,6 +71,18 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
         {onToggleExpand && <Button size="icon" variant="ghost" className={iconButton} aria-label={expanded ? t('Réduire') : t('Agrandir')} onClick={onToggleExpand}>{expanded ? <Minimize2Icon /> : <Maximize2Icon />}</Button>}
         <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Fermer l’espace de code')} onClick={onClose}><XIcon /></Button>
       </header>
+      {task?.status === 'paused' && task.external?.quota && (
+        // #49: paused on a provider usage limit — the same session resumes by itself, or now on request.
+        <div className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs" data-quota-banner>
+          <PauseCircleIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 text-muted-foreground">{task.blocker}</span>
+          <label className="flex items-center gap-1.5 text-muted-foreground">
+            <input type="checkbox" className="accent-foreground" checked={task.external.quota.autoResume} onChange={(e) => { void api.codeAutoResume(taskId, e.target.checked).then(reload).catch((err) => toast.error(err.message)); }} />
+            {t('Reprise auto')}
+          </label>
+          <Button size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => { void api.taskAction(taskId, 'resume').then(reload).catch((err) => toast.error(err.message)); }}>{t('Reprendre maintenant')}</Button>
+        </div>
+      )}
       {error && !data && <p className="p-4 text-destructive text-sm">{error}</p>}
       {!data && !error && <LoaderIcon className="m-6 animate-spin" />}
       {data && view === 'session' && (

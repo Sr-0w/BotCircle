@@ -12,6 +12,8 @@ import { log } from '../journal.ts';
 import { decryptSecret, encryptSecret } from '../secrets.ts';
 import { addTaskEvent, getTask, registerTaskProvider, toTaskDTO, updateTask, type TaskRow } from '../tasks/service.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
+import { classifyProviderError, nextAttempt, type Classified } from './quota.ts';
+import { getTimezone } from '../settings.ts';
 import { detectApi, OpencodeHttpError, OpencodeUnreachable, OpencodeV1Client, OpencodeV2Client, parsePairingLink, redeemPairingCode, V1Api, type Delivery, type OpencodeApi, type OpencodeTarget, type PromptFile, type RawMessage, type RawModel, type RawPart, type RawSession } from './client.ts';
 
 /*
@@ -288,7 +290,7 @@ export async function instructOpencode(task: TaskRow, instruction: string, autho
   const delivered = await client.prompt(ext.sessionId, instruction, ext.directory, busy ? delivery : undefined, { files, model: client.version === 'v1' ? ext.model ?? null : null });
   await exchange(task, { author, kind: 'instruction', text: files.length ? `${instruction}\n\nFichiers joints : ${files.map((f) => f.name).join(', ')}` : instruction, original });
   // Une session terminée repart : la carte redevient « en cours », le prochain résultat sera un nouveau résultat.
-  await patchExternal(task, { promptedAt: Date.now(), unreachable: false }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
+  await patchExternal(task, { promptedAt: Date.now(), unreachable: false, quota: null }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
   return { queued: busy, delivery: busy ? (delivered ?? 'queue') : null };
 }
 
@@ -299,6 +301,7 @@ registerTaskProvider('opencode', {
     await exchange(row, { author: 'user', kind: 'stop', text: 'Arrêt demandé' });
   },
   instruct: async (row, instruction, author) => { await instructOpencode(row, instruction, author); },
+  resume: async (row) => { await resumeAfterQuota(row.id, { manual: true }); },
 }, async (instanceId) => (await getInstance(instanceId))?.name ?? null);
 
 // --- Lecture de la session ---------------------------------------------------------------
@@ -401,7 +404,7 @@ const changesOf = (diffs: OpencodeDiffDTO[]) => ({ files: diffs.length, addition
 
 async function conclude(task: TaskRow, instanceName: string, outcome: 'completed' | 'failed', text: string, seenMessageId: string, diffs: OpencodeDiffDTO[] | null, steps: number) {
   // Une seule conclusion par réponse : un événement tardif ou répété ne réveille personne une seconde fois.
-  const [claimed] = await db().update(schema.tasks).set({ status: outcome, finishedAt: new Date(), completedSteps: Math.max(task.completedSteps, steps), currentAction: null, requiresUserInput: false, blocker: null, result: outcome === 'completed' ? truncate(text, 4000) : null, error: outcome === 'failed' ? truncate(text, 1000) : null, external: { ...task.external!, seenMessageId, unreachable: false, ...(diffs ? { changes: changesOf(diffs) } : {}) } })
+  const [claimed] = await db().update(schema.tasks).set({ status: outcome, finishedAt: new Date(), completedSteps: Math.max(task.completedSteps, steps), currentAction: null, requiresUserInput: false, blocker: null, result: outcome === 'completed' ? truncate(text, 4000) : null, error: outcome === 'failed' ? truncate(text, 1000) : null, external: { ...task.external!, seenMessageId, unreachable: false, quota: null, ...(diffs ? { changes: changesOf(diffs) } : {}) } })
     .where(and(eq(schema.tasks.id, task.id), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES))).returning();
   if (!claimed) return;
   await addTaskEvent(task.id, outcome === 'completed' ? 'status' : 'error', outcome === 'completed' ? 'OpenCode a terminé' : `OpenCode s'est arrêté sur une erreur : ${truncate(text, 300)}`);
@@ -410,6 +413,102 @@ async function conclude(task: TaskRow, instanceName: string, outcome: 'completed
   publish({ type: 'task.changed', task: await toTaskDTO(claimed) });
   // Le résultat est REMIS au compagnon, même si sa conversation est fermée : c'est lui qui relit, corrige ou informe.
   await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: report(task, instanceName, outcome, text, diffs), depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode:${task.id}:${seenMessageId}` });
+}
+
+// --- #49 : limites d'usage ------------------------------------------------------------------
+
+/** Attempts (scheduled resumes) after which the user is asked to step in rather than waiting forever. */
+const QUOTA_MAX_ATTEMPTS = 10;
+
+async function whenText(at: number) {
+  const zone = await getTimezone();
+  const sameDay = new Date(at).toLocaleDateString('fr-FR', { timeZone: zone }) === new Date().toLocaleDateString('fr-FR', { timeZone: zone });
+  return new Date(at).toLocaleString('fr-FR', sameDay ? { timeZone: zone, hour: '2-digit', minute: '2-digit' } : { timeZone: zone, weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** The session stopped on a usage limit: durable pause, no result, no failure, one scheduled resume. */
+async function pauseForQuota(task: TaskRow, classified: Extract<Classified, { kind: 'quota' | 'transient' }>, failed: RawMessage, steps: number) {
+  const ext = task.external!;
+  const previous = ext.quota;
+  const attempts = (previous?.attempts ?? 0) + 1;
+  const provider = failed.info.providerID ?? null;
+  if (attempts > QUOTA_MAX_ATTEMPTS) {
+    await needsAttention(task, (await getInstance(ext.instanceId))?.name ?? 'OpenCode', `La limite d’usage persiste après ${QUOTA_MAX_ATTEMPTS} reprises. ${classified.evidence}`, failed.info.id, steps);
+    return;
+  }
+  const next = nextAttempt(classified, attempts);
+  const autoResume = previous?.autoResume ?? true;
+  const quota = { fingerprint: failed.info.id, kind: classified.kind, provider, reason: truncate(errorOf(failed) ?? classified.evidence, 300), resetAt: classified.kind === 'quota' ? classified.resetAt : null, nextAttemptAt: next, attempts, autoResume };
+  const when = await whenText(next);
+  const label = classified.kind === 'transient'
+    ? `Fournisseur momentanément indisponible${provider ? ` (${provider})` : ''} · nouvel essai vers ${when}`
+    : quota.resetAt
+      ? `Limite d’usage atteinte${provider ? ` (${provider})` : ''} · ${autoResume ? `reprise automatique vers ${when}` : `réinitialisation vers ${await whenText(quota.resetAt)}`}`
+      : `Limite d’usage atteinte${provider ? ` (${provider})` : ''} · heure de réinitialisation inconnue${autoResume ? `, nouvel essai vers ${when}` : ''}`;
+  const [paused] = await db().update(schema.tasks).set({ status: 'paused', phase: 'Limite d’usage', blocker: label, currentAction: null, requiresUserInput: false, completedSteps: Math.max(task.completedSteps, steps), lastHeartbeat: new Date(), external: { ...ext, seenMessageId: failed.info.id, unreachable: false, quota } })
+    .where(and(eq(schema.tasks.id, task.id), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES))).returning();
+  if (!paused) return;
+  await addTaskEvent(task.id, 'status', label);
+  await exchange(paused, { author: 'opencode', kind: 'quota', text: `${label}\n${quota.reason}` });
+  await log(task.agentId, 'opencode.quota', `OpenCode en pause (limite d’usage) : ${task.title}`, { taskId: task.id, resetAt: quota.resetAt, nextAttemptAt: next });
+  publish({ type: 'task.changed', task: await toTaskDTO(paused) });
+  if (autoResume) await enqueue('opencode.resume', { taskId: task.id, fingerprint: quota.fingerprint }, { runAt: new Date(next), dedupeKey: `oc-resume:${task.id}:${quota.fingerprint}:${attempts}`, maxAttempts: 1 });
+}
+
+/** Waiting will not help (billing, credits, access): the user must act; the Circle is told once. */
+async function needsAttention(task: TaskRow, instanceName: string, reason: string, seenMessageId: string, steps: number) {
+  const blocker = `Action requise : ${truncate(reason, 400)}`;
+  const [row] = await db().update(schema.tasks).set({ status: 'waiting_for_user', phase: 'Action requise', blocker, requiresUserInput: true, currentAction: null, completedSteps: Math.max(task.completedSteps, steps), external: { ...task.external!, seenMessageId, unreachable: false, quota: null } })
+    .where(and(eq(schema.tasks.id, task.id), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES))).returning();
+  if (!row) return;
+  await addTaskEvent(task.id, 'error', blocker);
+  await exchange(row, { author: 'opencode', kind: 'failure', text: blocker });
+  publish({ type: 'task.changed', task: await toTaskDTO(row) });
+  await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: `La session OpenCode « ${task.title} » (${instanceName}) est arrêtée et attend une action de l’utilisateur : ${truncate(reason, 600)}\n\nDis-le à l’utilisateur en une phrase : ce qu’il doit faire (facturation, connexion, accès) avant de relancer. Ne relance rien toi-même.`, depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode-attention:${task.id}:${seenMessageId}` });
+}
+
+/**
+ * Resumes a quota pause in the SAME session, exactly once: the paused→running claim is atomic, and the upstream
+ * history is checked first, so a resume already sent (ambiguous network failure, a second worker, a manual resume)
+ * is never sent again.
+ */
+export async function resumeAfterQuota(taskId: string, opts: { fingerprint?: string; manual?: boolean }) {
+  const row = await getTask(taskId);
+  const quota = row?.external?.quota;
+  if (!row || row.status !== 'paused' || !quota) return;
+  if (!opts.manual && (opts.fingerprint !== quota.fingerprint || !quota.autoResume)) return;
+  const [claimed] = await db().update(schema.tasks).set({ status: 'running', phase: 'Reprise après la limite d’usage', blocker: null, currentAction: 'Reprise de la session', lastHeartbeat: new Date() })
+    .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.status, 'paused'))).returning();
+  if (!claimed) return;
+  const ext = claimed.external!;
+  try {
+    const { client } = await context(claimed);
+    const [statuses, messages] = await Promise.all([client.statuses(ext.directory), client.messages(ext.sessionId, ext.directory, 30)]);
+    const at = messages.findIndex((m) => m.info.id === quota.fingerprint);
+    const continued = statuses[ext.sessionId] || (at >= 0 && messages.slice(at + 1).some((m) => m.info.role === 'user'));
+    if (!continued) {
+      await client.prompt(ext.sessionId, 'La limite d’usage du fournisseur est levée. Reprends exactement là où tu t’es arrêté : vérifie d’abord l’état réel des fichiers, ne refais pas ce qui est déjà fait, puis termine la tâche.', ext.directory, undefined, { model: client.version === 'v1' ? ext.model ?? null : null });
+    }
+    await updateTask(taskId, { external: { ...ext, quota: { ...quota, nextAttemptAt: Date.now() } } });
+    await addTaskEvent(taskId, 'status', opts.manual ? 'Reprise demandée après la limite d’usage' : 'Reprise automatique après la limite d’usage');
+    await exchange(claimed, { author: opts.manual ? 'user' : 'opencode', kind: 'quota', text: continued ? 'La session avait déjà repris.' : 'Reprise de la session après la limite d’usage.' });
+  } catch (error) {
+    if (!(error instanceof OpencodeUnreachable) && !(error instanceof OpencodeHttpError)) throw error;
+    // Unreachable: still paused; the next attempt checks the history before sending anything.
+    const attempts = quota.attempts + 1;
+    const next = nextAttempt({ kind: 'transient', evidence: '' }, attempts);
+    await updateTask(taskId, { status: 'paused', phase: 'Limite d’usage', currentAction: null, blocker: `Reprise impossible pour l’instant (${truncate(error.message, 120)}) · nouvel essai vers ${await whenText(next)}`, external: { ...ext, unreachable: true, quota: { ...quota, attempts, nextAttemptAt: next } } });
+    if (quota.autoResume) await enqueue('opencode.resume', { taskId, fingerprint: quota.fingerprint }, { runAt: new Date(next), dedupeKey: `oc-resume:${taskId}:${quota.fingerprint}:${attempts}`, maxAttempts: 1 });
+  }
+}
+
+/** Auto-resume on or off for one paused session; turning it on when the time has passed resumes now. */
+export async function setAutoResume(task: TaskRow, enabled: boolean) {
+  const quota = task.external?.quota;
+  if (!quota) throw new OpencodeError('Cette session n’est pas en pause sur une limite d’usage.');
+  const updated = await updateTask(task.id, { external: { ...task.external!, quota: { ...quota, autoResume: enabled } } });
+  if (enabled && task.status === 'paused') await enqueue('opencode.resume', { taskId: task.id, fingerprint: quota.fingerprint }, { runAt: new Date(Math.max(Date.now(), quota.nextAttemptAt)), dedupeKey: `oc-resume:${task.id}:${quota.fingerprint}:${quota.attempts}:on${Date.now()}`, maxAttempts: 1 });
+  return updated;
 }
 
 /** Réconcilie une tâche avec sa session. N'affirme que ce qui est observé. */
@@ -443,8 +542,27 @@ export async function syncTask(task: TaskRow): Promise<void> {
       }
       return;
     }
+    // Waiting for the user to fix billing or access: holds until the session moves (a new message, a resume).
+    if (task.status === 'waiting_for_user' && task.phase === 'Action requise' && status.type === 'idle' && (lastAssistant?.info.id ?? null) === ext.seenMessageId) return;
+    if (task.status === 'paused' && ext.quota) {
+      // Still standing on the limit: the pause holds (and is retried if its scheduled resume was missed).
+      const untouched = status.type === 'idle' && (lastAssistant?.info.id ?? null) === ext.quota.fingerprint;
+      if (untouched) {
+        if (ext.quota.autoResume && Date.now() > ext.quota.nextAttemptAt + 10 * 60_000) await resumeAfterQuota(task.id, { fingerprint: ext.quota.fingerprint });
+        return;
+      }
+      // The session moved on (resumed in OpenCode itself, or a new message): back to following it.
+      await patchExternal(task, { quota: null });
+      task = (await getTask(task.id))!;
+    }
     if (status.type === 'idle' && lastAssistant && lastAssistant.info.id !== ext.seenMessageId && (lastAssistant.info.time.completed || lastAssistant.info.error)) {
       const failure = errorOf(lastAssistant);
+      if (failure) {
+        // #49: a usage limit pauses the work in the same session instead of failing it.
+        const classified = classifyProviderError({ name: lastAssistant.info.error?.name, ...lastAssistant.info.error?.data }, { timezone: await getTimezone() });
+        if (classified.kind === 'quota' || classified.kind === 'transient') { await pauseForQuota(task, classified, lastAssistant, done); return; }
+        if (classified.kind === 'permanent') { await needsAttention(task, instance.name, failure, lastAssistant.info.id, done); return; }
+      }
       const diffs = await client.diff(ext.sessionId, ext.directory).then((d) => d.map(toDiff)).catch(() => null);
       // 2.x splits a turn into one message per step: the answer is the latest step that has text.
       const answer = [...recent].reverse().find((m) => m.info.role === 'assistant' && textOf(m));

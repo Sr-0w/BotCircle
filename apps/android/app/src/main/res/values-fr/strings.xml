@@ -81,6 +81,7 @@
     <string name="code_allow_always">Toujours autoriser</string>
     <string name="code_allow_once">Autoriser cette fois</string>
     <string name="code_answer">Répondre</string>
+    <string name="code_auto_resume">Reprise auto</string>
     <string name="code_back_files">Retour aux fichiers</string>
     <string name="code_binary">Fichier binaire : pas d’aperçu.</string>
     <string name="code_by">Par %1$s</string>
@@ -133,6 +134,7 @@
     <string name="code_reads_images">Lit les images</string>
     <string name="code_remove_note">Les tâches et échanges passés restent consultables.</string>
     <string name="code_remove_title">Retirer cette instance ?</string>
+    <string name="code_resume_now">Reprendre maintenant</string>
     <string name="code_save">Enregistrer et contrôler</string>
     <string name="code_scan">Scanner le QR code</string>
     <string name="code_scan_unavailable">Le scanner de QR code n’est pas disponible sur ce téléphone (services Google Play). Colle plutôt le lien.</string>

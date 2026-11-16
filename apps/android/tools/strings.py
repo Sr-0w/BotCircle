@@ -244,6 +244,8 @@ S = {
  "code_by": ("By %1$s", "Par %1$s"),
  "code_by_you": ("By you", "Par toi"),
  "code_by_chat": ("From a chat", "Depuis un chat"),
+ "code_auto_resume": ("Auto-resume", "Reprise auto"),
+ "code_resume_now": ("Resume now", "Reprendre maintenant"),
  "steering_status": ("Taking your message into the work in progress…", "Prend ton message en compte dans le travail en cours…"),
  "clear_busy": ("An answer is running: stop it or wait before resetting.", "Une réponse est en cours : arrête-la ou attends la fin avant de réinitialiser."),
 

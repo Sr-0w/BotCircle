@@ -81,6 +81,7 @@
     <string name="code_allow_always">Always allow</string>
     <string name="code_allow_once">Allow once</string>
     <string name="code_answer">Answer</string>
+    <string name="code_auto_resume">Auto-resume</string>
     <string name="code_back_files">Back to files</string>
     <string name="code_binary">Binary file: no preview.</string>
     <string name="code_by">By %1$s</string>
@@ -133,6 +134,7 @@
     <string name="code_reads_images">Reads images</string>
     <string name="code_remove_note">Past tasks and exchanges stay available.</string>
     <string name="code_remove_title">Remove this instance?</string>
+    <string name="code_resume_now">Resume now</string>
     <string name="code_save">Save and check</string>
     <string name="code_scan">Scan the QR code</string>
     <string name="code_scan_unavailable">The QR scanner is not available on this phone (Google Play services). Paste the link instead.</string>

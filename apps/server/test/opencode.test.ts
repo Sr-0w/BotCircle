@@ -4,6 +4,8 @@ import { isActionToolPart } from '@opendots/shared';
 import { openDatabase, closeDatabase, db, schema } from '../src/db/client.ts';
 import { createAgent, mainConversationId } from '../src/agents/repo.ts';
 import { cancelTask, getTask, pauseTask, sendInstruction, taskEvents, toTaskDTO } from '../src/tasks/service.ts';
+import { resumeAfterQuota, setAutoResume } from '../src/opencode/service.ts';
+import { resumeTask } from '../src/tasks/service.ts';
 import { checkBaseUrl, deleteInstance, instructOpencode, listExchanges, OpencodeError, replyPermission, saveInstance, setOpencodeFetch, startOpencodeTask, syncTask, toInstanceDTO, workspace } from '../src/opencode/service.ts';
 import { opencodeTools } from '../src/opencode/tools.ts';
 
@@ -17,6 +19,7 @@ class FakeOpencode {
   permissions: any[] = [];
   diffs = new Map<string, any[]>();
   calls: { method: string; path: string; directory: string | null; body: any }[] = [];
+  errorData: Record<string, unknown> = {};
   private n = 0;
   fetch: typeof fetch = async (input, init) => {
     if (this.down) throw new TypeError('fetch failed');
@@ -57,7 +60,7 @@ class FakeOpencode {
     const message = this.messages.get(sessionId)!.find((m) => m.info.role === 'assistant' && !m.info.time.completed)!;
     message.parts.push({ id: 'final', type: 'text', text });
     message.info.time.completed = Date.now();
-    if (error) message.info.error = { name: 'ApiError', data: { message: error } };
+    if (error) message.info.error = { name: 'ApiError', data: { message: error, ...this.errorData } };
     this.status.delete(sessionId);
   }
 }
@@ -148,9 +151,9 @@ describe('OpenCode', () => {
   it('rapporte une erreur réelle comme un échec, pas comme un succès', async () => {
     const { agent, task } = await start('Échec');
     fake.work('ses_1', []);
-    fake.finish('ses_1', '', 'Quota du fournisseur dépassé');
+    fake.finish('ses_1', '', 'Réponse du modèle illisible');
     await syncTask((await getTask(task.id))!);
-    expect(await getTask(task.id)).toMatchObject({ status: 'failed', error: 'Quota du fournisseur dépassé', result: null });
+    expect(await getTask(task.id)).toMatchObject({ status: 'failed', error: 'Réponse du modèle illisible', result: null });
     expect(((await wakes(agent.id))[0].payload as { text: string }).text).toContain('stopped with an error');
     // Le diff de la session a été lu et il est vide : « aucun fichier modifié » est un fait vérifié, pas un zéro inventé.
     expect((await getTask(task.id))!.external?.changes).toEqual({ files: 0, additions: 0, deletions: 0 });
@@ -257,5 +260,119 @@ describe('OpenCode', () => {
     fake.down = false;
     const other = await coder('Autre');
     expect(await (opencodeTools({ agent: other.agent, conversationId: other.conv, isMain: true } as any) as any).opencode_stop.execute({ task_id: started.taskId }, {})).toMatchObject({ ok: false, status: 'rejected' });
+  });
+
+  describe('#49 : limite d’usage', () => {
+    const resumeJobs = async (taskId: string) => (await db().select().from(schema.jobs).where(eq(schema.jobs.type, 'opencode.resume'))).filter((j) => (j.payload as any).taskId === taskId);
+    const prompts = () => fake.calls.filter((c) => c.path.endsWith('/prompt_async'));
+
+    it('met la session en pause sans échec, planifie la reprise, puis reprend la MÊME session une seule fois', async () => {
+      const { agent, task } = await start('Quota');
+      const session = task.external!.sessionId;
+      fake.work(session, [{ tool: 'edit', status: 'completed', title: 'settings.ts' }]);
+      const reset = Math.floor(Date.now() / 1000) + 3600;
+      fake.finish(session, '', `Claude AI usage limit reached|${reset}`);
+      await syncTask((await getTask(task.id))!);
+      const paused = (await getTask(task.id))!;
+      expect(paused.status).toBe('paused');
+      expect(paused.error).toBeNull();
+      expect(paused.blocker).toMatch(/Limite d’usage atteinte .* reprise automatique vers/);
+      expect(paused.external!.quota).toMatchObject({ kind: 'quota', resetAt: reset * 1000, autoResume: true, attempts: 1 });
+      // Nobody is told it failed or finished.
+      expect(await wakes(agent.id)).toHaveLength(0);
+      const jobs = await resumeJobs(task.id);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].runAt.getTime()).toBeGreaterThanOrEqual(reset * 1000);
+      // Syncing again while still on the limit changes nothing.
+      await syncTask((await getTask(task.id))!);
+      expect((await getTask(task.id))!.status).toBe('paused');
+
+      const before = prompts().length;
+      const fingerprint = paused.external!.quota!.fingerprint;
+      // Two workers race: one continuation only.
+      await Promise.all([resumeAfterQuota(task.id, { fingerprint }), resumeAfterQuota(task.id, { fingerprint })]);
+      expect(prompts().length).toBe(before + 1);
+      expect(prompts().at(-1)!.path).toContain(session);
+      expect((await getTask(task.id))!.status).toBe('running');
+      // A late duplicate of the job does nothing either.
+      await resumeAfterQuota(task.id, { fingerprint });
+      expect(prompts().length).toBe(before + 1);
+      // The resumed work completes: one real result, the pause is cleared.
+      fake.work(session, [{ tool: 'bash', status: 'completed', title: 'tests' }]);
+      fake.finish(session, 'Terminé : OAuth regroupé, tests verts.');
+      await syncTask((await getTask(task.id))!);
+      const done = (await getTask(task.id))!;
+      expect(done.status).toBe('completed');
+      expect(done.external!.quota).toBeNull();
+      expect(await wakes(agent.id)).toHaveLength(1);
+    });
+
+    it('un envoi ambigu n’est jamais renvoyé : l’historique de la session fait foi', async () => {
+      const { task } = await start('Ambigu');
+      const session = task.external!.sessionId;
+      fake.work(session, [{ tool: 'edit', status: 'completed' }]);
+      fake.finish(session, '', 'Rate limit exceeded for this model');
+      await syncTask((await getTask(task.id))!);
+      const quota = (await getTask(task.id))!.external!.quota!;
+      expect(quota.resetAt).toBeNull();
+      expect((await getTask(task.id))!.blocker).toMatch(/heure de réinitialisation inconnue/);
+      // The continuation reached OpenCode, but the answer was lost: BotCircle sees it as a failure and stays paused.
+      fake.messages.get(session)!.push({ info: { id: 'msg_lost', role: 'user', time: { created: Date.now() } }, parts: [{ id: 'p', type: 'text', text: 'Reprends' }] });
+      fake.down = true;
+      await resumeAfterQuota(task.id, { manual: true });
+      expect((await getTask(task.id))!.status).toBe('paused');
+      fake.down = false;
+      const before = prompts().length;
+      await resumeAfterQuota(task.id, { manual: true });
+      expect(prompts().length).toBe(before);
+      expect((await getTask(task.id))!.status).toBe('running');
+    });
+
+    it('arrêter annule la reprise ; « Reprendre » et le choix d’un autre modèle reprennent tout de suite', async () => {
+      const { task } = await start('Contrôles');
+      const session = task.external!.sessionId;
+      fake.work(session, []);
+      fake.finish(session, '', "You've hit your usage limit. Try again in 3 hours.");
+      await syncTask((await getTask(task.id))!);
+      const fingerprint = (await getTask(task.id))!.external!.quota!.fingerprint;
+      await setAutoResume((await getTask(task.id))!, false);
+      await resumeAfterQuota(task.id, { fingerprint });
+      expect((await getTask(task.id))!.status).toBe('paused');
+      const before = prompts().length;
+      await resumeTask(task.id);
+      expect(prompts().length).toBe(before + 1);
+      expect((await getTask(task.id))!.status).toBe('running');
+
+      const other = await start('Stop');
+      fake.work(other.task.external!.sessionId, []);
+      fake.finish(other.task.external!.sessionId, '', 'Claude AI usage limit reached|' + (Math.floor(Date.now() / 1000) + 600));
+      await syncTask((await getTask(other.task.id))!);
+      await cancelTask(other.task.id);
+      const count = prompts().length;
+      await resumeAfterQuota(other.task.id, { fingerprint: (await getTask(other.task.id))!.external!.quota!.fingerprint });
+      expect(prompts().length).toBe(count);
+      expect((await getTask(other.task.id))!.status).toBe('cancelled');
+    });
+
+    it('facturation ou accès : action requise, le Circle est prévenu une fois, rien n’est replanifié', async () => {
+      const { agent, task } = await start('Crédits');
+      fake.work(task.external!.sessionId, []);
+      fake.finish(task.external!.sessionId, '', 'Your credit balance is too low to access the Anthropic API');
+      await syncTask((await getTask(task.id))!);
+      await syncTask((await getTask(task.id))!);
+      const row = (await getTask(task.id))!;
+      expect(row.status).toBe('waiting_for_user');
+      expect(row.blocker).toMatch(/^Action requise/);
+      expect(await resumeJobs(task.id)).toHaveLength(0);
+      expect(await wakes(agent.id)).toHaveLength(1);
+    });
+
+    it('une erreur ordinaire reste un échec', async () => {
+      const { task } = await start('Ordinaire');
+      fake.work(task.external!.sessionId, []);
+      fake.finish(task.external!.sessionId, '', 'Tool bash failed: exit code 1');
+      await syncTask((await getTask(task.id))!);
+      expect((await getTask(task.id))!.status).toBe('failed');
+    });
   });
 });

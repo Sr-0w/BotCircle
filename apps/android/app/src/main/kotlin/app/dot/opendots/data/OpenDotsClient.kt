@@ -292,6 +292,7 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         files.forEach { (name, body) -> form.addFormDataPart("file", name, body) }
         return OdJson.decodeFromJsonElement(raw("POST", "/opencode/tasks/$taskId/prompt", form.build()))
     }
+    suspend fun codeAutoResume(taskId: String, enabled: Boolean) { json("POST", "/opencode/tasks/$taskId/auto-resume", buildJsonObject { put("enabled", enabled) }) }
     suspend fun codeModels(taskId: String): OpencodeModels = get("/opencode/tasks/$taskId/models")
     suspend fun codeSetModel(taskId: String, model: OpencodeModel, variant: String?): OpencodeCurrentModel =
         OdJson.decodeFromJsonElement(json("POST", "/opencode/tasks/$taskId/model", buildJsonObject { put("providerID", model.providerID); put("id", model.id); if (variant != null) put("variant", variant) }))

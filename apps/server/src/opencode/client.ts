@@ -22,7 +22,7 @@ export interface PromptOptions { files?: PromptFile[]; model?: ModelRef | null }
 export interface RawSession { model?: ModelRef | null; id: string; title: string; directory: string; projectID?: string; parentID?: string; summary?: { additions: number; deletions: number; files: number }; time: { created: number; updated: number } }
 export type RawStatus = { type: 'idle' } | { type: 'busy' } | { type: 'retry'; attempt: number; message: string; next: number };
 export interface RawPart { id: string; type: string; text?: string; tool?: string; files?: string[]; filename?: string; mime?: string; state?: { status: 'pending' | 'running' | 'completed' | 'error'; input?: unknown; output?: string; title?: string; error?: string } }
-export interface RawMessage { info: { id: string; role: 'user' | 'assistant'; time: { created: number; completed?: number }; modelID?: string; providerID?: string; error?: { name?: string; data?: { message?: string } } }; parts: RawPart[] }
+export interface RawMessage { info: { id: string; role: 'user' | 'assistant'; time: { created: number; completed?: number }; modelID?: string; providerID?: string; error?: { name?: string; data?: { message?: string; statusCode?: number; responseHeaders?: Record<string, string>; responseBody?: string } } }; parts: RawPart[] }
 export interface RawPermission { id: string; sessionID: string; permission: string; patterns: string[] }
 export interface RawQuestion { id: string; sessionID: string; questions: { question: string; header: string; options: { label: string }[]; multiple?: boolean; key?: string; free?: boolean }[] }
 export interface RawDiff { path?: string; file?: string; status?: 'added' | 'modified' | 'deleted'; additions: number; deletions: number; patch?: string }
