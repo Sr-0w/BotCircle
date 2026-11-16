@@ -22,6 +22,24 @@ async function observed(row: TaskRow) {
   };
 }
 
+const words = (text: string) => new Set(text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length > 2));
+
+/** Overlap of two texts' significant words (0..1). */
+export function similarity(a: string, b: string) {
+  const x = words(a); const y = words(b);
+  if (!x.size || !y.size) return 0;
+  let common = 0;
+  for (const w of x) if (y.has(w)) common += 1;
+  return common / Math.min(x.size, y.size);
+}
+
+/** An active task of [agentId] doing the same work: same title, or an instruction that mostly overlaps. */
+export async function equivalentActiveTask(agentId: string, title: string, instruction: string) {
+  const active = await listTasks({ agentId, active: true, limit: 20 });
+  const key = (t: string) => [...words(t)].sort().join(' ');
+  return active.find((t) => t.provider === 'worker' && ((key(t.title) && key(t.title) === key(title)) || similarity(t.instruction, instruction) >= 0.8)) ?? null;
+}
+
 /** Outils du compagnon au premier plan : il délègue, suit et pilote ses workers. */
 export function taskTools(ctx: ToolContext): ToolSet {
   const mine = async (taskId?: string): Promise<TaskRow> => {
@@ -46,6 +64,12 @@ export function taskTools(ctx: ToolContext): ToolSet {
           if (model) {
             const check = await checkModel(model);
             if (!check.ok) return { ok: false as const, status: 'model_unavailable', error: `${check.error ?? 'Modèle indisponible.'} Aucune tâche créée. Utilise models_available pour trouver un modèle valide, ou crée la tâche sans modèle (ton propre modèle).` };
+          }
+          // One executor per piece of work (#61): the same work already delegated is joined, never started twice.
+          const twin = await equivalentActiveTask(ctx.agent.id, title, instruction);
+          if (twin) {
+            const joined = await sendInstruction(twin.id, instruction);
+            return { ok: true, status: 'joined_existing', taskId: joined.id, title: joined.title, note: 'Ce travail est déjà délégué à cette tâche : la consigne lui a été transmise, aucune nouvelle tâche n’a été créée. Ne le fais pas toi-même ; suis-la avec task_status. Pour plusieurs workers en parallèle, découpe en sous-tâches distinctes qui ne se recouvrent pas.' };
           }
           const row = await createTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, title, instruction, requestedBy: 'agent', artifacts, model: model ?? null });
           return { ok: true, status: row.status, taskId: row.id, title: row.title, model: model ? `${model.provider}:${model.model}` : 'companion default' };

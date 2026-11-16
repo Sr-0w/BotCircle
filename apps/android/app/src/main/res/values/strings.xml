@@ -397,6 +397,7 @@
     <string name="state_thinking">Thinking</string>
     <string name="state_waiting">Waiting</string>
     <string name="state_working">Working</string>
+    <string name="steering_status">Taking your message into the work in progress…</string>
     <string name="step_limit">Steps per turn</string>
     <string name="step_limit_none">No limit</string>
     <string name="step_limit_note">Empty: agents keep working until they are done or you stop them.</string>

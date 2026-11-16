@@ -277,7 +277,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                         val step = liveStepLabel(chat.messages.lastOrNull())
                         LiveStatus(
                             agent, orb = if (general != null) orbStateOf(chat.messages.lastOrNull(), chat.status) else null,
-                            label = step?.first ?: agent.stateDetail ?: (agentStateLabel(if (agent.state == "available") "thinking" else agent.state) + "…"),
+                            label = if (chat.steering) stringResource(R.string.steering_status) else step?.first ?: agent.stateDetail ?: (agentStateLabel(if (agent.state == "available") "thinking" else agent.state) + "…"),
                             actions = step?.second ?: 0,
                             onClick = { workSheet = true },
                             modifier = Modifier.padding(top = DotSpacing.l),

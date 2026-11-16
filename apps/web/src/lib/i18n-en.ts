@@ -750,6 +750,7 @@ export const EN: Record<string, string> = {
   "Archivé le {v0} — lecture seule": "Archived {v0} — read only",
   "Aucun message": "No messages",
   "Anciens fils": "Previous threads",
+  "Prend ton message en compte dans le travail en cours…": "Taking your message into the work in progress…",
   "Fil archivé": "Archived thread",
   "Élevé": "High",
   "Équipe": "Team",

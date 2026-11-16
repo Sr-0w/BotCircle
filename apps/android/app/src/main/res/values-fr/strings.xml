@@ -397,6 +397,7 @@
     <string name="state_thinking">En réflexion</string>
     <string name="state_waiting">En attente</string>
     <string name="state_working">Au travail</string>
+    <string name="steering_status">Prend ton message en compte dans le travail en cours…</string>
     <string name="step_limit">Étapes par tour</string>
     <string name="step_limit_none">Aucune limite</string>
     <string name="step_limit_note">Vide : les agents poursuivent jusqu’au bout, ou jusqu’à ton arrêt.</string>

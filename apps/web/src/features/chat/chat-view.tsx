@@ -77,7 +77,9 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
       if (e.type === "message.created" && e.conversationId === agent.mainConversationId && e.author === "agent" && !e.hidden) {
         void api.messages(agent.id).then((res) => {
           setMessages((current) => {
-            const streaming = statusRef.current === "streaming" || statusRef.current === "submitted" ? current.findLast((message) => message.role === "assistant") : undefined;
+            // Only a reply after the latest user message is live: a turn steered meanwhile keeps its earlier message in place (#55).
+            const tail = current[current.length - 1];
+            const streaming = (statusRef.current === "streaming" || statusRef.current === "submitted") && tail?.role === "assistant" ? tail : undefined;
             const remoteIds = new Set(res.messages.map((message) => message.id));
             const pending = current.filter((message) => !remoteIds.has(message.id) && message.id !== streaming?.id);
             const base = res.messages.filter((message) => message.id !== streaming?.id);
@@ -114,11 +116,13 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
   );
   const last = messages[messages.length - 1];
   const waiting = status === "submitted" || (status === "streaming" && last?.role === "user");
+  const [steering, setSteering] = useState(false);
+  useEffect(() => { if (status === "ready" || status === "error" || (status === "streaming" && last?.role === "assistant")) setSteering(false); }, [status, last?.role]);
   const empty = messages.length === 0;
   // Le travail (raisonnement, outils) se lit dans le panneau latéral, pas dans le fil.
   useEffect(() => { publishWork(agent.id, messages, busy && last?.role === "assistant" ? last.id : null); }, [agent.id, messages, busy, last]);
   const step = busy ? liveStep(last) : null;
-  const liveLabel = step?.title ?? agent.stateDetail ?? (agent.state === "available" ? t("En réflexion…") : `${t(AGENT_STATE_LABELS[agent.state])}…`);
+  const liveLabel = steering ? t("Prend ton message en compte dans le travail en cours…") : step?.title ?? agent.stateDetail ?? (agent.state === "available" ? t("En réflexion…") : `${t(AGENT_STATE_LABELS[agent.state])}…`);
 
   return (
     <ChatActionsContext.Provider value={actions}>
@@ -180,7 +184,9 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           onCommand={(text) => { if (text.toLowerCase() !== '/clear') return false; setClearing(true); return true; }}
           placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
           onSubmit={async (text, attachments) => {
-            if (busy) await chat.stop();
+            // Sent while the companion works: the message steers the work in progress (#55). Only this client stops
+            // following the earlier stream; the turn itself goes on, with the message, on the server.
+            if (busy) { setSteering(true); await chat.stop(); }
             const files = [];
             for (const file of attachments) {
               let part = uploaded.current.get(file);

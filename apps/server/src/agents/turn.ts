@@ -1,5 +1,6 @@
-import { TASK_LOOP_REPEATS, TASK_MAX_STEPS, addTaskEvent, getTask, hasRunningTask, listTasks, recordStep, registerTaskStream, releaseTaskStream, takeInstructions, updateTask, waitForUser } from '../tasks/service.ts';
+import { TASK_LOOP_REPEATS, TASK_MAX_STEPS, addTaskEvent, getTask, listTasks, recordStep, registerTaskStream, releaseTaskStream, takeInstructions, updateTask, waitForUser } from '../tasks/service.ts';
 import { workerTools } from '../tasks/tools.ts';
+import { guardComputerControl, runningWorkerTask } from '../computer/ownership.ts';
 import { pendingSecureLogin, SENSITIVE_TOOL } from '../securelogin/service.ts';
 import type { ArtifactRow } from '../artifacts/service.ts';
 import { artifactUrl } from '@opendots/shared';
@@ -9,7 +10,7 @@ import { abortableChunks } from './abortable.ts';
 import { interruptedMessage, INTERRUPTED } from './interruption.ts';
 import { hydrateMessageImages } from '../attachments/service.ts';
 import { accountKey } from '../auth/context.ts';
-import { convertToModelMessages, isStepCount, streamText, toUIMessageStream, type StopCondition, type UIMessageChunk } from 'ai';
+import { convertToModelMessages, isStepCount, streamText, toUIMessageStream, type ModelMessage, type StopCondition, type UIMessageChunk } from 'ai';
 import { and, eq } from 'drizzle-orm';
 import { cleanModelText, type MessageMetadata, type MessageReplyRef } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
@@ -59,6 +60,9 @@ const formShown: StopCondition<any> = ({ steps }) =>
     (r: any) => r.toolName === 'ask_user' && (r.output as { status?: string } | undefined)?.status === 'awaiting_user',
   );
 
+/** Added once the user steers a turn in progress. */
+const STEER_NOTE = '\n\nThe user sent a new message while you were working on their earlier request. Unless they explicitly ask you to stop or to drop it, it adjusts the work in progress: take it into account (one short acknowledgement at most), then keep working on the original objective until it is really done. Do not restart from scratch, do not redo finished steps, and do not end your turn after the acknowledgement while work remains.';
+
 /** Après ce nombre d'étapes d'outils sans phrase pour l'utilisateur, le tour doit envoyer un statut. */
 const STATUS_GAP = 8;
 
@@ -73,6 +77,16 @@ interface LiveTurn {
   notes: string[];
   /** Consignes ajoutées par l'utilisateur pendant que ce tour continue en arrière-plan. */
   steers: string[];
+  /**
+   * Messages the user sent while this turn works (#55): each one is injected into THIS turn at the next step boundary,
+   * with the stream its sender follows. The turn never forks into a second executor.
+   */
+  inbox: { message: OpenDotsUIMessage; stream: ActiveStream }[];
+  /** False once the turn has stopped taking steers (it is persisting its final answer). */
+  accepting: boolean;
+  /** The whole turn's stop signal, shared by every segment's stream. */
+  abort: AbortController;
+  done?: Promise<TurnResult>;
 }
 
 interface RunSlot {
@@ -104,19 +118,22 @@ function waitUntilIdle(slot: RunSlot) {
   return new Promise<void>((resolve) => slot.idle.push(resolve));
 }
 
-function detachTurn(turn: LiveTurn) {
-  const slot = runSlot(turn.key);
-  turn.detached = true;
-  if (slot.foreground === turn) slot.foreground = null;
-  if (!slot.background.includes(turn)) slot.background.push(turn);
-  notifyIdle(slot);
-}
-
 function releaseTurn(turn: LiveTurn) {
   const slot = runSlot(turn.key);
   if (slot.foreground === turn) slot.foreground = null;
   slot.background = slot.background.filter((item) => item !== turn);
   notifyIdle(slot);
+}
+
+/** Hands [message] to the foreground turn of [conversationId] when it still takes steers. */
+function steerInto(slot: RunSlot, conversationId: string, message: OpenDotsUIMessage, existing?: ActiveStream): { stream: ActiveStream; done: Promise<TurnResult> } | null {
+  const turn = slot.foreground;
+  if (!turn || turn.conversationId !== conversationId || !turn.accepting || turn.abort.signal.aborted || !turn.done) return null;
+  const stream = existing ?? new ActiveStream(conversationId);
+  // Stopping from the stream the sender follows stops the whole turn.
+  stream.abort.signal.addEventListener('abort', () => turn.abort.abort(), { once: true });
+  turn.inbox.push({ message, stream });
+  return { stream, done: turn.done };
 }
 
 function turnHint(trigger: TurnTrigger): string {
@@ -137,7 +154,7 @@ export function stopAgent(agentId: string) {
   const slot = runs.get(`${accountKey()}:${agentId}`);
   if (!slot) return false;
   const turns = [slot.foreground, ...slot.background].filter((turn): turn is LiveTurn => Boolean(turn));
-  for (const turn of turns) turn.stream.abort.abort();
+  for (const turn of turns) turn.abort.abort();
   return turns.length > 0;
 }
 
@@ -291,7 +308,7 @@ export function runTurn(
   // Un worker a sa propre file : il n'occupe jamais le premier plan du compagnon, qui reste disponible pour discuter.
   const key = `${accountKey()}:${agentId}${trigger.kind === 'task' ? ':task' : ''}`;
   const slot = runSlot(key);
-  const live: LiveTurn = { key, agentId, conversationId, hint: turnHint(trigger), detached: false, stream, notes: [], steers: [] };
+  const live: LiveTurn = { key, agentId, conversationId, hint: turnHint(trigger), detached: false, stream, notes: [], steers: [], inbox: [], accepting: true, abort: stream.abort };
   const empty: TurnResult = { messageId: null, text: '', silent: true, error: null };
   const finish = (result: TurnResult) => {
     releaseTurn(live);
@@ -309,9 +326,18 @@ export function runTurn(
   };
 
   if (trigger.kind === 'user') {
-    if (slot.foreground) detachTurn(slot.foreground);
-    slot.foreground = live;
+    // A message sent while this companion works steers the turn in progress (#55, #61): one executor, never a
+    // second turn racing the first on the same computer.
+    const steered = steerInto(slot, conversationId, trigger.message);
+    if (steered) return steered;
     const done = (async () => {
+      // Another thread's turn (a team exchange) holds the companion: wait for it, then steer or run.
+      while (slot.foreground) {
+        await waitUntilIdle(slot);
+        const later = steerInto(slot, conversationId, trigger.message, stream);
+        if (later) return later.done;
+      }
+      slot.foreground = live;
       let result = empty;
       try {
         result = await executeTurn(agentId, conversationId, trigger, stream, live);
@@ -320,6 +346,7 @@ export function runTurn(
         finish(result);
       }
     })();
+    live.done = done;
     done.catch(() => finishStream(stream));
     return { stream, done };
   }
@@ -327,9 +354,10 @@ export function runTurn(
   const previous = slot.tail;
   let releaseTail!: () => void;
   slot.tail = new Promise<void>((resolve) => { releaseTail = resolve; });
-  const done = previous.then(async () => {
+  const done: Promise<TurnResult> = previous.then(async () => {
     while (slot.foreground) await waitUntilIdle(slot);
     slot.foreground = live;
+    live.done = done;
     let result = empty;
     try {
       result = await executeTurn(agentId, conversationId, trigger, stream, live);
@@ -458,11 +486,6 @@ async function executeTurn(
       }, { author: 'agent', agentId });
       return target;
     },
-    steerBackground: (instruction: string) => {
-      const targets = runSlot(live.key).background.filter((turn) => turn !== live && !turn.stream.abort.signal.aborted);
-      for (const turn of targets) turn.steers.push(instruction);
-      return targets.map((turn) => turn.hint);
-    },
     onStatus: async (text: string) => {
       if (!text) return;
       live.notes.push(text);
@@ -491,15 +514,16 @@ async function executeTurn(
     ? { tools: {}, info: { connectors: [] as string[], skills: [] }, lazy: { loaded: new Set<string>(), names: new Set<string>(), groups: [] } }
     : await buildCapabilityTools(toolCtx);
   const tools = trigger.kind === 'onboarding' ? {} : { ...capabilities.tools, ...buildTools(toolCtx) };
-  const workerBusy = taskId ? null : await hasRunningTask(agentId);
   if (taskId) {
     // Un worker ne parle pas à l'utilisateur étape par étape : il rapporte sa progression de façon structurée.
-    for (const name of ['text_user', 'ask_user', 'steer_task', 'task_start', 'react_to_message']) delete (tools as Record<string, unknown>)[name];
+    for (const name of ['text_user', 'ask_user', 'task_start', 'react_to_message']) delete (tools as Record<string, unknown>)[name];
     Object.assign(tools, workerTools(taskId));
-  } else if (workerBusy) {
+  } else if (await runningWorkerTask(agentId)) {
     // Le bureau appartient à la tâche en cours : pas de clics concurrents depuis la conversation.
     for (const name of ['computer_action', 'computer_target', 'computer_keyboard']) delete (tools as Record<string, unknown>)[name];
   }
+  // Enforced at execution too: a task started during this very turn takes the computer from the conversation (#61).
+  guardComputerControl(tools as Record<string, { execute?: (...args: any[]) => any }>, agentId, { taskId });
   serializeTools(tools, live.key);
   // A task runs on the model it was created with (when one was asked), otherwise on the companion's.
   const modelCfg = (taskId ? (await getTask(taskId))?.model : null) ?? await effectiveModel(agent);
@@ -540,7 +564,7 @@ async function executeTurn(
       .where(and(eq(schema.approvals.agentId, agent.id), eq(schema.approvals.status, 'pending'))),
   ]);
 
-  const baseSystem = buildSystemPrompt({
+  let baseSystem = buildSystemPrompt({
     agent,
     team,
     memories,
@@ -557,7 +581,7 @@ async function executeTurn(
   });
   let system = baseSystem;
 
-  const responseId = newId('msg');
+  let responseId = newId('msg');
   const taskNotes: string[] = [];
   /** Raison d'arrêt imposée au worker (boucle, budget) : il doit conclure sans outil. */
   let taskStop: string | null = null;
@@ -573,6 +597,16 @@ async function executeTurn(
   publish({ type: 'turn.started', agentId, conversationId, autonomous });
   if (!live.detached && !taskId) await setAgentState(agentId, pair ? 'collaborating' : autonomous ? 'awake' : 'thinking', mode.kind === 'event' ? mode.title : null);
 
+  // The model's view of the thread, carried from one segment to the next when the user steers (#55).
+  let modelMessages: ModelMessage[] | null = null;
+  let responseMessages: ModelMessage[] = [];
+  /** Stops the current step loop as soon as the user sends something: it is then injected and work goes on. */
+  const steered: StopCondition<any> = () => live.inbox.length > 0;
+  let response: OpenDotsUIMessage | null = null;
+  let text = '';
+  let silent = false;
+  for (;;) {
+  system = baseSystem;
   try {
     const resolved = await resolveModel(modelCfg);
     // The task shows the model that really serves it.
@@ -580,7 +614,7 @@ async function executeTurn(
     const result = streamText({
       model: resolved.model,
       instructions: system,
-      messages: await convertToModelMessages(await hydrateMessageImages(history), { ignoreIncompleteToolCalls: true, tools }),
+      messages: modelMessages ??= await convertToModelMessages(await hydrateMessageImages(history), { ignoreIncompleteToolCalls: true, tools }),
       tools,
       // Outils de services chargés à la demande : load_tools les active dès l'étape suivante.
       activeTools: activeToolNames(tools, capabilities.lazy) as any,
@@ -641,10 +675,10 @@ async function executeTurn(
         return { activeTools: names, messages: prepared, ...(detachedNote || signingIn ? { instructions: system + detachedNote } : {}) };
       },
       // No default step limit. If explicitly configured, reserve a synthesis.
-      stopWhen: stepLimit === null ? [formShown] : [isStepCount(stepLimit + 1), formShown],
+      stopWhen: stepLimit === null ? [formShown, steered] : [isStepCount(stepLimit + 1), formShown, steered],
       providerOptions: resolved.providerOptions,
       maxRetries: 2,
-      abortSignal: stream.abort.signal,
+      abortSignal: live.abort.signal,
       timeout: { totalMs: 30 * 60_000, toolMs: 60_000, tools: { shell_execMs: 31 * 60_000 } } as any,
       onError: ({ error }) => {
         turnError = errorMessage(error);
@@ -679,7 +713,7 @@ async function executeTurn(
       },
     });
 
-    for await (const chunk of abortableChunks(uiStream, stream.abort.signal)) {
+    for await (const chunk of abortableChunks(uiStream, live.abort.signal)) {
       // Validate complete text blocks before broadcasting: a marker may span chunks.
       if (chunk.type === 'text-start') pendingText.set(chunk.id, '');
       if (chunk.type === 'text-delta') {
@@ -696,7 +730,7 @@ async function executeTurn(
         if (delta) stream.push({ type: 'text-delta', id: chunk.id, delta });
         pendingText.delete(chunk.id);
       }
-      if (chunk.type === 'finish' && limitReached && !turnError && !stream.abort.signal.aborted) {
+      if (chunk.type === 'finish' && limitReached && !turnError && !live.abort.signal.aborted) {
         limitNotice = `\n\nLimite de ${stepLimit} étapes de travail atteinte : ce tour est suspendu et la tâche peut être incomplète. Tu peux me demander de continuer pour reprendre.`;
         const id = newId('limit');
         stream.push({ type: 'text-start', id });
@@ -712,9 +746,10 @@ async function executeTurn(
         void setAgentState(agentId, pair ? 'collaborating' : 'thinking', null).catch((error) => console.error('[agent state]', error));
       }
     }
+    responseMessages = live.inbox.length && !live.abort.signal.aborted ? (await result.response).messages : [];
   } catch (err) {
     turnError = errorMessage(err);
-    if (!stream.abort.signal.aborted) stream.push({ type: 'error', errorText: `Le modèle a rencontré une erreur : ${turnError}` });
+    if (!live.abort.signal.aborted) stream.push({ type: 'error', errorText: `Le modèle a rencontré une erreur : ${turnError}` });
   }
 
   for (const [id, buffered] of pendingText) {
@@ -724,26 +759,31 @@ async function executeTurn(
   }
   pendingText.clear();
 
-  if (stream.abort.signal.aborted) {
+  if (live.abort.signal.aborted) {
     turnError = null;
     finalMessage = interruptedMessage(finalMessage, stream.chunks, responseId);
     for (const part of finalMessage.parts as any[]) if (part.state === 'output-error' && part.errorText === INTERRUPTED) stream.push({ type: 'tool-output-error', toolCallId: part.toolCallId, errorText: INTERRUPTED });
   }
 
-  if (limitNotice && !stream.abort.signal.aborted) {
+  if (limitNotice && !live.abort.signal.aborted) {
     finalMessage ??= { id: responseId, role: 'assistant', parts: [], metadata: { agentId, kind: pair ? 'team' : 'chat', autonomous } };
     (finalMessage as OpenDotsUIMessage).parts.push({ type: 'text', text: limitNotice.trim() });
     await log(agentId, 'turn.limit', `Limite de ${stepLimit} étapes atteinte ; synthèse demandée et suspension affichée.`, { conversationId, trigger: trigger.kind });
   }
 
+  // Steers waiting at this step boundary continue this very turn. The check and the switch to "no more steers"
+  // happen without any await in between, so a message can never fall between two turns.
+  if (!live.inbox.length) live.accepting = false;
+  const steers = !live.abort.signal.aborted && !turnError && live.accepting ? live.inbox.splice(0) : [];
+
   // 2. Persistance de la réponse
-  const response = finalMessage as OpenDotsUIMessage | null;
+  response = finalMessage as OpenDotsUIMessage | null;
   if (response) response.parts = response.parts.map(p => p.type === 'text' ? { ...p, text: cleanModelText(p.text) } : p);
   // Dans un fil entre compagnons, la réponse transmise est le texte final, pas les phrases d'étape.
-  const text = response ? (pair || taskId ? finalText(response) : messageText(response)) : '';
+  text = response ? (pair || taskId ? finalText(response) : messageText(response)) : '';
   // Un réveil n'est masqué que s'il n'a rien produit de visible pour l'utilisateur.
   const acted = (response?.parts ?? []).some((p: any) => typeof p.type === 'string' && VISIBLE_EFFECT_TOOLS.test(p.type.slice(5)) && p.output?.ok !== false);
-  const silent = autonomous && !pair && !taskId && !acted && (SILENCE.test(text) || (!text && !turnError));
+  silent = !steers.length && autonomous && !pair && !taskId && !acted && (SILENCE.test(text) || (!text && !turnError));
   if (response && response.parts.length) {
     const parts = (SILENCE.test(text) ? response.parts.filter((p) => p.type !== 'text') : response.parts).filter((p) => {
       if (p.type !== 'tool-text_user') return true;
@@ -758,6 +798,52 @@ async function executeTurn(
   }
   if (silent && triggerMessageId) {
     await db().update(schema.messages).set({ hidden: true }).where(eq(schema.messages.id, triggerMessageId));
+  }
+
+  if (steers.length) {
+    // The segment so far is saved (nothing the user saw disappears), then the user's messages, in that order,
+    // then the same turn goes on with the original objective and the new instructions (#55).
+    finishStream(stream);
+    for (const { stream: extra } of steers.slice(0, -1)) finishStream(extra);
+    const saved: OpenDotsUIMessage[] = [];
+    for (const { message } of steers) {
+      const msg: OpenDotsUIMessage = { ...message, metadata: { ...(message.metadata ?? {}), kind: 'chat', createdAt: new Date().toISOString() } };
+      await saveMessage(conversationId, msg, { author: 'user' });
+      saved.push(msg);
+    }
+    triggerMessageId = saved[saved.length - 1].id;
+    try {
+      modelMessages = [
+        ...(modelMessages ?? []),
+        ...responseMessages,
+        ...await convertToModelMessages(await hydrateMessageImages(historyForModel(saved, agent, names, pair)), { ignoreIncompleteToolCalls: true, tools }),
+      ];
+    } catch (error) {
+      turnError = errorMessage(error);
+    }
+    if (!turnError) {
+      baseSystem = baseSystem.replace(STEER_NOTE, '') + STEER_NOTE;
+      stream = steers[steers.length - 1].stream;
+      responseId = newId('msg');
+      finalMessage = null;
+      limitReached = false;
+      limitNotice = null;
+      replyTo = null;
+      pendingText.clear();
+      live.stream = stream;
+      beginStream(stream);
+      publish({ type: 'turn.started', agentId, conversationId, autonomous: true });
+      if (!taskId) await setAgentState(agentId, 'thinking', null);
+      continue;
+    }
+  }
+  break;
+  }
+  // Stopped or failed with messages still waiting: they are kept in the thread, never lost.
+  live.accepting = false;
+  for (const { message, stream: waiting } of live.inbox.splice(0)) {
+    await saveMessage(conversationId, { ...message, metadata: { ...(message.metadata ?? {}), kind: 'chat', createdAt: new Date().toISOString() } }, { author: 'user' });
+    finishStream(waiting);
   }
 
   finishStream(stream);

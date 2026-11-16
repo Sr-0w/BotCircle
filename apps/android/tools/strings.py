@@ -225,6 +225,7 @@ S = {
  "clear_kept_chat_settings": ("Model and web search kept", "Modèle et recherche web conservés"),
  "clear_kept_chat_running": ("Ongoing work not interrupted", "Interventions en cours non interrompues"),
  "clear_kept_chat_list": ("Previous chat kept in the list", "Ancien chat conservé dans la liste"),
+ "steering_status": ("Taking your message into the work in progress…", "Prend ton message en compte dans le travail en cours…"),
  "clear_busy": ("An answer is running: stop it or wait before resetting.", "Une réponse est en cours : arrête-la ou attends la fin avant de réinitialiser."),
 
  "chats_empty_title": ("No chats yet", "Aucun chat"),

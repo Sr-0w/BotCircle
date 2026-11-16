@@ -37,6 +37,8 @@ data class ChatUiState(
     val reconnecting: Boolean = false,
     /** The last message could not be delivered to the server. */
     val notSent: Boolean = false,
+    /** A message was sent while the companion worked: it is taken into the work in progress at its next step (#55). */
+    val steering: Boolean = false,
 ) {
     val busy: Boolean get() = status != ChatStatus.Ready
     /** Waiting for the companion's first visible output. */
@@ -59,6 +61,8 @@ class ChatSession(
 
     private var conversationId: String? = null
     private var streamJob: Job? = null
+    /** The message the followed stream is writing. Only that one is "live"; a turn steered meanwhile keeps its earlier message where it was (#55). */
+    private var liveId: String? = null
     private var loaded = false
     private var olderLoaded = false
 
@@ -108,8 +112,9 @@ class ChatSession(
         }
         if (parts.isEmpty()) return
         val mine = ChatMessage(id, "user", parts, MessageMeta(kind = "chat", replyTo = replyTo, answer = answer))
+        val steering = _state.value.busy
         streamJob?.cancel()
-        _state.update { it.copy(messages = it.messages + mine, status = ChatStatus.Submitted, error = null, notSent = false) }
+        _state.update { it.copy(messages = it.messages + mine, status = ChatStatus.Submitted, error = null, notSent = false, steering = steering) }
         follow(resume = false) { client.chat(target, id, text.trim(), files, replyTo, answer) }
     }
 
@@ -220,7 +225,7 @@ class ChatSession(
                 val remote = history.messages.mapTo(HashSet()) { it.id }
                 // Pages the user scrolled back to stay above the freshly read window.
                 val older = if (olderLoaded && s.messages.any { it.id in remote }) s.messages.takeWhile { it.id !in remote } else emptyList()
-                val streaming = if (s.busy) s.messages.lastOrNull { !it.isUser } else null
+                val streaming = if (s.busy) s.messages.lastOrNull { !it.isUser && it.id == liveId } else null
                 val pending = if (s.busy) s.messages.filter { it.id !in remote && it.id != streaming?.id && it !in older } else emptyList()
                 val base = history.messages.filter { it.id != streaming?.id }
                 s.copy(messages = older + base + pending + listOfNotNull(streaming), cursor = if (older.isEmpty()) history.cursor else s.cursor, loadError = null)
@@ -234,15 +239,16 @@ class ChatSession(
 
     private fun follow(resume: Boolean, source: () -> kotlinx.coroutines.flow.Flow<JsonObject> = { client.resume(target) }) {
         streamJob?.cancel()
+        liveId = null
         streamJob = scope.launch {
             val assembler = TurnAssembler("live_" + UUID.randomUUID())
             var sawChunk = false
             try {
                 source().collect { chunk ->
-                    if (!sawChunk) { sawChunk = true; _state.update { it.copy(status = ChatStatus.Streaming) } }
+                    if (!sawChunk) { sawChunk = true; _state.update { it.copy(status = ChatStatus.Streaming, steering = false) } }
                     if (assembler.accept(chunk)) {
                         val live = assembler.snapshot()
-                        if (live.parts.isNotEmpty()) upsert(live)
+                        if (live.parts.isNotEmpty()) { liveId = live.id; upsert(live) }
                     }
                     assembler.error?.let { message -> _state.update { it.copy(error = message) } }
                 }
@@ -260,7 +266,7 @@ class ChatSession(
                     else -> _state.update { it.copy(error = e.message ?: "", notSent = true) }
                 }
             }
-            _state.update { it.copy(status = ChatStatus.Ready) }
+            _state.update { it.copy(status = ChatStatus.Ready, steering = false) }
             resync(allowFollow = sawChunk)
             markRead()
         }
