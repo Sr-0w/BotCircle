@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { CopyIcon, PencilIcon, PlusIcon, RotateCwIcon, Trash2Icon } from "lucide-react";
+import { ArchiveRestoreIcon, CopyIcon, PencilIcon, PlusIcon, RotateCwIcon, Trash2Icon } from "lucide-react";
+import { deleteConversation, restoreConversation } from "@/lib/conversation-actions";
+import { ConversationMenu } from "../conversation-menu";
 import { ACTIVE_TASK_STATUSES, type ActivityDTO, type AgentDTO, type JournalEntryDTO, type MemoryDTO } from "@opendots/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -102,7 +104,7 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
   );
   const journal = useReload<JournalEntryDTO[]>(() => api.journal(agent.id), (e) => e.type === "journal.created", [agent.id]);
 
-  const archives = useReload(() => api.archives(agent.id), (e) => e.type === "conversation.reset", [agent.id]);
+  const archives = useReload(() => api.archives(agent.id), (e) => (e.type === "conversation.reset" || e.type === "conversation.changed") && e.agentId === agent.id, [agent.id]);
   const [tab, setTab] = useState("work");
   const activeTasks = useStore((s) => s.tasks.filter((task) => task.agentId === agent.id && ACTIVE_TASK_STATUSES.includes(task.status)).length);
   const [settingsView, setSettingsView] = useState<{ view: "permissions"; n: number } | null>(null);
@@ -181,12 +183,21 @@ export function AgentPanel({ agent }: { agent: AgentDTO }) {
         {!!archives?.length && (
           <div className="mt-5 space-y-1" data-testid="archives">
             <p className="px-1 font-medium text-muted-foreground text-xs">{t("Anciens fils")}</p>
-            {archives.map((a) => (
-              <button key={a.id} className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent/60" onClick={() => openDialog({ kind: "archive", agentId: agent.id, conversationId: a.id, archivedAt: a.archivedAt })}>
-                <span>{t("Fil archivé")}</span>
-                <span className="text-muted-foreground text-xs tabular-nums">{relativeTime(a.archivedAt)}</span>
-              </button>
-            ))}
+            {archives.map((a) => {
+              const target = { kind: "thread" as const, agentId: agent.id, id: a.id, agentName: agent.name, current: false };
+              return (
+                <div key={a.id} className="group/thread relative" data-archived-thread={a.id}>
+                  <button className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 pr-9 text-left text-sm hover:bg-accent/60" onClick={() => openDialog({ kind: "archive", agentId: agent.id, conversationId: a.id, archivedAt: a.archivedAt })}>
+                    <span>{t("Fil archivé")}{a.messageCount ? <span className="ml-1.5 text-muted-foreground text-xs">· {t("{count} messages", { count: a.messageCount })}</span> : null}</span>
+                    <span className="text-muted-foreground text-xs tabular-nums">{relativeTime(a.archivedAt)}</span>
+                  </button>
+                  <ConversationMenu className="absolute top-1 right-1" label={t("Actions pour ce fil")} items={[
+                    { label: t("Restaurer comme fil courant"), icon: <ArchiveRestoreIcon />, onSelect: () => void restoreConversation(target) },
+                    { label: t("Supprimer…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation(target) },
+                  ]} />
+                </div>
+              );
+            })}
           </div>
         )}
       </TabsContent>

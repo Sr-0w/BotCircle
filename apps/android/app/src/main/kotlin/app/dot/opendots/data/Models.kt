@@ -427,10 +427,17 @@ data class GeneralChat(
     /** Web search allowed in this chat (the web tools are not given to the model otherwise). */
     val webSearch: Boolean = true,
     val pinned: Boolean = false,
+    /** #56: archived chats are hidden from the list, intact and restorable. */
+    val archived: Boolean = false,
+    val archivedAt: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
     val lastMessagePreview: String? = null,
 )
+
+/** #56: a Circle's thread set aside (archive or /clear), kept and readable. */
+@Serializable
+data class ArchivedThread(val id: String, val createdAt: String = "", val archivedAt: String = "", val messageCount: Int = 0)
 
 /** Where a conversation lives on the server: a companion's main thread or a general chat. */
 sealed interface ChatTarget {

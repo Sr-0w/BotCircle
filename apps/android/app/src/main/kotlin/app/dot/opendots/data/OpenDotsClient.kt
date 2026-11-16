@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class ApiException(message: String, val status: Int) : IOException(message)
+class ApiException(message: String, val status: Int, val body: JsonObject? = null) : IOException(message)
 
 /** Normalises what a person types ("opendots.example.com", "localhost:4317") into the server's base URL. */
 fun normalizeServerUrl(input: String): HttpUrl? {
@@ -101,7 +101,7 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         http.newCall(request).await().use { response ->
             val text = response.body.string()
             val json = if (text.isBlank()) JsonObject(emptyMap()) else runCatching { OdJson.parseToJsonElement(text) }.getOrElse { JsonObject(emptyMap()) }
-            if (!response.isSuccessful) throw ApiException(json.asObject()?.str("error") ?: "HTTP ${response.code}", response.code)
+            if (!response.isSuccessful) throw ApiException(json.asObject()?.str("error") ?: "HTTP ${response.code}", response.code, json.asObject())
             return json
         }
     }
@@ -360,7 +360,20 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         json("POST", "/agents/$agentId/clear", buildJsonObject { put("conversationId", conversationId) })
     }
     suspend fun updateChat(id: String, patch: JsonObject): GeneralChat = OdJson.decodeFromJsonElement(json("PATCH", "/chats/$id", patch))
-    suspend fun deleteChat(id: String) { json("DELETE", "/chats/$id") }
+    // #56: archive (reversible), restore, delete (final; the server refuses while a reply runs or tasks are active, unless confirmed).
+    suspend fun archivedChats(): List<GeneralChat> = get("/chats?archived=1")
+    suspend fun archiveChat(id: String) { json("POST", "/chats/$id/archive") }
+    suspend fun restoreChat(id: String) { json("POST", "/chats/$id/restore") }
+    suspend fun deleteChat(id: String, stopActive: Boolean = false, confirmTasks: Boolean = false) {
+        json("DELETE", "/chats/$id", buildJsonObject { if (stopActive) put("stopActive", true); if (confirmTasks) put("confirmTasks", true) })
+    }
+    suspend fun archivedThreads(agentId: String): List<ArchivedThread> = get("/agents/$agentId/archives")
+    suspend fun archiveThread(agentId: String, conversationId: String) { json("POST", "/agents/$agentId/conversations/$conversationId/archive") }
+    suspend fun restoreThread(agentId: String, conversationId: String) { json("POST", "/agents/$agentId/conversations/$conversationId/restore") }
+    suspend fun deleteThread(agentId: String, conversationId: String, stopActive: Boolean = false, confirmTasks: Boolean = false) {
+        json("DELETE", "/agents/$agentId/conversations/$conversationId", buildJsonObject { if (stopActive) put("stopActive", true); if (confirmTasks) put("confirmTasks", true) })
+    }
+
 
     // --- Streams ------------------------------------------------------------------------------
 

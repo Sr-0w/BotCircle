@@ -8,7 +8,8 @@ import { checkModel } from '../models/gateway.ts';
 import { loadMessages, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import { listTasks, toTaskDTO } from '../tasks/service.ts';
 import type { ModelConfig } from '@opendots/shared';
-import { ChatError, createChat, deleteChat, getChat, listChats, toChatDTO, updateChat } from './repo.ts';
+import { ChatError, createChat, getChat, listChats, toChatDTO, updateChat } from './repo.ts';
+import { archiveChat, deleteChatConversation, LifecycleError, restoreChat } from '../conversations/lifecycle.ts';
 import { editChatMessage, regenerateChatTurn, runChatTurn, stopChat } from './turn.ts';
 
 const modelSchema = z.object({
@@ -21,9 +22,9 @@ const modelSchema = z.object({
 /** Chats généraux : création, historique, renommage, suppression, et le fil lui-même. */
 export function chatRoutes() {
   const app = new Hono();
-  app.onError((error, c) => c.json({ error: error instanceof ChatError || error instanceof AttachmentError ? error.message : error instanceof z.ZodError ? 'Requête invalide' : 'Action impossible sur ce chat.' }, 400));
+  app.onError((error, c) => error instanceof LifecycleError ? c.json({ error: error.message, status: error.status, tasks: error.tasks }, error.status === 'not_found' ? 404 : 409) : c.json({ error: error instanceof ChatError || error instanceof AttachmentError ? error.message : error instanceof z.ZodError ? 'Requête invalide' : 'Action impossible sur ce chat.' }, 400));
 
-  app.get('/', async (c) => c.json(await Promise.all((await listChats(c.req.query('q') || undefined)).map(toChatDTO))));
+  app.get('/', async (c) => c.json(await Promise.all((await listChats(c.req.query('q') || undefined, { archived: c.req.query('archived') === '1' })).map(toChatDTO))));
   app.post('/', async (c) => {
     const body = z.object({ title: z.string().max(200).optional(), model: modelSchema.nullable().optional() }).parse(await c.req.json().catch(() => ({})));
     return c.json(await toChatDTO(await createChat({ title: body.title, model: (body.model ?? null) as ModelConfig | null })));
@@ -40,7 +41,15 @@ export function chatRoutes() {
     }
     return c.json(await toChatDTO(await updateChat(c.req.param('id'), { title: body.title, webSearch: body.webSearch, pinned: body.pinned, ...(body.model !== undefined ? { model: body.model as ModelConfig | null } : {}) })));
   });
-  app.delete('/:id', async (c) => c.json({ ok: await deleteChat(c.req.param('id')) }));
+  // #56: archive (reversible), restore, delete (final, confirmed; refused while a reply runs or tasks are active unless confirmed).
+  app.post('/:id/archive', async (c) => { await archiveChat(c.req.param('id')); return c.json({ ok: true }); });
+  app.post('/:id/restore', async (c) => { await restoreChat(c.req.param('id')); return c.json({ ok: true }); });
+  app.delete('/:id', async (c) => {
+    const body = z.object({ stopActive: z.boolean().optional(), confirmTasks: z.boolean().optional() }).strict().parse(await c.req.json().catch(() => ({})));
+    const id = c.req.param('id');
+    await deleteChatConversation(id, { ...body, stop: () => stopChat(id) });
+    return c.json({ ok: true });
+  });
 
   app.get('/:id/messages', async (c) => {
     const row = await getChat(c.req.param('id'));
@@ -67,6 +76,8 @@ export function chatRoutes() {
       if (!text) return c.json({ error: 'Le message modifié est vide.' }, 400);
       return createUIMessageStreamResponse({ stream: (await editChatMessage(row.id, body.editOf.slice(0, 64), text)).stream.readable() });
     }
+    // Writing to an archived chat brings it back to the list.
+    if (row.archived) await restoreChat(row.id);
     const { stream } = runChatTurn(row.id, { id: String(message.id).slice(0, 64), role: 'user', parts, metadata: {} });
     return createUIMessageStreamResponse({ stream: stream.readable() });
   });

@@ -140,7 +140,10 @@ class ScreensTest {
                             """{"type":"finish"}""", "[DONE]",
                         ).joinToString("") { "data: $it\n\n" },
                     ).build()
+                    path == "/chats" && request.url.queryParameter("archived") == "1" -> json("""[{"id":"ch0","title":"Old trip","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"archived":true,"archivedAt":"2026-11-10T09:00:00Z","createdAt":"2026-11-01T09:00:00Z","updatedAt":"2026-11-10T09:00:00Z","lastMessagePreview":"Rome in May"}]""")
                     path == "/chats" -> json(chats)
+                    path == "/chats/ch1/archive" || path == "/chats/ch0/restore" -> json("""{"ok":true}""")
+                    path == "/chats/ch1" && request.method == "DELETE" -> if ("confirmTasks" in (request.body?.utf8() ?: "")) json("""{"ok":true}""") else json("""{"error":"1 tâche(s) en cours","status":"active_tasks","tasks":[{"id":"tk9","title":"Expense sheet","status":"running"}]}""", 409)
                     path == "/chats/ch1/messages" -> json(chatHistory)
                     path == "/models/available" -> json("""{"providers":[{"provider":"openrouter","name":"OpenRouter","count":2,"error":null},{"provider":"ollama","name":"Ollama","count":1,"error":null}],
                       "models":[{"id":"openai/gpt-5","name":"GPT-5","provider":"openrouter","reasoning":true},{"id":"anthropic/claude-sonnet-5.5","name":"Claude Sonnet 5.5","provider":"openrouter","vision":true},{"id":"llama4","name":"Llama 4","provider":"ollama"}],
@@ -339,7 +342,7 @@ class ScreensTest {
     @Test fun circleSilhouetteIsPickedInAdvanced() {
         launch(ThemeMode.DARK)
         waitFor("12,418 lines")
-        compose.onNodeWithContentDescription("Circle details").performClick()
+        openDetails()
         compose.onNodeWithText("Advanced").performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("shape-house")).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(compose.onAllNodes(hasTestTag("shape-round")).fetchSemanticsNodes().isNotEmpty())
@@ -348,6 +351,35 @@ class ScreensTest {
         compose.onNode(hasTestTag("shape-house")).performClick()
         compose.waitUntil(10_000) { posts.any { it.first == "/agents/a1/avatar" } }
         assertEquals("""{"preset":"house"}""", posts.first { it.first == "/agents/a1/avatar" }.second)
+    }
+
+    /** #56: chats are archived, found under Archived, restored, and deleted only after explicit confirmations. */
+    @Test fun chatsAreArchivedRestoredAndDeletedWithConfirmation() {
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Circles").performClick()
+        tab("Chat")
+        waitFor("Friday meeting")
+        waitFor("Archived (1)")
+        compose.onNode(hasTestTag("archived-toggle")).performClick()
+        waitFor("Old trip")
+        compose.onAllNodes(hasTestTag("conversation-menu"))[1].performClick()
+        compose.onNodeWithText("Restore").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch0/restore" } }
+        compose.onAllNodes(hasTestTag("conversation-menu"))[0].performClick()
+        compose.onNodeWithText("Archive").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/ch1/archive" } }
+        compose.onAllNodes(hasTestTag("conversation-menu"))[0].performClick()
+        compose.onNodeWithText("Delete…").performClick()
+        waitFor("This cannot be undone")
+        shoot("chat-delete-confirm-dark")
+        compose.onNodeWithText("Delete permanently").performClick()
+        waitFor("Expense sheet")
+        waitFor("They are not stopped")
+        compose.onNodeWithText("Delete anyway").performClick()
+        compose.waitUntil(10_000) { posts.count { it.first == "/chats/ch1" } == 2 }
+        assertEquals("{}", posts.filter { it.first == "/chats/ch1" }[0].second)
+        assertEquals("""{"confirmTasks":true}""", posts.filter { it.first == "/chats/ch1" }[1].second)
     }
 
     /** #46: `/` opens a palette of real actions; a command is never sent to the model. */
@@ -421,10 +453,17 @@ class ScreensTest {
         // The header gives the Circle's computer; its work is under Data & connections, and opens in the chat's panel.
         assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Computer")).fetchSemanticsNodes().isNotEmpty())
         assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Work")).fetchSemanticsNodes().isEmpty())
-        compose.onNodeWithContentDescription("Circle details").performClick()
+        openDetails()
         compose.onNodeWithText("Data & connections").performClick()
         tapUntil("Work", "Worked for 12 s")
         shoot("work-dark")
+    }
+
+    /** #56: the Circle's details sit in the header's "…" menu, with archive and delete. */
+    private fun openDetails() {
+        compose.onNode(hasTestTag("header-menu")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Circle details")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Circle details").performClick()
     }
 
     /** Dock destinations are spoken labels (only the active one shows its text). */
@@ -477,7 +516,7 @@ class ScreensTest {
         waitFor("Venty")
         compose.onNodeWithText("Ari").performClick()
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Circle details").performClick()
+        openDetails()
         // #53: a short summary — the real model, four entries, no toggles; permissions on their own page.
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("anthropic/claude-sonnet-5.5", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(!compose.onAllNodesWithTextCompat("Read public web pages"))
@@ -764,7 +803,7 @@ class ScreensTest {
     @Test fun aCompanionsMemoryCanBeReadAndForgotten() {
         launch(ThemeMode.DARK)
         waitFor("I drafted the reply")
-        compose.onNodeWithContentDescription("Circle details").performClick()
+        openDetails()
         compose.onNodeWithText("Data & connections").performClick()
         waitFor("KNOWLEDGE")
         tapUntil("Memory", "Robin prefers short answers.")

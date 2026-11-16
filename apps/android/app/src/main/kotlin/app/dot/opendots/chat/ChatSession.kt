@@ -204,7 +204,8 @@ class ChatSession(
             is ServerEvent.TurnFinished -> if (event.conversationId == conversation) scope.launch { delay(300); resync(); markRead() }
             // A companion called into a general chat answers outside the stream: re-read when the chat changes.
             // Cleared elsewhere (another device, the web): the thread now starts empty.
-            is ServerEvent.ConversationReset -> if (target is ChatTarget.Companion && event.agentId == target.id && event.archivedId == conversation) scope.launch {
+            // #56: /clear, archive, restore or delete elsewhere: show the thread that is now current.
+            is ServerEvent.ConversationReset -> if (target is ChatTarget.Companion && event.agentId == target.id && event.conversationId != conversation) scope.launch {
                 olderLoaded = false
                 _state.update { it.copy(messages = emptyList(), cursor = null) }
                 resync()

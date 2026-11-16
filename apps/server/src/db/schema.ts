@@ -74,6 +74,10 @@ export const conversations = pgTable(
     webSearch: boolean('web_search').notNull().default(true),
     pinned: boolean('pinned').notNull().default(false),
     archived: boolean('archived').notNull().default(false),
+    /** #56: when it was archived (hidden from the lists, intact, restorable). */
+    archivedAt: ts('archived_at'),
+    /** #56: deleted by the user — its messages and own uploads are gone; the row only keeps links from tasks valid. */
+    deletedAt: ts('deleted_at'),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },

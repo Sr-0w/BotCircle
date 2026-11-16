@@ -35,6 +35,11 @@
     <string name="approvals_recent">Recent</string>
     <string name="approvals_waiting">Waiting for you</string>
     <string name="approve">Allow</string>
+    <string name="archive">Archive</string>
+    <string name="archive_thread">Archive this thread</string>
+    <string name="archived_chats">Archived (%1$d)</string>
+    <string name="archived_short">Archived</string>
+    <string name="archived_thread">Archived thread</string>
     <string name="ask_companion">Ask a Circle</string>
     <string name="asked_by">Asked by %1$s</string>
     <string name="assistant">Assistant</string>
@@ -52,6 +57,8 @@
     <string name="cancel_reply">Cancel reply</string>
     <string name="change">Change</string>
     <string name="change_server">Change server</string>
+    <string name="chat_actions">Chat actions</string>
+    <string name="chat_archived_toast">Chat archived. Find it under Archived.</string>
     <string name="chat_delete">Delete this chat</string>
     <string name="chat_empty_body">A free thread with no dedicated Circle. Type @ and a name to bring a Circle in: it answers here, under its own name.</string>
     <string name="chat_empty_row">Empty chat</string>
@@ -238,12 +245,29 @@
     <string name="connections_home">Home</string>
     <string name="connections_machines">Machines</string>
     <string name="continue_">Continue</string>
+    <string name="conversation_deleted">Deleted</string>
+    <string name="conversation_restored">Restored</string>
     <string name="copied">Copied</string>
     <string name="copy">Copy</string>
     <string name="create_account">Create account</string>
     <string name="default_model">Default model</string>
     <string name="default_model_note">for chats and Circles without their own</string>
     <string name="delete">Delete</string>
+    <string name="delete_anyway">Delete anyway</string>
+    <string name="delete_busy_body">The reply being written will be stopped, then the conversation deleted.</string>
+    <string name="delete_busy_title">A reply is in progress</string>
+    <string name="delete_chat_what">the chat “%1$s”</string>
+    <string name="delete_ellipsis">Delete…</string>
+    <string name="delete_explain">Its messages, and the images and files you sent in it, will be deleted. This cannot be undone: to just put it away, archive it.</string>
+    <string name="delete_forever">Delete permanently</string>
+    <string name="delete_keeps_chat">Files made by Circles, tasks and the activity log stay.</string>
+    <string name="delete_keeps_thread">The Circle keeps its name, settings, memory, files and other threads.</string>
+    <string name="delete_stop_and_delete">Stop and delete</string>
+    <string name="delete_tasks_body">They are not stopped: they keep running, and their results stay in Activity.</string>
+    <string name="delete_thread">Delete this thread…</string>
+    <string name="delete_thread_archived">this archived thread of %1$s</string>
+    <string name="delete_thread_current">%1$s’s current thread</string>
+    <string name="delete_what">Delete %1$s?</string>
     <string name="details">Details</string>
     <string name="developer_tools">Developer tools</string>
     <string name="discard">Discard</string>
@@ -419,6 +443,8 @@
     <string name="preview_source">Source</string>
     <string name="preview_truncated">Long file: only the first 2 MB are shown. Save it to see everything.</string>
     <string name="previous">Previous</string>
+    <string name="previous_threads">Previous threads</string>
+    <string name="previous_threads_empty">No previous thread.</string>
     <string name="previous_version">Previous version</string>
     <string name="primary_circle">Primary Circle</string>
     <string name="primary_circle_is">This is your primary Circle</string>
@@ -445,6 +471,7 @@
     <string name="quiet_catalog">Quiet UI catalog</string>
     <string name="quiet_catalog_note">Tokens, components and the backdrop blur test</string>
     <string name="react">React</string>
+    <string name="read">Read</string>
     <string name="reasoning">Reasoning</string>
     <string name="reconnecting">Reconnecting…</string>
     <string name="reduce_transparency">Reduce transparency</string>
@@ -458,6 +485,8 @@
     <string name="rename">Rename</string>
     <string name="replaced_version">replaced version</string>
     <string name="reply">Reply</string>
+    <string name="restore">Restore</string>
+    <string name="restore_as_current">Restore as the current thread</string>
     <string name="retry">Retry</string>
     <string name="save">Save</string>
     <string name="save_file">Save</string>
@@ -593,6 +622,8 @@
     <string name="theme_oled">OLED black</string>
     <string name="theme_oled_note">OLED black uses a true #000000 background.</string>
     <string name="theme_system">System</string>
+    <string name="thread_actions">Thread actions</string>
+    <string name="thread_archived_toast">Thread archived. Find it in Previous threads.</string>
     <string name="timezone">Time zone</string>
     <string name="timezone_note">Used for schedules and the time Circles see.</string>
     <string name="today">Today</string>
@@ -707,9 +738,17 @@
         <item quantity="one">%d search</item>
         <item quantity="other">%d searches</item>
     </plurals>
+    <plurals name="delete_tasks_title">
+        <item quantity="one">%d task still running</item>
+        <item quantity="other">%d tasks still running</item>
+    </plurals>
     <plurals name="errors">
         <item quantity="one">%d error</item>
         <item quantity="other">%d errors</item>
+    </plurals>
+    <plurals name="messages_count">
+        <item quantity="one">%d message</item>
+        <item quantity="other">%d messages</item>
     </plurals>
     <plurals name="set_aside">
         <item quantity="one">%d message set aside</item>

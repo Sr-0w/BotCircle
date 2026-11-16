@@ -1,9 +1,12 @@
 import { ImageLightbox } from './chat/image-lightbox';
+import { ConfirmHost } from '@/lib/confirm';
+import { archiveConversation, deleteConversation, restoreConversation } from '@/lib/conversation-actions';
+import { ConversationMenu } from './conversation-menu';
 import { onCodeWorkspaceRequested, onWorkPanelRequested } from "@/lib/work-store";
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-import { MenuIcon, MessagesSquareIcon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
 import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -86,6 +89,8 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const paused = useStore((s) => s.paused);
   const connected = useStore((s) => s.connected);
   const chats = useStore((s) => s.chats);
+  const archivedChats = useStore((s) => s.archivedChats);
+  const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<ChatDTO[] | null>(null);
   // La recherche porte sur les titres et le contenu des chats, côté serveur.
@@ -159,14 +164,35 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
                 <span className="block truncate text-muted-foreground text-xs">{chat.pinned && <PinIcon className="mr-1 inline size-3" aria-label={t("Épinglé")} />}{plainPreview(chat.lastMessagePreview) || t("Chat vide")}</span>
               </span>
             </button>
-            <button type="button" onClick={() => void api.updateChat(chat.id, { pinned: !chat.pinned }).then((updated) => setStoreChats(chats.map((c) => (c.id === updated.id ? updated : c)).sort((a, b) => Number(b.pinned) - Number(a.pinned)))).catch((e) => toast.error(e.message))}
-              aria-label={chat.pinned ? t("Désépingler {v0}", { v0: chat.title }) : t("Épingler {v0}", { v0: chat.title })} title={chat.pinned ? t("Désépingler") : t("Épingler")}
-              className="absolute top-1.5 right-1.5 rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/chat:opacity-100">
-              {chat.pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
-            </button>
+            <ConversationMenu className="absolute top-1.5 right-1.5 bg-background/80 opacity-0 focus-visible:opacity-100 group-hover/chat:opacity-100 data-[state=open]:opacity-100" label={t("Actions pour {v0}", { v0: chat.title })}
+              items={[
+                { label: chat.pinned ? t("Désépingler") : t("Épingler"), icon: chat.pinned ? <PinOffIcon /> : <PinIcon />, onSelect: () => void api.updateChat(chat.id, { pinned: !chat.pinned }).then((updated) => setStoreChats(chats.map((c) => (c.id === updated.id ? updated : c)).sort((a, b) => Number(b.pinned) - Number(a.pinned)))).catch((e) => toast.error(e.message)) },
+                { label: t("Archiver"), icon: <ArchiveIcon />, onSelect: () => void archiveConversation({ kind: "chat", id: chat.id, title: chat.title }) },
+                { label: t("Supprimer…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "chat", id: chat.id, title: chat.title }) },
+              ]} />
             </div>
           ))}
         </nav>
+        {archivedChats.length > 0 && (
+          <div className="px-2 pb-2" data-archived-chats>
+            <button type="button" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived} className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-muted-foreground text-xs hover:bg-accent/60">
+              <ArchiveIcon className="size-3.5" />{t("Archivés ({count})", { count: archivedChats.length })}
+            </button>
+            {showArchived && archivedChats.map((chat) => (
+              <div key={chat.id} className="group/chat relative">
+                <button onClick={() => go({ view: "chat", id: chat.id })} data-archived-chat-row={chat.id} className={cn("flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent/70", route.view === "chat" && route.id === chat.id && "bg-accent")}>
+                  <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+                  <span className="shrink-0 text-[11px]">{relativeTime(chat.archivedAt ?? chat.updatedAt)}</span>
+                </button>
+                <ConversationMenu className="absolute top-1 right-1.5 bg-background/80 opacity-0 focus-visible:opacity-100 group-hover/chat:opacity-100 data-[state=open]:opacity-100" label={t("Actions pour {v0}", { v0: chat.title })}
+                  items={[
+                    { label: t("Restaurer"), icon: <ArchiveRestoreIcon />, onSelect: () => void restoreConversation({ kind: "chat", id: chat.id, title: chat.title }) },
+                    { label: t("Supprimer…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "chat", id: chat.id, title: chat.title }) },
+                  ]} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-0.5 border-t p-2">
@@ -240,7 +266,8 @@ export function Shell() {
   }, [agents, route]);
 
   const chats = useStore((s) => s.chats);
-  const currentChat = route.view === "chat" ? chats.find((chat) => chat.id === route.id) ?? null : null;
+  const archived = useStore((s) => s.archivedChats);
+  const currentChat = route.view === "chat" ? chats.find((chat) => chat.id === route.id) ?? archived.find((chat) => chat.id === route.id) ?? null : null;
   // Chat supprimé (ici ou ailleurs) : retour aux compagnons.
   const chatsLoaded = useStore((s) => s.connected);
   useEffect(() => {
@@ -286,6 +313,11 @@ export function Shell() {
                 <p className="truncate font-medium text-sm">{currentChat.title}</p>
                 <p className="truncate text-muted-foreground text-xs">{t("Chat")} · {currentChat.effectiveModel.model}</p>
               </div>
+              <ConversationMenu label={t("Actions du chat")} items={currentChat.archived
+                ? [{ label: t("Restaurer"), icon: <ArchiveRestoreIcon />, onSelect: () => void restoreConversation({ kind: "chat", id: currentChat.id, title: currentChat.title }) },
+                   { label: t("Supprimer…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "chat", id: currentChat.id, title: currentChat.title }) }]
+                : [{ label: t("Archiver"), icon: <ArchiveIcon />, onSelect: () => void archiveConversation({ kind: "chat", id: currentChat.id, title: currentChat.title }) },
+                   { label: t("Supprimer…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "chat", id: currentChat.id, title: currentChat.title }) }]} />
               <Button variant="ghost" size="icon" aria-label={t("Panneau du chat")} onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? setPanelOpen((v) => !v) : setMobilePanel(true))}>
                 <PanelRightIcon />
               </Button>
@@ -300,6 +332,10 @@ export function Shell() {
                   <span className="hidden sm:inline"> · {current.effectiveModel.model}</span>
                 </p>
               </div>
+              <ConversationMenu label={t("Actions du fil")} items={[
+                { label: t("Archiver ce fil"), icon: <ArchiveIcon />, onSelect: () => void archiveConversation({ kind: "thread", agentId: current.id, id: current.mainConversationId, agentName: current.name, current: true }) },
+                { label: t("Supprimer ce fil…"), icon: <Trash2Icon />, destructive: true, onSelect: () => void deleteConversation({ kind: "thread", agentId: current.id, id: current.mainConversationId, agentName: current.name, current: true }) },
+              ]} />
               {/* The Circle's computer is one tap away; its work is in the panel (Détails › Données). */}
               <Button variant="ghost" size="icon" aria-label={t("Ordinateur")} title={t("Ordinateur")} onClick={() => (window.location.hash = "#/settings/computer")}>
                 <MonitorIcon />
@@ -321,7 +357,15 @@ export function Shell() {
           {route.view === 'settings' ? (
             <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : route.view === 'chat' ? (
             currentChat && <>
-              <GeneralChatView chat={currentChat} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                {currentChat.archived && (
+                  <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs" role="status" data-archived-banner>
+                    <ArchiveIcon className="size-3.5 text-muted-foreground" /><span className="flex-1">{t("Chat archivé : il n’apparaît plus dans la liste. Écrire ici le restaure.")}</span>
+                    <Button size="sm" variant="secondary" className="h-7" onClick={() => void restoreConversation({ kind: "chat", id: currentChat.id, title: currentChat.title })}>{t("Restaurer")}</Button>
+                  </div>
+                )}
+                <GeneralChatView chat={currentChat} />
+              </div>
               {panelOpen && !codeTask && (
                 <aside className="hidden w-[340px] shrink-0 border-l lg:block">
                   <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
@@ -370,6 +414,7 @@ export function Shell() {
       )}
       <Suspense fallback={null}>
         <DialogHost />
+        <ConfirmHost />
         <ImageLightbox />
       </Suspense>
     </div>

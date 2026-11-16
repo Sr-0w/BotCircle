@@ -93,7 +93,8 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
       if (e.type === "message.reaction" && e.conversationId === agent.mainConversationId) {
         setMessages((current) => current.map((message) => message.id === e.messageId ? { ...message, metadata: { ...message.metadata, reactions: e.reactions } } : message));
       }
-      if (e.type === "conversation.reset" && e.agentId === agent.id) setMessages([]);
+      // /clear, archive, restore or delete of the current thread: show the thread that is now current (empty or restored).
+      if (e.type === "conversation.reset" && e.agentId === agent.id) { setMessages([]); window.setTimeout(() => void resync().catch(() => {}), 50); }
       if (e.type === "turn.finished" && e.conversationId === agent.mainConversationId) {
         window.setTimeout(() => void resync().catch(() => {}), 300);
       }

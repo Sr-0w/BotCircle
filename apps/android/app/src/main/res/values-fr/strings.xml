@@ -35,6 +35,11 @@
     <string name="approvals_recent">Récentes</string>
     <string name="approvals_waiting">En attente</string>
     <string name="approve">Autoriser</string>
+    <string name="archive">Archiver</string>
+    <string name="archive_thread">Archiver ce fil</string>
+    <string name="archived_chats">Archivés (%1$d)</string>
+    <string name="archived_short">Archivé</string>
+    <string name="archived_thread">Fil archivé</string>
     <string name="ask_companion">Demander à un Circle</string>
     <string name="asked_by">Demandé par %1$s</string>
     <string name="assistant">Assistant</string>
@@ -52,6 +57,8 @@
     <string name="cancel_reply">Annuler la réponse</string>
     <string name="change">Changer</string>
     <string name="change_server">Changer de serveur</string>
+    <string name="chat_actions">Actions du chat</string>
+    <string name="chat_archived_toast">Chat archivé. Retrouve-le dans Archivés.</string>
     <string name="chat_delete">Supprimer ce chat</string>
     <string name="chat_empty_body">Un fil libre, sans Circle attitré. Écris @ suivi d’un nom pour faire intervenir un Circle : il répond ici, sous son nom.</string>
     <string name="chat_empty_row">Chat vide</string>
@@ -238,12 +245,29 @@
     <string name="connections_home">Maison</string>
     <string name="connections_machines">Machines</string>
     <string name="continue_">Continuer</string>
+    <string name="conversation_deleted">Supprimé</string>
+    <string name="conversation_restored">Restauré</string>
     <string name="copied">Copié</string>
     <string name="copy">Copier</string>
     <string name="create_account">Créer le compte</string>
     <string name="default_model">Modèle par défaut</string>
     <string name="default_model_note">pour les chats et les Circles sans modèle propre</string>
     <string name="delete">Supprimer</string>
+    <string name="delete_anyway">Supprimer quand même</string>
+    <string name="delete_busy_body">La réponse en train d’être écrite sera arrêtée, puis la conversation supprimée.</string>
+    <string name="delete_busy_title">Une réponse est en cours</string>
+    <string name="delete_chat_what">le chat « %1$s »</string>
+    <string name="delete_ellipsis">Supprimer…</string>
+    <string name="delete_explain">Ses messages, les images et les fichiers que tu y as envoyés seront supprimés. Ce n’est pas réversible : pour simplement le ranger, archive-le.</string>
+    <string name="delete_forever">Supprimer définitivement</string>
+    <string name="delete_keeps_chat">Les fichiers créés par les Circles, les tâches et le journal d’activité restent.</string>
+    <string name="delete_keeps_thread">Le Circle garde son nom, ses réglages, sa mémoire, ses fichiers et ses autres fils.</string>
+    <string name="delete_stop_and_delete">Arrêter et supprimer</string>
+    <string name="delete_tasks_body">Elles ne sont pas arrêtées : elles continuent, et leurs résultats restent dans Activité.</string>
+    <string name="delete_thread">Supprimer ce fil…</string>
+    <string name="delete_thread_archived">ce fil archivé de %1$s</string>
+    <string name="delete_thread_current">le fil courant de %1$s</string>
+    <string name="delete_what">Supprimer %1$s ?</string>
     <string name="details">Détails</string>
     <string name="developer_tools">Outils de développement</string>
     <string name="discard">Abandonner</string>
@@ -419,6 +443,8 @@
     <string name="preview_source">Source</string>
     <string name="preview_truncated">Fichier long : seuls les 2 premiers Mo sont affichés. Enregistre-le pour tout voir.</string>
     <string name="previous">Précédent</string>
+    <string name="previous_threads">Anciens fils</string>
+    <string name="previous_threads_empty">Aucun ancien fil.</string>
     <string name="previous_version">Version précédente</string>
     <string name="primary_circle">Circle principal</string>
     <string name="primary_circle_is">C’est ton Circle principal</string>
@@ -445,6 +471,7 @@
     <string name="quiet_catalog">Catalogue Quiet UI</string>
     <string name="quiet_catalog_note">Tokens, composants et test du flou d’arrière-plan</string>
     <string name="react">Réagir</string>
+    <string name="read">Lire</string>
     <string name="reasoning">Raisonnement</string>
     <string name="reconnecting">Reconnexion…</string>
     <string name="reduce_transparency">Réduire la transparence</string>
@@ -458,6 +485,8 @@
     <string name="rename">Renommer</string>
     <string name="replaced_version">version remplacée</string>
     <string name="reply">Répondre</string>
+    <string name="restore">Restaurer</string>
+    <string name="restore_as_current">Restaurer comme fil courant</string>
     <string name="retry">Réessayer</string>
     <string name="save">Enregistrer</string>
     <string name="save_file">Enregistrer</string>
@@ -593,6 +622,8 @@
     <string name="theme_oled">Noir OLED</string>
     <string name="theme_oled_note">Le noir OLED utilise un vrai fond #000000.</string>
     <string name="theme_system">Système</string>
+    <string name="thread_actions">Actions du fil</string>
+    <string name="thread_archived_toast">Fil archivé. Retrouve-le dans Anciens fils.</string>
     <string name="timezone">Fuseau horaire</string>
     <string name="timezone_note">Sert aux planifications et à l’heure que voient les Circles.</string>
     <string name="today">Aujourd’hui</string>
@@ -707,9 +738,17 @@
         <item quantity="one">%d recherche</item>
         <item quantity="other">%d recherches</item>
     </plurals>
+    <plurals name="delete_tasks_title">
+        <item quantity="one">%d tâche encore en cours</item>
+        <item quantity="other">%d tâches encore en cours</item>
+    </plurals>
     <plurals name="errors">
         <item quantity="one">%d erreur</item>
         <item quantity="other">%d erreurs</item>
+    </plurals>
+    <plurals name="messages_count">
+        <item quantity="one">%d message</item>
+        <item quantity="other">%d messages</item>
     </plurals>
     <plurals name="set_aside">
         <item quantity="one">%d message mis de côté</item>

@@ -69,6 +69,15 @@ export async function saveMessage(
   msg: OpenDotsUIMessage,
   opts: { author: 'user' | 'agent' | 'event'; agentId?: string | null; hidden?: boolean },
 ) {
+  // #56: nothing is written into a deleted conversation. A Circle's late result goes to its current thread instead;
+  // a deleted general chat's is dropped (the task keeps its own record in Activity).
+  const [target] = await db().select({ deletedAt: schema.conversations.deletedAt, agentId: schema.conversations.agentId, kind: schema.conversations.kind }).from(schema.conversations).where(eq(schema.conversations.id, conversationId));
+  if (target?.deletedAt) {
+    if (!target.agentId || (target.kind !== 'main' && target.kind !== 'archive')) return;
+    const [main] = await db().select({ id: schema.conversations.id }).from(schema.conversations).where(and(eq(schema.conversations.kind, 'main'), eq(schema.conversations.agentId, target.agentId)));
+    if (!main) return;
+    conversationId = main.id;
+  }
   const text = messageText(msg);
   const metadata = { ...(msg.metadata ?? {}), hidden: opts.hidden ?? false };
   delete (metadata as { reactions?: unknown }).reactions;

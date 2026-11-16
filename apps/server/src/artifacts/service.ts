@@ -37,6 +37,7 @@ const quotaBytes = () => Number(process.env.OPENDOTS_ARTIFACTS_QUOTA_MB ?? 2048)
 function hostileMagic(data: Buffer): string | null {
   if (data.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))) return 'exécutable ELF';
   if (data.subarray(0, 2).toString('latin1') === 'MZ') return 'exécutable Windows';
+  if (data.length < 4) return null;
   const head = data.readUInt32BE(0);
   if ([0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe].includes(head) && data.length > 8 && data.readUInt32BE(4) < 64) return 'exécutable macOS';
   return null;

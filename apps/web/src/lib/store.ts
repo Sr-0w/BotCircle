@@ -12,6 +12,8 @@ interface State {
   tasks: TaskDTO[];
   /** Chats généraux, du plus récent au plus ancien. */
   chats: ChatDTO[];
+  /** #56: archived chats (hidden from the list, restorable). */
+  archivedChats: ChatDTO[];
   /** Demandes de connexion sécurisée vues par ce client. */
   secureLogins: SecureLoginDTO[];
   connected: boolean;
@@ -19,7 +21,7 @@ interface State {
 }
 
 let generation = 0;
-let state: State = { agents: [], approvals: [], tasks: [], chats: [], secureLogins: [], connected: false, paused: false };
+let state: State = { agents: [], approvals: [], tasks: [], chats: [], archivedChats: [], secureLogins: [], connected: false, paused: false };
 const listeners = new Set<() => void>();
 const eventListeners = new Set<(e: ServerEvent) => void>();
 
@@ -74,8 +76,8 @@ function refreshAgent(id: string) {
 
 export async function loadInitial() {
   const requestGeneration = generation;
-  const [agents, approvals, settings, tasks, chats] = await Promise.all([api.agents(), api.approvals(), api.settings(), api.tasks().catch(() => []), api.chats().catch(() => [])]);
-  if (requestGeneration === generation) set({ agents, approvals, tasks, chats, paused: settings.paused });
+  const [agents, approvals, settings, tasks, chats, archivedChats] = await Promise.all([api.agents(), api.approvals(), api.settings(), api.tasks().catch(() => []), api.chats().catch(() => []), api.archivedChats().catch(() => [])]);
+  if (requestGeneration === generation) set({ agents, approvals, tasks, chats, archivedChats, paused: settings.paused });
 }
 
 function handle(e: ServerEvent) {
@@ -84,6 +86,8 @@ function handle(e: ServerEvent) {
     case "agent.updated":
       if (e.agent.archived) set((s) => ({ agents: s.agents.filter((a) => a.id !== e.agent.id) }));
       else upsertAgent(e.agent);
+      break;
+    case "conversation.changed":
       break;
     case "conversation.reset":
       // /clear: the companion's current thread changed.
@@ -114,9 +118,10 @@ function handle(e: ServerEvent) {
       set((s) => ({ tasks: s.tasks.some((task) => task.id === e.task.id) ? s.tasks.map((task) => (task.id === e.task.id ? e.task : task)) : [e.task, ...s.tasks] }));
       break;
     case "chat.changed": {
-      if (e.deleted) set((s) => ({ chats: s.chats.filter((chat) => chat.id !== e.chatId) }));
+      if (e.deleted) set((s) => ({ chats: s.chats.filter((chat) => chat.id !== e.chatId), archivedChats: s.archivedChats.filter((chat) => chat.id !== e.chatId) }));
       const requestGeneration = generation;
       api.chats().then((chats) => requestGeneration === generation && set({ chats })).catch(() => {});
+      api.archivedChats().then((archivedChats) => requestGeneration === generation && set({ archivedChats })).catch(() => {});
       break;
     }
     case "settings.changed": {
@@ -140,7 +145,7 @@ export function clearAccountState() {
   source?.close(); source = null;
   for (const timer of refreshTimers.values()) window.clearTimeout(timer);
   refreshTimers.clear();
-  set({ agents: [], approvals: [], tasks: [], chats: [], secureLogins: [], connected: false, paused: false });
+  set({ agents: [], approvals: [], tasks: [], chats: [], archivedChats: [], secureLogins: [], connected: false, paused: false });
 }
 
 export function connectEvents() {

@@ -1,5 +1,5 @@
 import { getSetting } from '../settings.ts';
-import { and, asc, count, desc, eq, gt, ne, sql } from 'drizzle-orm';
+import { isNull, and, asc, count, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import {
   DEFAULT_PERMISSIONS,
   type AgentDTO,
@@ -72,7 +72,7 @@ export async function resetMainConversation(agentId: string, expected: string): 
 /** Threads set aside by /clear, newest first. */
 export async function archivedConversations(agentId: string) {
   return db().select({ id: schema.conversations.id, createdAt: schema.conversations.createdAt, archivedAt: schema.conversations.updatedAt })
-    .from(schema.conversations).where(and(eq(schema.conversations.kind, 'archive'), eq(schema.conversations.agentId, agentId))).orderBy(desc(schema.conversations.updatedAt));
+    .from(schema.conversations).where(and(eq(schema.conversations.kind, 'archive'), eq(schema.conversations.agentId, agentId), isNull(schema.conversations.deletedAt))).orderBy(desc(schema.conversations.updatedAt));
 }
 
 export async function createAgent(input: {

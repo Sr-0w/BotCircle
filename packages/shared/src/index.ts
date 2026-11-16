@@ -297,6 +297,8 @@ export type ServerEvent =
   | { type: 'chat.changed'; chatId: string; deleted?: boolean }
   /** /clear: a companion's thread was set aside; the current one is [conversationId]. */
   | { type: 'conversation.reset'; agentId: string; conversationId: string; archivedId: string }
+  /** #56: one of a Circle's archived threads was deleted (or otherwise changed). */
+  | { type: 'conversation.changed'; agentId: string; conversationId: string; deleted?: boolean }
   | { type: 'artifact.changed'; artifactId: string }
   | { type: 'secure_login.changed'; login: SecureLoginDTO }
   | { type: 'opencode.changed' };
@@ -521,6 +523,9 @@ export interface ChatDTO {
   /** Recherche web autorisée dans ce chat (les outils web ne sont pas donnés au modèle sinon). */
   webSearch: boolean;
   pinned: boolean;
+  /** #56: archived chats are hidden from the list, intact, and can be restored. */
+  archived?: boolean;
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   lastMessagePreview: string | null;

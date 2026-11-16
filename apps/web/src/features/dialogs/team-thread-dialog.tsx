@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/button';
+import { deleteConversation, restoreConversation } from '@/lib/conversation-actions';
 import { useCallback, useEffect, useState } from "react";
 import { LoaderIcon } from "lucide-react";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
@@ -105,6 +107,12 @@ export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, onClo
             <span>{t("Ancien fil")}</span>
           </DialogTitle>
           <DialogDescription>{t("Archivé le {v0} — lecture seule", { v0: formatDateTime(archivedAt) })}</DialogDescription>
+          {agent && (
+            <div className="flex gap-2 pt-2">
+              <Button size="sm" variant="secondary" onClick={() => void restoreConversation({ kind: "thread", agentId, id: conversationId, agentName: agent.name, current: false }).then((ok) => ok && onClose())}>{t("Restaurer comme fil courant")}</Button>
+              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => void deleteConversation({ kind: "thread", agentId, id: conversationId, agentName: agent.name, current: false }).then((ok) => ok && onClose())}>{t("Supprimer…")}</Button>
+            </div>
+          )}
         </DialogHeader>
         {error ? (
           <div className="p-6 text-destructive text-sm">{error}</div>

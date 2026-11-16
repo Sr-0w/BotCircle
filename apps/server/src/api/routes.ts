@@ -8,12 +8,13 @@ import { opencodeRoutes } from '../opencode/routes.ts';
 import { sshRoutes } from '../ssh/routes.ts';
 import { homeAssistantRoutes } from '../homeassistant/routes.ts';
 import { chatRoutes } from '../chats/routes.ts';
+import { archiveCircleThread, deleteCircleThread, LifecycleError, restoreCircleThread } from '../conversations/lifecycle.ts';
 import { grantArtifact } from '../artifacts/service.ts';
 import { artifactIdFromUrl } from '@opendots/shared';
 import { AttachmentError, validateMessageParts } from '../attachments/service.ts';
 import { stopAllDesktops } from '../computer/desktop.ts';
 import { desktopRoutes } from '../computer/routes.ts';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { onSessionRevoked, sessionAccount } from '../auth/store.ts';
 import { streamSSE } from 'hono/streaming';
@@ -466,6 +467,23 @@ export function createApi() {
     if (!await getAgent(c.req.param('id'))) return c.json({ error: 'Introuvable' }, 404);
     const rows = await archivedConversations(c.req.param('id'));
     return c.json(await Promise.all(rows.map(async (r) => ({ id: r.id, createdAt: r.createdAt.toISOString(), archivedAt: r.archivedAt.toISOString(), messageCount: (await loadMessages(r.id, { limit: 500 })).messages.length }))));
+  });
+
+  // #56: a Circle's threads — archive the current one, restore an archived one, delete one (confirmed).
+  const lifecycleError = (c: Context, error: unknown) => error instanceof LifecycleError ? c.json({ error: error.message, status: error.status, tasks: error.tasks }, error.status === 'not_found' ? 404 : 409) : Promise.reject(error);
+  api.post('/agents/:id/conversations/:cid/archive', async (c) => {
+    if (!await getAgent(c.req.param('id'))) return c.json({ error: 'Introuvable' }, 404);
+    try { return c.json(await archiveCircleThread(c.req.param('id'), c.req.param('cid'))); } catch (error) { return lifecycleError(c, error); }
+  });
+  api.post('/agents/:id/conversations/:cid/restore', async (c) => {
+    if (!await getAgent(c.req.param('id'))) return c.json({ error: 'Introuvable' }, 404);
+    try { return c.json(await restoreCircleThread(c.req.param('id'), c.req.param('cid'))); } catch (error) { return lifecycleError(c, error); }
+  });
+  api.delete('/agents/:id/conversations/:cid', async (c) => {
+    const agentId = c.req.param('id');
+    if (!await getAgent(agentId)) return c.json({ error: 'Introuvable' }, 404);
+    const body = z.object({ stopActive: z.boolean().optional(), confirmTasks: z.boolean().optional() }).strict().parse(await c.req.json().catch(() => ({})));
+    try { return c.json(await deleteCircleThread(agentId, c.req.param('cid'), { ...body, stop: () => stopAgent(agentId) })); } catch (error) { return lifecycleError(c, error); }
   });
 
   api.post('/agents/:id/stop', async (c) => {

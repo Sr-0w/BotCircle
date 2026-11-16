@@ -46,7 +46,7 @@ import type { Account } from './account';
 export type ODMessage = UIMessage<MessageMetadata>;
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly data: any = null) {
     super(message);
   }
 }
@@ -61,7 +61,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event('opendots:unauthorized'));
-    throw new ApiError(data?.error ?? `Erreur ${res.status}`, res.status);
+    throw new ApiError(data?.error ?? `Erreur ${res.status}`, res.status, data);
   }
   return data as T;
 }
@@ -192,7 +192,11 @@ export const api = {
   chats: (q?: string) => request<ChatDTO[]>('GET', `/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createChat: (input: { title?: string; model?: ModelConfig | null } = {}) => request<ChatDTO>('POST', '/chats', input),
   updateChat: (id: string, patch: { title?: string; model?: ModelConfig | null; webSearch?: boolean; pinned?: boolean }) => request<ChatDTO>('PATCH', `/chats/${id}`, patch),
-  deleteChat: (id: string) => request<{ ok: boolean }>('DELETE', `/chats/${id}`),
+  archivedChats: () => request<ChatDTO[]>('GET', '/chats?archived=1'),
+  chat: (id: string) => request<ChatDTO>('GET', `/chats/${id}`),
+  archiveChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/archive`),
+  restoreChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/restore`),
+  deleteChat: (id: string, opts: { stopActive?: boolean; confirmTasks?: boolean } = {}) => request<{ ok: boolean }>('DELETE', `/chats/${id}`, opts),
   chatMessages: (id: string) => request<{ conversationId: string; messages: ODMessage[]; cursor: number | null; active: boolean; tasks: TaskDTO[] }>('GET', `/chats/${id}/messages`),
   stopChat: (id: string) => request<{ ok: boolean }>('POST', `/chats/${id}/stop`),
 
@@ -261,7 +265,10 @@ export const api = {
   restoreAvatar: (id: string) => request<AgentDTO>('POST', `/agents/${id}/avatar/restore`),
   setPrimaryAgent: (id: string) => request<{ ok: boolean }>('PUT', `/agents/${id}/primary`),
   mentionables: (id: string) => request<{ kind: 'connector'; id: string; name: string; provider: string | null; status: 'connected' | 'not_connected' | 'permission_missing' }[]>('GET', `/agents/${id}/mentionables`),
-  archives: (id: string) => request<{ id: string; createdAt: string; archivedAt: string }[]>("GET", `/agents/${id}/archives`),
+  archives: (id: string) => request<{ id: string; createdAt: string; archivedAt: string; messageCount?: number }[]>("GET", `/agents/${id}/archives`),
+  archiveThread: (id: string, conversationId: string) => request<{ conversationId: string }>("POST", `/agents/${id}/conversations/${conversationId}/archive`),
+  restoreThread: (id: string, conversationId: string) => request<{ conversationId: string; archivedId: string | null }>("POST", `/agents/${id}/conversations/${conversationId}/restore`),
+  deleteThread: (id: string, conversationId: string, opts: { stopActive?: boolean; confirmTasks?: boolean } = {}) => request<{ conversationId: string }>("DELETE", `/agents/${id}/conversations/${conversationId}`, opts),
   clearConversation: (id: string, conversationId: string) => request<{ conversationId: string; archivedId: string | null }>("POST", `/agents/${id}/clear`, { conversationId }),
   markRead: (id: string) => request<{ ok: boolean }>("POST", `/agents/${id}/read`),
   messages: (id: string, before?: number) =>

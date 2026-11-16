@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
 import type { ChatDTO, ModelConfig } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
 import { publish } from '../bus.ts';
@@ -18,18 +18,20 @@ export async function toChatDTO(row: ChatRow): Promise<ChatDTO> {
     .where(and(eq(schema.messages.conversationId, row.id), eq(schema.messages.hidden, false), sql`${schema.messages.textContent} <> ''`)).orderBy(desc(schema.messages.seq)).limit(1);
   return {
     id: row.id, title: row.title?.trim() || 'Nouveau chat', model: row.model ?? null, effectiveModel: row.model ?? (await getDefaultModel()), webSearch: row.webSearch, pinned: row.pinned,
+    archived: row.archived, archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), lastMessagePreview: last?.text.replace(/\s+/g, ' ').slice(0, 160) ?? null,
   };
 }
 
 export async function getChat(id: string): Promise<ChatRow | null> {
-  const [row] = await db().select().from(schema.conversations).where(and(eq(schema.conversations.id, id), eq(schema.conversations.kind, 'chat'), eq(schema.conversations.archived, false)));
+  // #56: an archived chat can still be opened (and is restored when written to); a deleted one is gone.
+  const [row] = await db().select().from(schema.conversations).where(and(eq(schema.conversations.id, id), eq(schema.conversations.kind, 'chat'), isNull(schema.conversations.deletedAt)));
   return row ?? null;
 }
 
 /** Les chats, du plus récent au plus ancien ; `query` cherche dans les titres et le contenu des messages. */
-export async function listChats(query?: string): Promise<ChatRow[]> {
-  const base = and(eq(schema.conversations.kind, 'chat'), eq(schema.conversations.archived, false));
+export async function listChats(query?: string, opts: { archived?: boolean } = {}): Promise<ChatRow[]> {
+  const base = and(eq(schema.conversations.kind, 'chat'), eq(schema.conversations.archived, Boolean(opts.archived)), isNull(schema.conversations.deletedAt));
   const q = query?.trim();
   if (!q) return db().select().from(schema.conversations).where(base).orderBy(desc(schema.conversations.pinned), desc(schema.conversations.updatedAt)).limit(200);
   const pattern = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
@@ -57,16 +59,6 @@ export async function updateChat(id: string, patch: { title?: string; model?: Mo
   }).where(eq(schema.conversations.id, id));
   publish({ type: 'chat.changed', chatId: id });
   return (await getChat(id))!;
-}
-
-/** Supprime le chat et ses messages. Les tâches et fichiers qu'il a fait naître restent dans leurs registres. */
-export async function deleteChat(id: string): Promise<boolean> {
-  if (!await getChat(id)) return false;
-  await db().delete(schema.messageReactions).where(eq(schema.messageReactions.conversationId, id));
-  await db().delete(schema.messages).where(eq(schema.messages.conversationId, id));
-  await db().update(schema.conversations).set({ archived: true, title: null }).where(eq(schema.conversations.id, id));
-  publish({ type: 'chat.changed', chatId: id, deleted: true });
-  return true;
 }
 
 /** Titre par défaut : le début du premier message. */

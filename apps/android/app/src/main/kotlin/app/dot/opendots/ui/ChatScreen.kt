@@ -85,6 +85,13 @@ import app.dot.design.components.DotMenuItem
 import app.dot.design.components.DotMenu
 import app.dot.opendots.chat.ChatStatus
 import app.dot.opendots.data.Part
+import app.dot.opendots.ConversationRef
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Unarchive
+import androidx.compose.material.icons.outlined.Archive
 import app.dot.opendots.data.ModelInfo
 import androidx.compose.runtime.produceState
 import androidx.compose.foundation.selection.toggleable
@@ -174,6 +181,27 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     var reply by remember(agent.id) { mutableStateOf<ReplyRef?>(null) }
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
     var workSheet by remember(agent.id) { mutableStateOf(false) }
+    // #56: archive / restore / delete from the open conversation.
+    val lifecycle = rememberConversationActions(app)
+    var previousThreads by remember(agent.id) { mutableStateOf(false) }
+    val archiveLabel = stringResource(if (general != null) R.string.archive else R.string.archive_thread)
+    val restoreLabel = stringResource(R.string.restore)
+    val previousLabel = stringResource(R.string.previous_threads)
+    val deleteLabel = stringResource(if (general != null) R.string.delete_ellipsis else R.string.delete_thread)
+    val headerMenu = if (general != null) {
+        val ref = ConversationRef.Chat(general.id, general.title)
+        listOf(
+            if (general.archived) Triple(restoreLabel, Icons.Outlined.Unarchive) { lifecycle.restore(ref) {} } else Triple(archiveLabel, Icons.Outlined.Archive) { lifecycle.archive(ref, onBack) },
+            Triple(deleteLabel, Icons.Outlined.DeleteOutline) { lifecycle.delete(ref, onBack) },
+        )
+    } else {
+        val ref = ConversationRef.Thread(agent.id, agent.mainConversationId, agentDisplayName(agent), current = true)
+        listOf(
+            Triple(archiveLabel, Icons.Outlined.Archive) { lifecycle.archive(ref) {} },
+            Triple(previousLabel, Icons.Outlined.History) { previousThreads = true },
+            Triple(deleteLabel, Icons.Outlined.DeleteOutline) { lifecycle.delete(ref) {} },
+        )
+    }
     // #60: the photo being looked at, in the in-app viewer (with the thread's other photos).
     var viewing by remember(agent.id) { mutableStateOf<Part.File?>(null) }
     LaunchedEffect(workRequest) { if (workRequest > 0) workSheet = true }
@@ -259,7 +287,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         Box(Modifier.fillMaxSize()) {
             FrostedHeaderLayout(
                 backdrop = backdrop,
-                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null) },
+                header = { ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null, archived = general?.archived == true, menuItems = headerMenu) },
             ) { padding ->
                 val direction = LocalLayoutDirection.current
                 // In landscape the navigation bar or a display cutout can sit beside the content.
@@ -333,6 +361,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
 
         if (workSheet) WorkSheet(agent, chat, env) { workSheet = false }
+        if (previousThreads) ArchivedThreadsSheet(app, ui, agent) { previousThreads = false }
         viewing?.let { file ->
             val photos = remember(chat.messages, file) { chat.messages.flatMap { m -> m.parts.filterIsInstance<Part.File>().filter { it.mediaType.startsWith("image/") } }.distinctBy { it.url }.let { list -> if (list.any { it.url == file.url }) list else list + file } }
             ImageViewer(photos, photos.indexOfFirst { it.url == file.url }.coerceAtLeast(0), fileActions) { viewing = null }
@@ -463,7 +492,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
  * other, and in the middle the companion itself - its dot, with its name on a small glass pill underneath.
  */
 @Composable
-private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenComputer: () -> Unit, onOpenWork: () -> Unit, general: Boolean = false) {
+private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenComputer: () -> Unit, onOpenWork: () -> Unit, general: Boolean = false, archived: Boolean = false, menuItems: List<Triple<String, ImageVector, () -> Unit>> = emptyList()) {
     val c = Dot.colors
     val elsewhere = ui.agents.any { it.id != agent.id && it.unread > 0 } || ui.pendingApprovals.isNotEmpty()
     val name = agentDisplayName(agent)
@@ -471,6 +500,7 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
         !ui.connected || reconnecting -> stringResource(R.string.reconnecting)
         agent.state == "error" -> agentStateLabel("error")
         ui.paused -> stringResource(R.string.paused_short)
+        archived -> stringResource(R.string.archived_short)
         else -> null
     }
     Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = DotSpacing.m, vertical = 6.dp)) {
@@ -501,7 +531,17 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
             // A general chat has no computer: its work stays here.
             if (general) DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
             else DotCapsuleButton(Icons.Outlined.DesktopWindows, stringResource(R.string.computer_row), onOpenComputer)
-            DotCapsuleButton(Icons.Outlined.Tune, stringResource(R.string.companion_details), onOpenCompanion)
+            // #56: details, archive, previous threads and delete sit behind one discreet menu.
+            Box {
+                var open by remember { mutableStateOf(false) }
+                DotCapsuleButton(Icons.Outlined.MoreHoriz, stringResource(if (general) R.string.chat_actions else R.string.thread_actions), { open = true }, modifier = Modifier.testTag("header-menu"))
+                DotMenu(open, { open = false }) {
+                    DotMenuItem(stringResource(if (general) R.string.chat_settings else R.string.companion_details), Icons.Outlined.Tune) { open = false; onOpenCompanion() }
+                    menuItems.forEachIndexed { index, (label, icon, action) ->
+                        DotMenuItem(label, icon, color = if (index == menuItems.lastIndex) c.danger else c.textPrimary) { open = false; action() }
+                    }
+                }
+            }
         }
     }
 }

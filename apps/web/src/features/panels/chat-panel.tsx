@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, ArchiveRestoreIcon, Trash2Icon } from 'lucide-react';
+import { archiveConversation, deleteConversation, restoreConversation } from '@/lib/conversation-actions';
 import type { ChatDTO } from '@opendots/shared';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -49,9 +50,14 @@ export function ChatPanel({ chat, onDeleted }: { chat: ChatDTO; onDeleted: () =>
           </button>
           {chat.model && <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void save({ model: null })}>{t('Revenir au modèle par défaut')}</Button>}
         </div>
-        <Button variant="outline" className="w-full text-destructive hover:text-destructive" onClick={() => { if (confirm(t('Supprimer le chat « {v0} » ?', { v0: chat.title }))) void api.deleteChat(chat.id).then(onDeleted).catch((e) => toast.error(e.message)); }}>
-          <Trash2Icon /> {t('Supprimer ce chat')}
-        </Button>
+        <div className="flex gap-2">
+          {chat.archived
+            ? <Button variant="outline" className="flex-1" onClick={() => void restoreConversation({ kind: 'chat', id: chat.id, title: chat.title })}><ArchiveRestoreIcon /> {t('Restaurer')}</Button>
+            : <Button variant="outline" className="flex-1" onClick={() => void archiveConversation({ kind: 'chat', id: chat.id, title: chat.title })}><ArchiveIcon /> {t('Archiver')}</Button>}
+          <Button variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => void deleteConversation({ kind: 'chat', id: chat.id, title: chat.title }).then((done) => done && onDeleted())}>
+            <Trash2Icon /> {t('Supprimer…')}
+          </Button>
+        </div>
         <Dialog open={picking} onOpenChange={setPicking}>
           <DialogContent className="flex h-[70vh] max-w-lg flex-col">
             <DialogHeader><DialogTitle>{t('Modèle de ce chat')}</DialogTitle></DialogHeader>

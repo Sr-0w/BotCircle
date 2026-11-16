@@ -36,6 +36,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import app.dot.opendots.data.ModelConfig
 import app.dot.opendots.data.OdJson
+import app.dot.opendots.data.arr
+import app.dot.opendots.data.str
+import app.dot.opendots.data.ArchivedThread
 import java.util.TimeZone
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -70,6 +73,8 @@ data class AppUiState(
     /** Secure sign-in requests seen by the app, by id. */
     val secureLogins: Map<String, SecureLogin> = emptyMap(),
     val currentChatId: String? = null,
+    /** #56: archived chats (hidden from the list, restorable). */
+    val archivedChats: List<GeneralChat> = emptyList(),
     val connected: Boolean = true,
     val paused: Boolean = false,
     val busy: Boolean = false,
@@ -78,7 +83,7 @@ data class AppUiState(
     val reduceTransparency: Boolean = false,
 ) {
     val currentAgent: Agent? get() = agents.firstOrNull { it.id == currentAgentId } ?: agents.firstOrNull()
-    val currentChat: GeneralChat? get() = chats.firstOrNull { it.id == currentChatId }
+    val currentChat: GeneralChat? get() = chats.firstOrNull { it.id == currentChatId } ?: archivedChats.firstOrNull { it.id == currentChatId }
     val activeTasks: List<BgTask> get() = tasks.values.filter { it.active }.sortedByDescending { it.createdAt }
     val pendingApprovals: List<Approval> get() = approvals.values.filter { it.status == "pending" }.sortedByDescending { it.createdAt }
 }
@@ -252,8 +257,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
             is ServerEvent.SecureLoginChanged -> _state.update { it.copy(secureLogins = it.secureLogins + (event.login.id to event.login)) }
             is ServerEvent.ConversationReset -> _state.update { s -> s.copy(agents = s.agents.map { if (it.id == event.agentId) it.copy(mainConversationId = event.conversationId) else it }) }
             is ServerEvent.ChatChanged -> {
-                if (event.deleted) _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == event.chatId }, currentChatId = s.currentChatId.takeIf { it != event.chatId }) }
-                viewModelScope.launch { runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } } }
+                if (event.deleted) _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == event.chatId }, archivedChats = s.archivedChats.filterNot { it.id == event.chatId }, currentChatId = s.currentChatId.takeIf { it != event.chatId }) }
+                refreshChats()
             }
             ServerEvent.SettingsChanged -> viewModelScope.launch { runCatching { client.bootstrap() }.onSuccess { boot -> _state.update { it.copy(paused = boot.paused) } } }
             else -> Unit
@@ -292,6 +297,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         viewModelScope.launch {
             runCatching { client.tasks() }.onSuccess { list -> _state.update { s -> s.copy(tasks = list.associate { it.id to it.copy(events = s.tasks[it.id]?.events.orEmpty()) }) } }
             runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
+            runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
             runCatching { client.secureLogins(pending = true) }.onSuccess { list -> _state.update { s -> s.copy(secureLogins = s.secureLogins.filterValues { !it.pending } + list.associateBy { it.id }) } }
         }
     }
@@ -382,12 +388,39 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         onDone()
     }
 
-    fun deleteChat(chatId: String, onDeleted: () -> Unit) = act {
-        client.deleteChat(chatId)
-        sessions.remove(chatId)
-        _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == chatId }, currentChatId = s.currentChatId.takeIf { it != chatId }) }
-        onDeleted()
+    private fun refreshChats() = viewModelScope.launch {
+        runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
+        runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
     }
+
+    // --- #56: archive / restore / delete --------------------------------------------------------
+
+    fun archiveChat(chatId: String, onDone: () -> Unit = {}) = act { client.archiveChat(chatId); refreshChats().join(); onDone() }
+    fun restoreChat(chatId: String, onDone: () -> Unit = {}) = act { client.restoreChat(chatId); refreshChats().join(); onDone() }
+    fun archiveThread(agentId: String, conversationId: String, onDone: () -> Unit = {}) = act { client.archiveThread(agentId, conversationId); onDone() }
+    fun restoreThread(agentId: String, conversationId: String, onDone: () -> Unit = {}) = act { client.restoreThread(agentId, conversationId); onDone() }
+
+    /**
+     * Deletes a chat or a Circle thread. The server refuses while a reply runs ("busy") or tasks started from it are
+     * still active ("active_tasks"): the answer comes back as [DeleteOutcome] so the screen can ask the user first.
+     */
+    suspend fun deleteConversation(target: ConversationRef, stopActive: Boolean, confirmTasks: Boolean): DeleteOutcome = try {
+        when (target) {
+            is ConversationRef.Chat -> { client.deleteChat(target.id, stopActive, confirmTasks); sessions.remove(target.id); _state.update { s -> s.copy(chats = s.chats.filterNot { it.id == target.id }, archivedChats = s.archivedChats.filterNot { it.id == target.id }, currentChatId = s.currentChatId.takeIf { it != target.id }) } }
+            is ConversationRef.Thread -> client.deleteThread(target.agentId, target.id, stopActive, confirmTasks)
+        }
+        DeleteOutcome.Done
+    } catch (e: ApiException) {
+        when (e.body?.str("status")) {
+            "busy" -> DeleteOutcome.Busy
+            "active_tasks" -> DeleteOutcome.ActiveTasks(e.body.arr("tasks").orEmpty().mapNotNull { (it as? JsonObject)?.str("title") })
+            else -> DeleteOutcome.Failed(e.message ?: FAILED)
+        }
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        DeleteOutcome.Failed(e.message ?: FAILED)
+    }
+    suspend fun archivedThreads(agentId: String): List<ArchivedThread> = runCatching { client.archivedThreads(agentId) }.getOrDefault(emptyList())
 
     fun selectAgent(agentId: String) {
         store.lastAgentId = agentId
@@ -492,4 +525,19 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         const val INVALID_URL = "invalid-url"
         const val FAILED = "failed"
     }
+}
+
+/** #56: what can be archived, restored or deleted. */
+sealed interface ConversationRef {
+    data class Chat(val id: String, val title: String) : ConversationRef
+    data class Thread(val agentId: String, val id: String, val agentName: String, val current: Boolean) : ConversationRef
+}
+
+sealed interface DeleteOutcome {
+    data object Done : DeleteOutcome
+    /** A reply is being written in it: stop it first, or confirm stopping. */
+    data object Busy : DeleteOutcome
+    /** Tasks started from it still run: they continue if the user confirms. */
+    data class ActiveTasks(val titles: List<String>) : DeleteOutcome
+    data class Failed(val message: String) : DeleteOutcome
 }

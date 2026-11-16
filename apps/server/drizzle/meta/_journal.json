@@ -99,6 +99,13 @@
       "when": 1795392000000,
       "tag": "0013_agent_avatar",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795478400000,
+      "tag": "0014_conversation_lifecycle",
+      "breakpoints": true
     }
   ]
 }

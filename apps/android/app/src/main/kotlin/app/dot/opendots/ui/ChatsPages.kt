@@ -59,6 +59,13 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import androidx.compose.foundation.layout.Arrangement
+import app.dot.opendots.ConversationRef
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Unarchive
+import androidx.compose.material.icons.outlined.Archive
 
 /**
  * Chats are their own destination, next to companions: free threads that belong to no companion. A companion only
@@ -76,6 +83,10 @@ fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
         runCatching { app.client.chats(q) }.onSuccess { found = it }
     }
     val shown = found ?: ui.chats
+    val actions = rememberConversationActions(app)
+    var showArchived by rememberSaveable { mutableStateOf(false) }
+    val pin = stringResource(R.string.pin); val unpin = stringResource(R.string.unpin); val archive = stringResource(R.string.archive)
+    val restore = stringResource(R.string.restore); val delete = stringResource(R.string.delete_ellipsis); val more = stringResource(R.string.chat_actions)
     QuietPage(stringResource(R.string.chats), onBack = null, inTabs = true, subtitle = if (!ui.connected) stringResource(R.string.reconnecting) else null) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
@@ -87,17 +98,37 @@ fun ChatsPage(app: AppState, ui: AppUiState, onOpen: (GeneralChat) -> Unit) {
             EmptyState(Icons.Outlined.Forum, stringResource(if (query.isBlank()) R.string.chats_empty_title else R.string.chats_none_found), if (query.isBlank()) stringResource(R.string.chats_empty_body) else "")
         }
         items(shown, key = { it.id }) { chat ->
-            ChatRow(chat, onPin = { app.updateChat(chat.id, buildJsonObject { put("pinned", !chat.pinned) }) }) { onOpen(chat) }
+            val ref = ConversationRef.Chat(chat.id, chat.title)
+            ChatRow(chat, menu = { ConversationMenu(listOf(
+                Triple(if (chat.pinned) unpin else pin, Icons.Outlined.PushPin) { app.updateChat(chat.id, buildJsonObject { put("pinned", !chat.pinned) }) },
+                Triple(archive, Icons.Outlined.Archive) { actions.archive(ref) {} },
+                Triple(delete, Icons.Outlined.DeleteOutline) { actions.delete(ref) {} },
+            ), more) }) { onOpen(chat) }
             Hairline(inset = DotSpacing.gutter + 48.dp + DotSpacing.l)
+        }
+        // #56: archived chats, out of the way but one tap from here; they open, and can be restored or deleted.
+        if (query.isBlank() && ui.archivedChats.isNotEmpty()) {
+            item(key = "archived-toggle") {
+                ListRow(stringResource(R.string.archived_chats, ui.archivedChats.size), icon = Icons.Outlined.Archive, onClick = { showArchived = !showArchived }, modifier = Modifier.testTag("archived-toggle"),
+                    trailing = { Icon(if (showArchived) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = Dot.colors.textTertiary) })
+            }
+            if (showArchived) items(ui.archivedChats, key = { "a-" + it.id }) { chat ->
+                val ref = ConversationRef.Chat(chat.id, chat.title)
+                ChatRow(chat, archived = true, menu = { ConversationMenu(listOf(
+                    Triple(restore, Icons.Outlined.Unarchive) { actions.restore(ref) {} },
+                    Triple(delete, Icons.Outlined.DeleteOutline) { actions.delete(ref) {} },
+                ), more) }) { onOpen(chat) }
+                Hairline(inset = DotSpacing.gutter + 48.dp + DotSpacing.l)
+            }
         }
     }
 }
 
 @Composable
-private fun ChatRow(chat: GeneralChat, onPin: () -> Unit, onClick: () -> Unit) {
+private fun ChatRow(chat: GeneralChat, archived: Boolean = false, menu: @Composable () -> Unit, onClick: () -> Unit) {
     val c = Dot.colors
     Row(
-        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 76.dp).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("chat-row"),
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 76.dp).padding(start = DotSpacing.gutter, end = DotSpacing.s, top = DotSpacing.m, bottom = DotSpacing.m).testTag(if (archived) "archived-chat-row" else "chat-row"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(48.dp).clip(DotShapes.circle).background(c.surfaceRaised), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Forum, null, Modifier.size(22.dp), tint = c.textSecondary) }
@@ -113,7 +144,7 @@ private fun ChatRow(chat: GeneralChat, onPin: () -> Unit, onClick: () -> Unit) {
                 style = Dot.type.callout, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
-        DotIconButton(if (chat.pinned) Icons.Outlined.PushPin else Icons.Outlined.PushPin, stringResource(if (chat.pinned) R.string.unpin else R.string.pin), onClick = onPin, tint = if (chat.pinned) c.textPrimary else c.textTertiary, modifier = Modifier.testTag("chat-pin"))
+        menu()
     }
 }
 
@@ -122,7 +153,7 @@ private fun ChatRow(chat: GeneralChat, onPin: () -> Unit, onClick: () -> Unit) {
 fun ChatSettingsPage(app: AppState, ui: AppUiState, chat: GeneralChat, onBack: () -> Unit, onChangeModel: () -> Unit, onDeleted: () -> Unit) {
     val c = Dot.colors
     var title by rememberSaveable(chat.id, chat.title) { mutableStateOf(chat.title) }
-    var deleting by remember { mutableStateOf(false) }
+    val actions = rememberConversationActions(app)
     var files by remember { mutableStateOf(false) }
     var openTask by remember { mutableStateOf<String?>(null) }
     val interventions = remember(ui.tasks, chat.id) { ui.tasks.values.filter { it.conversationId == chat.id }.sortedByDescending { it.createdAt } }
@@ -163,16 +194,14 @@ fun ChatSettingsPage(app: AppState, ui: AppUiState, chat: GeneralChat, onBack: (
             }
         }
         item {
-            Box(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xl)) {
-                DotButton(stringResource(R.string.chat_delete), { deleting = true }, style = ButtonStyle.Danger)
+            val ref = ConversationRef.Chat(chat.id, chat.title)
+            Row(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.xl), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                if (chat.archived) DotButton(stringResource(R.string.restore), { actions.restore(ref) {} }, style = ButtonStyle.Secondary, icon = Icons.Outlined.Unarchive)
+                else DotButton(stringResource(R.string.archive), { actions.archive(ref, onDeleted) }, style = ButtonStyle.Secondary, icon = Icons.Outlined.Archive)
+                DotButton(stringResource(R.string.delete_ellipsis), { actions.delete(ref, onDeleted) }, style = ButtonStyle.Danger, modifier = Modifier.testTag("chat-delete"))
             }
         }
     }
     if (files) FilesSheet(app, ui, stringResource(R.string.files), agentId = null, conversationId = chat.id) { files = false }
     openTask?.let { id -> TaskSheet(app, ui, id) { openTask = null } }
-    if (deleting) DotDialog(
-        title = stringResource(R.string.chat_delete), message = chat.title,
-        confirmLabel = stringResource(R.string.delete), dismissLabel = stringResource(R.string.cancel),
-        onConfirm = { deleting = false; app.deleteChat(chat.id, onDeleted) }, onDismiss = { deleting = false }, destructive = true,
-    )
 }
