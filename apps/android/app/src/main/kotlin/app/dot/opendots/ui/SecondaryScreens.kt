@@ -277,7 +277,7 @@ enum class SettingsSection(val title: Int, val note: Int) {
 /** One destination of Settings. Values and flows are the existing ones, reorganised. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsSectionPage(app: AppState, ui: AppUiState, section: SettingsSection, onBack: () -> Unit, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit, onOpenModel: () -> Unit, onOpenBehaviour: () -> Unit, onOpenCode: () -> Unit, onOpenSsh: () -> Unit = {}) {
+fun SettingsSectionPage(app: AppState, ui: AppUiState, section: SettingsSection, onBack: () -> Unit, onOpenCatalog: () -> Unit, onOpenWeb: () -> Unit, onOpenProviders: () -> Unit, onOpenModel: () -> Unit, onOpenBehaviour: () -> Unit, onOpenCode: () -> Unit, onOpenSsh: () -> Unit = {}, onOpenHomeAssistant: () -> Unit = {}) {
     val chevron: @Composable () -> Unit = { Icon(Icons.Outlined.ChevronRight, null, tint = Dot.colors.textTertiary) }
     QuietPage(stringResource(section.title), onBack) {
         when (section) {
@@ -304,6 +304,8 @@ fun SettingsSectionPage(app: AppState, ui: AppUiState, section: SettingsSection,
                 ListRow("OpenCode", subtitle = stringResource(R.string.opencode_row_note), onClick = onOpenCode, trailing = chevron)
                 SectionLabel(stringResource(R.string.connections_machines), Modifier.padding(top = DotSpacing.l))
                 ListRow("SSH", subtitle = stringResource(R.string.ssh_note), onClick = onOpenSsh, trailing = chevron)
+                SectionLabel(stringResource(R.string.connections_home), Modifier.padding(top = DotSpacing.l))
+                ListRow("Home Assistant", subtitle = stringResource(R.string.ha_note), onClick = onOpenHomeAssistant, trailing = chevron)
                 Text(stringResource(R.string.settings_connections_scope), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l))
             }
             SettingsSection.Server -> item {

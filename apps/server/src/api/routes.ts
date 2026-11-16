@@ -6,6 +6,7 @@ import { taskRoutes } from '../tasks/routes.ts';
 import { secureLoginRoutes } from '../securelogin/routes.ts';
 import { opencodeRoutes } from '../opencode/routes.ts';
 import { sshRoutes } from '../ssh/routes.ts';
+import { homeAssistantRoutes } from '../homeassistant/routes.ts';
 import { chatRoutes } from '../chats/routes.ts';
 import { grantArtifact } from '../artifacts/service.ts';
 import { artifactIdFromUrl } from '@opendots/shared';
@@ -129,6 +130,7 @@ export function createApi() {
   api.route('/secure-logins', secureLoginRoutes());
   api.route('/opencode', opencodeRoutes());
   api.route('/ssh', sshRoutes());
+  api.route('/homeassistant', homeAssistantRoutes());
   api.route('/chats', chatRoutes());
 
   api.get('/bootstrap', async (c) => {

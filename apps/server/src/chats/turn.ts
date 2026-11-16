@@ -15,6 +15,7 @@ import { webSearch } from '../tools/search.ts';
 import { fetchPage } from '../tools/web.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
 import { ChatError, getChat, titleFromFirstMessage } from './repo.ts';
+import { mcpToolsForTurn } from '../connectors/mcp.ts';
 import { getUserProfile, userContext } from '../profile.ts';
 import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/client.ts';
@@ -241,6 +242,10 @@ export function runChatTurn(chatId: string, message: OpenDotsUIMessage, opts: { 
       const modelCfg = chat.model ?? (await getDefaultModel());
       const resolved = await resolveModel(modelCfg);
       const tools = assistantTools(chatId, () => attached, chat.webSearch);
+      // #39: Home Assistant, when its policy opens it to general chats (read or control). A sensitive command is not
+      // run from a chat: it needs a Circle allowed to ask for the user's approval.
+      const homeAssistant = await mcpToolsForTurn(async (connector, toolName) => ({ ok: false, status: 'needs_circle', error: `« ${toolName} » sur ${connector.name} est sensible : demande-le à un Circle autorisé, qui te demandera validation.` }), { chat: true }).catch(() => ({ tools: {}, connectors: [] }));
+      Object.assign(tools, homeAssistant.tools);
       const { messages: stored } = await loadMessages(chatId, { limit: 60 });
       const metadata: MessageMetadata = { kind: 'chat', model: resolved.label, ...(chat.webSearch ? {} : { webSearch: false }), ...(opts.previous?.length ? { previous: opts.previous } : {}) };
       let finalMessage: OpenDotsUIMessage | null = null;

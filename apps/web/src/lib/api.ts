@@ -117,6 +117,9 @@ export interface ComputerStatus {
 
 export interface DesktopStatus { agentId: string; suspended: boolean; restartRequired?: boolean; vncPassword?: string; enabled: boolean; manualControl: boolean; available: boolean; running: boolean; width: number; height: number }
 
+/** #39: a Home Assistant instance and who may use it. */
+export interface HaInstance { id: string; name: string; base: string; mode: 'assist' | 'full'; auth: 'oauth' | 'token'; status: string; lastError: string | null; tools: string[]; policy: { agents: Record<string, 'none' | 'read' | 'control'>; chats: 'none' | 'read' | 'control'; sensitive: string[]; areas: string[]; domains: string[] } }
+
 /** #52: a machine reachable over SSH (secrets never returned). */
 export interface SshConnection { id: string; name: string; description: string; host: string; port: number; username: string; auth: 'key' | 'password'; hasSecret: boolean; hostKey: string | null; agents: string[]; approval: 'ask' | 'auto'; enabled: boolean; status: 'unknown' | 'ok' | 'error'; lastError: string | null; lastOkAt: string | null }
 
@@ -244,6 +247,11 @@ export const api = {
   /** /clear, after the user's confirmation: the current thread is set aside (kept) and a blank one starts. */
   profile: () => request<{ firstName: string | null; lastName: string | null }>('GET', '/profile'),
   setProfile: (body: { firstName: string | null; lastName: string | null }) => request<{ firstName: string | null; lastName: string | null }>('PUT', '/profile', body),
+  haInstances: () => request<HaInstance[]>('GET', '/homeassistant/instances'),
+  haToken: (body: { url: string; mode: 'assist' | 'full'; token: string; name?: string }) => request<HaInstance>('POST', '/homeassistant/token', body),
+  haOAuth: (body: { url: string; mode: 'assist' | 'full'; name?: string }) => request<{ authorizeUrl: string }>('POST', '/homeassistant/oauth/start', body),
+  haPolicy: (id: string, policy: Partial<HaInstance['policy']>) => request<HaInstance>('PUT', `/homeassistant/instances/${id}/policy`, policy),
+  haDelete: (id: string) => request<{ ok: boolean }>('DELETE', `/homeassistant/instances/${id}`),
   sshConnections: () => request<SshConnection[]>('GET', '/ssh/connections'),
   saveSsh: (id: string | null, body: Record<string, unknown>) => request<SshConnection>(id ? 'PUT' : 'POST', id ? `/ssh/connections/${id}` : '/ssh/connections', body),
   deleteSsh: (id: string) => request<{ ok: boolean }>('DELETE', `/ssh/connections/${id}`),

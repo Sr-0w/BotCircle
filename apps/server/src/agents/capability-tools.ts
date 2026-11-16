@@ -1,3 +1,4 @@
+import { accessFor, decide, defaultPolicy, type HaPolicy } from '../homeassistant/policy.ts';
 import { desktopTools } from '../computer/tools.ts';
 import { CATALOG } from '../integrations/catalog.ts';
 import { currentAccount } from '../auth/context.ts';
@@ -61,7 +62,13 @@ registerApprovalAction('shell.exec', async (input: { agentId: string; command: s
   return shellForModel(r);
 });
 
-registerApprovalAction('mcp.call', async (input: { connectorId: string; tool: string; args: unknown }) => {
+registerApprovalAction('mcp.call', async (input: { connectorId: string; tool: string; args: unknown; agentId?: string }) => {
+  // #39: a Home Assistant command approved later is checked again against the policy as it is now.
+  const row = await getConnector(input.connectorId);
+  if (row && (row.config as { provider?: string })?.provider === 'homeassistant') {
+    const policy = (row.config as { ha?: HaPolicy }).ha ?? defaultPolicy();
+    if (decide(policy, accessFor(policy, { agentId: input.agentId }), input.tool, (input.args ?? {}) as Record<string, unknown>).verdict === 'deny') throw new Error('Ce Circle n’a plus le droit de faire cette commande sur Home Assistant.');
+  }
   const res = await callMcpTool(input.connectorId, input.tool, input.args);
   if (res.ok === false) throw new Error(res.error ?? 'Échec de l’appel');
   return res;
@@ -350,10 +357,10 @@ export async function buildCapabilityTools(ctx: ToolContext): Promise<{ tools: T
         toolCallId,
         action: 'mcp.call',
         summary: `${fresh?.name ?? connector.name} · ${toolName}(${truncate(JSON.stringify(args ?? {}), 160)})`,
-        input: { connectorId: connector.id, tool: toolName, args },
+        input: { connectorId: connector.id, tool: toolName, args, agentId: ctx.agent.id },
       });
       return { ok: true, status: 'pending_approval', approvalId: approval.id, summary: approval.summary, note: PENDING_NOTE };
-    });
+    }, { agentId: ctx.agent.id });
     Object.assign(tools, mcp.tools);
     for (const c of mcp.connectors) groups.push({ id: c.id, name: c.name, kind: 'mcp', status: c.status, tools: c.names });
   }

@@ -476,6 +476,19 @@ data class UserProfile(val firstName: String? = null, val lastName: String? = nu
     val display: String get() = listOfNotNull(firstName, lastName).joinToString(" ")
 }
 
+/** #39: a Home Assistant instance and who may use it (the token is never returned). */
+@Immutable
+@Serializable
+data class HaPolicy(val agents: Map<String, String> = emptyMap(), val chats: String = "none", val sensitive: List<String> = emptyList(), val areas: List<String> = emptyList(), val domains: List<String> = emptyList())
+
+@Immutable
+@Serializable
+data class HaInstance(val id: String, val name: String = "", val base: String = "", val mode: String = "assist", val auth: String = "token", val status: String = "ok", val lastError: String? = null, val tools: List<String> = emptyList(), val policy: HaPolicy = HaPolicy())
+
+@Immutable
+@Serializable
+data class HaAuthorize(val authorizeUrl: String = "")
+
 /** #52: a machine reachable over SSH (secrets are never returned). */
 @Immutable
 @Serializable

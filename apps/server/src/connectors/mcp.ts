@@ -5,6 +5,9 @@ import type { McpConfig } from '@opendots/shared';
 import { connectorSlug, getConnector, listConnectors, readSecrets, updateConnector, type ConnectorRow } from './repo.ts';
 import { errorMessage, truncate } from '../util.ts';
 import { accountKey, currentAccount } from '../auth/context.ts';
+import { accessFor, decide, defaultPolicy, isReadTool, type HaPolicy } from '../homeassistant/policy.ts';
+
+const isHomeAssistant = (row: Pick<ConnectorRow, 'config'>) => (row.config as { provider?: string } | null)?.provider === 'homeassistant' && (row.config as { trusted?: string }).trusted === 'homeassistant';
 
 /**
  * Gestionnaire des connecteurs MCP : une connexion paresseuse et mise en cache
@@ -38,11 +41,17 @@ async function connect(row: ConnectorRow): Promise<Client> {
     }) as Promise<Client>;
   }
   if (!cfg.url) throw new Error('URL manquante');
-  return createMCPClient({ transport: { type: cfg.transport, url: cfg.url, headers: secrets } }) as Promise<Client>;
+  // Home Assistant: only the bearer token is a header; the refresh token never leaves the server.
+  const headers = isHomeAssistant(row) ? { Authorization: secrets.Authorization ?? '' } : secrets;
+  return createMCPClient({ transport: { type: cfg.transport, url: cfg.url, headers } }) as Promise<Client>;
 }
 
 export async function getMcpClient(row: ConnectorRow): Promise<Client> {
-  if (currentAccount()?.role === 'user') throw new Error('Un connecteur MCP avancé nécessite les droits d’administrateur du déploiement.');
+  // #39: Home Assistant's official MCP (HTTP only, created through its own flow) is open to standard accounts;
+  // arbitrary MCP servers (stdio, host code) stay reserved to the deployment's administrator.
+  const trusted = isHomeAssistant(row) && (row.config as McpConfig).transport === 'http';
+  if (currentAccount()?.role === 'user' && !trusted) throw new Error('Un connecteur MCP avancé nécessite les droits d’administrateur du déploiement.');
+  if (isHomeAssistant(row)) row = await (await import('../homeassistant/service.ts')).freshHomeAssistant(row);
   const key = `${accountKey()}:${row.id}`;
   const cached = clients.get(key);
   if (cached && cached.updatedAt >= row.updatedAt) return cached.client;
@@ -117,8 +126,10 @@ export async function callMcpTool(connectorId: string, toolName: string, args: u
  */
 export async function mcpToolsForTurn(
   requestApproval: (connector: ConnectorRow, toolName: string, args: unknown, toolCallId: string) => Promise<unknown>,
+  /** Who the tools are for: a Circle, or a general chat (which only ever gets Home Assistant, per its policy). */
+  principal: { agentId?: string; chat?: boolean } = {},
 ): Promise<{ tools: ToolSet; connectors: { id: string; name: string; tools: number; status: string; names: string[] }[] }> {
-  const rows = (await listConnectors('mcp')).filter((c) => c.enabled);
+  const rows = (await listConnectors('mcp')).filter((c) => c.enabled && (isHomeAssistant(c) ? accessFor((c.config as any).ha ?? defaultPolicy(), principal) !== 'none' : !principal.chat));
   const out: ToolSet = {};
   const summary: { id: string; name: string; tools: number; status: string; names: string[] }[] = [];
   await Promise.all(
@@ -126,11 +137,24 @@ export async function mcpToolsForTurn(
       try {
         const client = await getMcpClient(row);
         const tools = (await withTimeout(client.tools(), 15_000, 'Outils MCP')) as ToolSet;
+        const ha = isHomeAssistant(row) ? ((row.config as any).ha ?? defaultPolicy()) as HaPolicy : null;
+        const access = ha ? accessFor(ha, principal) : null;
         for (const [name, original] of Object.entries(tools)) {
+          // A read-only principal does not even see Home Assistant's command tools (and is refused anyway if it tries).
+          if (ha && access === 'read' && !isReadTool(name)) continue;
           out[mcpToolName(row, name)] = tool({
             description: `[Connecteur ${row.name}${row.approval === 'ask' ? ' — chaque appel demande la validation de l’utilisateur' : ''}] ${original.description ?? name}`,
             inputSchema: original.inputSchema as any,
             execute: async (args: unknown, options: { toolCallId: string }) => {
+              if (ha) {
+                // Checked on every call, with the policy as it is NOW (a right removed meanwhile wins).
+                const fresh = await getConnector(row.id);
+                const policy = ((fresh?.config as any)?.ha ?? defaultPolicy()) as HaPolicy;
+                const decision = decide(policy, fresh?.enabled ? accessFor(policy, principal) : 'none', name, (args ?? {}) as Record<string, unknown>);
+                if (decision.verdict === 'deny') return { ok: false, status: 'denied', error: decision.reason };
+                if (decision.verdict === 'ask') return requestApproval(row, name, args, options.toolCallId);
+                try { return normalizeResult(await original.execute!(args as never, options as never)); } catch (err) { return { ok: false, error: errorMessage(err) }; }
+              }
               if (row.approval === 'ask') return requestApproval(row, name, args, options.toolCallId);
               try {
                 return normalizeResult(await original.execute!(args as never, options as never));

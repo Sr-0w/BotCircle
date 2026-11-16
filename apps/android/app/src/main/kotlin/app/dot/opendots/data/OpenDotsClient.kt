@@ -273,6 +273,11 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     // --- OpenCode ---------------------------------------------------------------------------------
 
     suspend fun opencodeInstances(): List<OpencodeInstance> = get("/opencode/instances")
+    suspend fun haInstances(): List<HaInstance> = get("/homeassistant/instances")
+    suspend fun haToken(url: String, mode: String, token: String): HaInstance = OdJson.decodeFromJsonElement(json("POST", "/homeassistant/token", buildJsonObject { put("url", url); put("mode", mode); put("token", token) }))
+    suspend fun haOAuth(url: String, mode: String): HaAuthorize = OdJson.decodeFromJsonElement(json("POST", "/homeassistant/oauth/start", buildJsonObject { put("url", url); put("mode", mode) }))
+    suspend fun haPolicy(id: String, body: kotlinx.serialization.json.JsonObject): HaInstance = OdJson.decodeFromJsonElement(json("PUT", "/homeassistant/instances/$id/policy", body))
+    suspend fun haDelete(id: String) { json("DELETE", "/homeassistant/instances/$id") }
     suspend fun sshConnections(): List<SshConnection> = get("/ssh/connections")
     suspend fun saveSsh(id: String?, body: kotlinx.serialization.json.JsonObject): SshConnection = OdJson.decodeFromJsonElement(json(if (id == null) "POST" else "PUT", "/ssh/connections" + (id?.let { "/$it" } ?: ""), body))
     suspend fun deleteSsh(id: String) { json("DELETE", "/ssh/connections/$id") }
