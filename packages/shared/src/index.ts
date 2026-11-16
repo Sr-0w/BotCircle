@@ -219,6 +219,8 @@ export interface MessageMetadata {
   answer?: { requestId: string; answers: Record<string, unknown> };
   /** Message auquel celui-ci répond. */
   replyTo?: MessageReplyRef;
+  /** #46: what the user called with @, resolved by the server into typed ids. */
+  mentions?: MessageMention[];
   /** Réponses précédentes remplacées par une régénération, gardées pour être relues. */
   previous?: { id: string; text: string; model?: string; createdAt?: string }[];
   /** Message modifié : son texte d'avant et combien de messages suivants ont été mis de côté (conservés, masqués). */
@@ -554,6 +556,8 @@ export interface SkillDTO {
 }
 
 export type ConnectorKind = 'mcp' | 'mail' | 'integration';
+/** A typed @mention: a Circle or a connector (service, MCP), by id — never by a renamable name. */
+export interface MessageMention { kind: 'circle' | 'connector'; id: string; name: string }
 export type IntegrationProvider = 'google-drive' | 'google-calendar' | 'gmail' | 'outlook' | 'github';
 export type OAuthProvider = 'google' | 'microsoft' | 'github';
 

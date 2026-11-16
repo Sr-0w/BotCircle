@@ -273,6 +273,7 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     // --- OpenCode ---------------------------------------------------------------------------------
 
     suspend fun opencodeInstances(): List<OpencodeInstance> = get("/opencode/instances")
+    suspend fun mentionables(agentId: String): List<Mentionable> = get("/agents/$agentId/mentionables")
     suspend fun opencodeProjects(instanceId: String): List<OpencodeProject> = get("/opencode/instances/$instanceId/projects")
     suspend fun opencodeSessions(): List<OpencodeMachineSessions> = get("/opencode/sessions")
     /** Code ＋: a session started directly by the user, no Circle in between. */

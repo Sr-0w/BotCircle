@@ -371,8 +371,13 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         }
         // @mention: the word being typed at the end of the draft, completed from the companions' names.
         val mentionable = remember(ui.agents, general != null) { if (general == null) emptyList() else ui.agents.filter { it.named } }
+        // #46: in a Circle's conversation, @ calls one of its services (resolved and checked by the server).
+        val services by produceState(emptyList<app.dot.opendots.data.Mentionable>(), agent.id, general != null, agent.permissions) {
+            value = if (general != null) emptyList() else runCatching { app.client.mentionables(agent.id) }.getOrDefault(emptyList())
+        }
+        val mentionNames = remember(mentionable, services) { mentionable.map { it.name } + services.map { it.name } }
         val mentionQuery = remember(draft) { MENTION_TAIL.find(draft)?.groupValues?.get(2) }
-        val suggestions = remember(mentionQuery, mentionable) { mentionQuery?.let { q -> mentionable.filter { it.name.startsWith(q, ignoreCase = true) }.take(5) }.orEmpty() }
+        val suggestions = remember(mentionQuery, mentionNames) { mentionQuery?.let { q -> mentionNames.filter { it.startsWith(q, ignoreCase = true) }.take(5) }.orEmpty() }
 
         // The composer floats in the same glass as the header's buttons: the messages pass under it, blurred.
         val ready = images.all { it.attachment != null || it.failed }
@@ -417,7 +422,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                             }
                         }
                         if (suggestions.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = DotSpacing.xs), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                            suggestions.forEach { target -> DotFilterChip("@" + target.name, selected = false, onClick = { draft = draft.dropLast(mentionQuery.orEmpty().length + 1) + "@" + target.name + " " }) }
+                            suggestions.forEach { name -> DotFilterChip("@$name", selected = false, onClick = { draft = draft.dropLast(mentionQuery.orEmpty().length + 1) + "@" + name + " " }) }
                         }
                         reply?.let { target ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -435,7 +440,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 footer = {
                     PlusMenu(
                         canAttach = images.size < FILES_MAX_COUNT, onAttach = { picker.launch(arrayOf("*/*")) },
-                        onAsk = if (general != null && mentionable.isNotEmpty()) ({ if (mentionQuery == null) draft = if (draft.isEmpty() || draft.last().isWhitespace()) "$draft@" else "$draft @" }) else null,
+                        askLabel = if (general != null) R.string.ask_companion else R.string.call_service,
+                        onAsk = if (mentionNames.isNotEmpty()) ({ if (mentionQuery == null) draft = if (draft.isEmpty() || draft.last().isWhitespace()) "$draft@" else "$draft @" }) else null,
                     )
                     if (general != null) ChatControls(app, general, modelRequest) else AgentModelChip(app, agent, modelRequest)
                 },
@@ -708,14 +714,14 @@ private fun EditMessageSheet(original: String, onDismiss: () -> Unit, onSend: (S
 
 /** "+" holds the less frequent actions: attach files, and in a general chat, ask a companion (no separate @ button). */
 @Composable
-private fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?) {
+private fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?, askLabel: Int = R.string.ask_companion) {
     var open by remember { mutableStateOf(false) }
     if (onAsk == null) { DotIconButton(Icons.Outlined.Add, stringResource(R.string.attach_files), onClick = onAttach, tint = Dot.colors.textSecondary, enabled = canAttach); return }
     Box {
         DotIconButton(Icons.Outlined.Add, stringResource(R.string.add), onClick = { open = true }, tint = Dot.colors.textSecondary)
         DotMenu(open, { open = false }) {
             DotMenuItem(stringResource(R.string.attach_files), Icons.Outlined.AttachFile) { open = false; if (canAttach) onAttach() }
-            DotMenuItem(stringResource(R.string.ask_companion), Icons.Outlined.AlternateEmail) { open = false; onAsk() }
+            DotMenuItem(stringResource(askLabel), Icons.Outlined.AlternateEmail) { open = false; onAsk() }
         }
     }
 }

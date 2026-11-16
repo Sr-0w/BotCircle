@@ -476,6 +476,11 @@ data class UserProfile(val firstName: String? = null, val lastName: String? = nu
     val display: String get() = listOfNotNull(firstName, lastName).joinToString(" ")
 }
 
+/** #46: a service or MCP connector a Circle can be asked to use with @, and its state. */
+@Immutable
+@Serializable
+data class Mentionable(val kind: String = "connector", val id: String, val name: String = "", val provider: String? = null, val status: String = "connected")
+
 /** #31/#47: a project of a connected machine, and the sessions found on the machines. */
 @Immutable
 @Serializable

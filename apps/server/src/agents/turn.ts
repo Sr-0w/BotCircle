@@ -24,6 +24,7 @@ import { getConversation, loadMessages, finalText, messageText, resolveReply, sa
 import { effectiveModel, getAgent, listAgentRows, mainConversationId, setAgentState, type AgentRow } from './repo.ts';
 import { buildSystemPrompt, type TurnMode } from './prompt.ts';
 import { getUserProfile, userContext } from '../profile.ts';
+import { connectorMentionables, resolveMentions, type Mentionable } from './mentions.ts';
 import { buildTools, toolActivityLabel } from './tools.ts';
 import { buildCapabilityTools } from './capability-tools.ts';
 import { activeToolNames } from './lazy-tools.ts';
@@ -402,15 +403,18 @@ async function executeTurn(
 
   // 1. Message déclencheur
   let triggerMessageId: string | null = null;
+  let mentioned: Mentionable[] = [];
   let mode: TurnMode;
   let hint = '';
   if (trigger.kind === 'onboarding') {
     mode = { kind: 'onboarding' };
     hint = 'Première rencontre';
   } else if (trigger.kind === 'user') {
+    // #46: @service / @MCP typed by the user, resolved here into typed ids (a client cannot inject one).
+    mentioned = !pair ? resolveMentions(messageText(trigger.message), await connectorMentionables(agent)) : [];
     const msg: OpenDotsUIMessage = {
       ...trigger.message,
-      metadata: { ...(trigger.message.metadata ?? {}), kind: 'chat', createdAt: new Date().toISOString() },
+      metadata: { ...(trigger.message.metadata ?? {}), kind: 'chat', createdAt: new Date().toISOString(), ...(mentioned.length ? { mentions: mentioned.map(({ kind, id, name }) => ({ kind, id, name })) } : { mentions: undefined }) },
     };
     await saveMessage(conversationId, msg, { author: 'user' });
     triggerMessageId = msg.id;
@@ -531,6 +535,15 @@ async function executeTurn(
   // Enforced at execution too: a task started during this very turn takes the computer from the conversation (#61).
   guardComputerControl(tools as Record<string, { execute?: (...args: any[]) => any }>, agentId, { taskId });
   serializeTools(tools, live.key);
+  // #46: a service called with @ has its actions ready for THIS message only (not saved as loaded for the thread),
+  // and only when the Circle may use it: a mention never grants anything.
+  const mentionNotes: string[] = [];
+  for (const m of mentioned) {
+    const group = capabilities.lazy.groups.find((g) => g.id === m.id || m.id.endsWith(g.id));
+    if (m.status === 'permission_missing') mentionNotes.push(`The user called @${m.name}, but you are not allowed to use it: say so, and that it can be enabled in your Permissions. Do not try another way.`);
+    else if (!group || m.status === 'not_connected') mentionNotes.push(`The user called @${m.name}, but it is not connected right now: say so and suggest reconnecting it in Settings → Connections.`);
+    else { for (const name of group.tools) if (name in tools) capabilities.lazy.loaded.add(name); mentionNotes.push(`The user called @${m.name} for this message: its actions are loaded; use them for this request.`); }
+  }
   // A task runs on the model it was created with (when one was asked), otherwise on the companion's.
   const modelCfg = (taskId ? (await getTask(taskId))?.model : null) ?? await effectiveModel(agent);
   if (tools.computer_screenshot) {
@@ -585,7 +598,7 @@ async function executeTurn(
     toolNames: activeToolNames(tools, capabilities.lazy),
     tasks: taskId ? [] : (await listTasks({ agentId, active: true, limit: 8 })).map((t) => ({ id: t.id, title: t.title, status: t.status, phase: t.phase, currentAction: t.currentAction, completedSteps: t.completedSteps, blocker: t.blocker })),
     background: runSlot(live.key).background.filter((turn) => turn !== live).map((turn) => ({ task: turn.hint, progress: turn.notes.slice(-4) })),
-  });
+  }) + (mentionNotes.length ? `\n\n## Called with @\n${mentionNotes.join('\n')}` : '');
   let system = baseSystem;
 
   let responseId = newId('msg');

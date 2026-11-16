@@ -304,6 +304,7 @@ S = {
  "cmd_tasks": ('Tasks and interventions', 'Tâches et interventions'),
  "cmd_clear": ('Start a blank thread (the current one is archived)', 'Repartir sur un fil vierge (l’actuel est archivé)'),
  "cmd_tools": ('What it may do (permissions)', 'Ce qu’il a le droit de faire (permissions)'),
+ "call_service": ("Call a service", "Appeler un service"),
  "steering_status": ("Taking your message into the work in progress…", "Prend ton message en compte dans le travail en cours…"),
  "clear_busy": ("An answer is running: stop it or wait before resetting.", "Une réponse est en cours : arrête-la ou attends la fin avant de réinitialiser."),
 

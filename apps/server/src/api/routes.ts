@@ -24,6 +24,7 @@ import { subscribe } from '../bus.ts';
 import { archivedConversations, createAgent, getAgent, listAgentRows, listAgents, mainConversationId, resetMainConversation, toAgentDTO, updateAgent } from '../agents/repo.ts';
 import { runTurn, stopAgent } from '../agents/turn.ts';
 import { getUserProfile, setUserProfile } from '../profile.ts';
+import { connectorMentionables } from '../agents/mentions.ts';
 import { getActiveStream } from '../agents/streams.ts';
 import { getConversation, listTeamThreads, pairConversationId, loadMessages, resolveReply, toggleReaction, type OpenDotsUIMessage } from '../conversations/repo.ts';
 import {
@@ -335,6 +336,13 @@ export function createApi() {
     for (const a of await listActivities(agent.id)) await updateActivity(a.id, null, { enabled: false }, await getTimezone());
     await log(agent.id, 'agent.archived', `${agent.name} a été retiré`);
     return c.json({ ok: true });
+  });
+
+  // #46: what can be called with @ in this Circle's conversation (its services and MCP connectors, with their state).
+  api.get('/agents/:id/mentionables', async (c) => {
+    const agent = await getAgent(c.req.param('id'));
+    if (!agent) return c.json({ error: 'Introuvable' }, 404);
+    return c.json(await connectorMentionables(agent));
   });
 
   // #47: the user chooses their primary Circle; every client updates its navigation avatar.

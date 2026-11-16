@@ -43,6 +43,7 @@
     <string name="attach_image">Attach an image</string>
     <string name="attached_image">Attached image</string>
     <string name="back">Back</string>
+    <string name="call_service">Call a service</string>
     <string name="cancel">Cancel</string>
     <string name="cancel_reply">Cancel reply</string>
     <string name="change">Change</string>

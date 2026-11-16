@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentModelControl, modelsOf } from './chat-controls';
 import { toast } from 'sonner';
 import { CommandsHelp } from './commands-help';
-import type { SlashCommand } from './composer';
+import type { MentionTarget, SlashCommand } from './composer';
 import { ClearDialog } from './clear-dialog';
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
@@ -110,6 +110,12 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
   const busy = status === "submitted" || status === "streaming";
   const [clearing, setClearing] = useState(false);
   const [modelRequest, setModelRequest] = useState(0), [helping, setHelping] = useState(false);
+  // #46: @ calls one of this Circle's services or MCP connectors for the message (resolved by the server).
+  const [services, setServices] = useState<MentionTarget[]>([]);
+  useEffect(() => {
+    api.mentionables(agent.id).then((list) => setServices(list.map((m) => ({ id: m.id, name: m.name, provider: m.provider,
+      description: m.status === 'connected' ? t('Service connecté') : m.status === 'permission_missing' ? t('Non autorisé pour {v0}', { v0: agent.name }) : t('Non connecté') })))).catch(() => {});
+  }, [agent.id, agent.permissions.connectors, agent.permissions.mail]);
   // #46: the `/` palette of a Circle's conversation — real actions; nothing here is sent to the model.
   const commands: SlashCommand[] = [
     { name: 'clear', description: t('Repartir sur un fil vierge (l’actuel est archivé)'), run: () => setClearing(true) },
@@ -207,6 +213,8 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
           onClearReply={() => setReply(null)}
           tools={<AgentModelControl agent={agent} pickerRequest={modelRequest} />}
           commands={commands}
+          mentions={services}
+          mentionLabel={t('Services')}
           placeholder={agent.named ? t("Écrire à {v0}…", { v0: agent.name }) : t("Écrire à ton compagnon…")}
           onSubmit={async (text, attachments) => {
             // Sent while the companion works: the message steers the work in progress (#55). Only this client stops

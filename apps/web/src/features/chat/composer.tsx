@@ -5,6 +5,7 @@ import { ARTIFACT_MAX_BYTES, IMAGE_MAX_BYTES } from '@opendots/shared';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { ServiceLogo } from '@/components/brand/service-logo';
 import { t } from '@/lib/i18n';
 
 const MAX_FILES = 10;
@@ -13,7 +14,7 @@ export const isChatImage = (file: File) => IMAGE_TYPES.includes(file.type) || (f
 export function formatBytes(size: number) { return size < 1024 ? `${size} o` : size < 1024 * 1024 ? `${Math.round(size / 1024)} Ko` : `${(size / 1024 / 1024).toFixed(1)} Mo`; }
 
 type DraftFile = { id: string; file: File; preview: string | null };
-export type MentionTarget = { id: string; name: string; color?: string; description?: string };
+export type MentionTarget = { id: string; name: string; color?: string; description?: string; provider?: string | null; disabled?: boolean };
 /**
  * A `/` command (#46): a real action of the app, never a prompt for the model. Typed by the user only; text coming
  * from a message, a file or a tool is never parsed as a command.
@@ -24,7 +25,7 @@ export type SlashCommand = { name: string; description: string; args?: { value: 
  * File picker, drag-and-drop and paste share one draft. Images keep their preview; any other file is listed
  * with its name and size and sent unchanged. `mentions` enables @companion completion.
  */
-export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand, commands }: {
+export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand, commands, mentionLabel }: {
   onSubmit: (text: string, files: File[]) => void | Promise<void>;
   onStop: () => void; busy: boolean; placeholder: string; autoFocus?: boolean;
   /** The conversation's own controls (model, effort, web…), under the text. */
@@ -33,6 +34,8 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
   onCommand?: (text: string) => boolean;
   /** The `/` palette of this conversation. */
   commands?: SlashCommand[];
+  /** What @ calls here: Circles in a general chat, services in a Circle's conversation. */
+  mentionLabel?: string;
   reply?: { preview: string } | null;
   onClearReply?: () => void;
   mentions?: MentionTarget[];
@@ -157,7 +160,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
         </button>
       ))}
     </div>}
-    {mention && <div role="listbox" aria-label={t('Compagnons')} className="absolute bottom-full left-3 mb-2 w-64 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{option.color && <DotAvatar color={option.color} size={18} />}<span className="min-w-0"><span className="block font-medium">@{option.name}</span>{option.description && <span className="block truncate text-muted-foreground text-xs">{option.description}</span>}</span></button>)}</div>}
+     {mention && <div role="listbox" aria-label={mentionLabel ?? t('Compagnons')} className="absolute bottom-full left-3 mb-2 w-64 overflow-hidden rounded-xl border bg-popover p-1 shadow-md">{mention.options.map((option) => <button key={option.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => { event.preventDefault(); pick(option.name); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{option.color ? <DotAvatar color={option.color} size={18} /> : option.provider ? <ServiceLogo service={option.provider} className="size-[18px]" /> : <AtSignIcon className="size-4 text-muted-foreground" />}<span className="min-w-0"><span className="block font-medium">@{option.name}</span>{option.description && <span className="block truncate text-muted-foreground text-xs">{option.description}</span>}</span></button>)}</div>}
     {reply && <div className="flex items-start gap-2 px-3 pt-2 text-xs"><div className="min-w-0 flex-1 border-l-2 border-foreground/30 pl-2"><p className="font-medium">{t('En réponse à')}</p><p className="truncate text-muted-foreground">{reply.preview || t('Message')}</p></div><Button type="button" size="icon-xs" variant="ghost" aria-label={t('Annuler la réponse')} onClick={onClearReply}><XIcon /></Button></div>}
     {files.length > 0 && <div className="flex flex-wrap gap-2 px-2 pt-2" aria-label={t('Fichiers joints')}>{files.map((item) => <div key={item.id} className="relative">
       {item.preview
@@ -173,7 +176,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
           <DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading} aria-label={t('Ajouter')}><PlusIcon /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top">
             <DropdownMenuItem disabled={files.length >= MAX_FILES} onSelect={() => picker.current?.click()}><PaperclipIcon />{t('Joindre des fichiers')}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => { const next = value && !/\s$/.test(value) ? `${value} @` : `${value}@`; setValue(next); pendingCaret.current = next.length; window.setTimeout(() => ref.current?.focus(), 0); }}><AtSignIcon />{t('Demander à un compagnon')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => { const next = value && !/\s$/.test(value) ? `${value} @` : `${value}@`; setValue(next); pendingCaret.current = next.length; window.setTimeout(() => ref.current?.focus(), 0); }}><AtSignIcon />{mentionLabel ? t('Appeler un service') : t('Demander à un compagnon')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading || files.length >= MAX_FILES} onClick={() => picker.current?.click()} aria-label={t('Joindre des fichiers')}><PlusIcon /></Button>}
