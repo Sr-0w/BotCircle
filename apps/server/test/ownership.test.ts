@@ -36,7 +36,7 @@ describe('#61 : un seul exécutant par travail et par ordinateur', () => {
     let ran = 0;
     let inFlight = 0;
     let overlap = false;
-    const make = () => ({ shell_exec: { execute: async () => { inFlight += 1; if (inFlight > 1) overlap = true; await new Promise((r) => setTimeout(r, 20)); inFlight -= 1; ran += 1; return { ok: true }; } }, computer_screenshot: { execute: async () => ({ ok: true, shot: 1 }) } });
+    const make = () => ({ shell_exec: { execute: async (_i?: unknown, _o?: unknown) => { inFlight += 1; if (inFlight > 1) overlap = true; await new Promise((r) => setTimeout(r, 20)); inFlight -= 1; ran += 1; return { ok: true }; } }, computer_screenshot: { execute: async (_i?: unknown, _o?: unknown) => ({ ok: true, shot: 1 }) } });
     const conversation = make();
     guardComputerControl(conversation as any, agent.id, {});
     expect((await conversation.shell_exec.execute({}, {})).ok).toBe(true);
@@ -57,7 +57,7 @@ describe('#61 : un seul exécutant par travail et par ordinateur', () => {
     expect(overlap).toBe(false);
     expect(ran).toBe(3);
 
-    await db().update(schema.tasks).set({ status: 'done' }).where(eq(schema.tasks.id, task.id));
+    await db().update(schema.tasks).set({ status: 'completed' }).where(eq(schema.tasks.id, task.id));
     expect((await conversation.shell_exec.execute({}, {})).ok).toBe(true);
   });
 });
