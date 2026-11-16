@@ -10,6 +10,17 @@ There are no forms to fill in and no workflow builder. You open the app, add an 
 
 ---
 
+## Temporary general chat (restricted Web preview)
+
+**Chat temporaire** opens an independent, RAM-only conversation, outside Circle
+history and memory. It expires after 10 minutes without a new send (30 minutes
+maximum), or is discarded on close/reload. Providers may retain data independently.
+Tools, uploads, jobs and Codex are disabled in this increment. “Start normal chat”
+creates a separate empty general chat, without copying the temporary transcript.
+Native Android temporary-mode integration is not included; this preview does
+**not** complete issue #57. See the [retention policy, API and
+acceptance matrix](docs/temporary-chat.md).
+
 ## What it feels like
 
 ### Meet your first companion
