@@ -1,5 +1,6 @@
 import { closeCodexClients, codexHome, codexAccount, codexClient, codexModels } from '../models/codex.ts';
 import { bodyLimit } from 'hono/body-limit';
+import { temporaryRoutes } from '../temporary/routes.ts';
 import { attachmentRoutes } from '../attachments/routes.ts';
 import { AttachmentError, validateMessageParts } from '../attachments/service.ts';
 import { stopAllDesktops } from '../computer/desktop.ts';
@@ -115,6 +116,7 @@ export function createApi() {
   api.route('/integrations', integrationRoutes());
   api.route('/computer', desktopRoutes());
   api.route('/attachments', attachmentRoutes());
+  api.route('/temporary-chats', temporaryRoutes());
 
   api.get('/bootstrap', async (c) => {
     const dto: BootstrapDTO = {
