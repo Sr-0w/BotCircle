@@ -122,7 +122,7 @@ fun eventIcon(type: String?): ImageVector = when (type) {
     "watch" -> Icons.Outlined.Visibility
     "webhook" -> Icons.Outlined.Webhook
     "mail" -> Icons.Outlined.MailOutline
-    "agent_reply", "agent_message" -> Icons.AutoMirrored.Outlined.Chat
+    "agent_reply", "agent_message", "chat_request", "chat_reply" -> Icons.AutoMirrored.Outlined.Chat
     "approval" -> Icons.Outlined.Key
     else -> Icons.Outlined.Notifications
 }

@@ -254,7 +254,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.Team -> TeamExchangesPage(app, ui, onBack = ::back)
             current == Page.CodeInstances -> OpencodeInstancesPage(app, onBack = ::back)
             current == Page.CodeWorkspace && codeTask != null -> CodeWorkspacePage(app, ui, codeTask!!, onBack = ::back)
-            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); page = Page.Desktop }, onOpenCode = openCode)
+            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); page = Page.Desktop }, onOpenCode = openCode, onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat })
             current == Page.GeneralChat -> ChatScreen(
                 app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
                 onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,

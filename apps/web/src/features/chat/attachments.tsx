@@ -86,6 +86,7 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
       {line && <p className={cn('line-clamp-2 text-xs', task.status === 'failed' || task.requiresUserInput ? 'text-destructive' : 'text-muted-foreground')}>{line}</p>}
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" variant="secondary" className="h-7 rounded-full text-xs" onClick={() => openDialog({ kind: 'task', taskId: task.id })}>{t('Détails')}</Button>
+        {showAgent && agent && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" data-open-companion onClick={() => (window.location.hash = `#/agent/${agent.id}`)}>{t('Fil de {v0}', { v0: agent.name })}</Button>}
         {(task.status === 'running' || task.status === 'queued') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'pause')}>{t('Pause')}</Button>}
         {(task.status === 'paused' || task.status === 'waiting_for_user') && <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => void taskAction(task, 'resume')}>{t('Reprendre')}</Button>}
         {active && <Button size="sm" variant="ghost" className="h-7 rounded-full text-destructive text-xs" onClick={() => void taskAction(task, 'cancel')}>{t('Annuler')}</Button>}

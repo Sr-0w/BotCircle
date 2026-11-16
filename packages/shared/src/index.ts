@@ -197,13 +197,15 @@ export interface MessageMetadata {
   agentId?: string;
   /** Type d'événement pour les messages "event". */
   event?: {
-    type: 'schedule' | 'watch' | 'webhook' | 'mail' | 'agent_reply' | 'agent_message' | 'approval' | 'system' | 'reaction' | 'task';
+    type: 'schedule' | 'watch' | 'webhook' | 'mail' | 'agent_reply' | 'agent_message' | 'approval' | 'system' | 'reaction' | 'task' | 'chat_request' | 'chat_reply';
     title: string;
     activityId?: string;
     approvalId?: string;
     fromAgentId?: string;
     /** Tâche que l'événement concerne : le fil montre sa carte, pas le texte du réveil. */
     taskId?: string;
+    /** chat_request / chat_reply: the general chat this exchange came from (#63). */
+    chatId?: string;
   };
   model?: string;
   /** Actual response routing per completed step; null means not reported. */

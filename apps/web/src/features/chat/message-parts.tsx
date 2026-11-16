@@ -162,6 +162,11 @@ function EventChip({ message, agentId }: { message: ODMessage; agentId?: string 
   // A finished delegated task is shown by its own card, updated in place; the text that woke the companion is not
   // part of the conversation.
   if (event?.type === 'task') return null;
+  // #63: work handed over from a general chat, and the answer sent back — a record linking to that chat.
+  if ((event?.type === "chat_request" || event?.type === "chat_reply") && event.chatId) {
+    const text = message.parts.map((p) => (p.type === "text" ? p.text : "")).join("\n");
+    return <div data-chat-exchange={event.type}><TeamCard title={event.title} date={message.metadata?.createdAt} preview={text} onOpen={() => (window.location.hash = `#/chat/${event.chatId}`)} /></div>;
+  }
   if ((event?.type === "agent_reply" || event?.type === "agent_message") && event.fromAgentId && (agentId ?? message.metadata?.agentId))
     return <TeamEventCard message={message} agentId={(agentId ?? message.metadata?.agentId)!} />;
   return <PlainEventChip message={message} />;

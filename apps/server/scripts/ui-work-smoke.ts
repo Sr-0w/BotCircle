@@ -416,6 +416,10 @@ try {
   await page.getByRole('button', { name: 'Supprimer ce chat' }).click();
   await page.waitForURL(/#\/agent\//);
   assert.equal(await page.getByRole('navigation', { name: 'Chats' }).getByText('Réunion de vendredi', { exact: true }).count(), 0);
+  // #63 : la demande faite depuis le chat général est visible dans le fil de Dev, avec un lien vers ce chat.
+  await page.goto(`${origin}/#/agent/${devId}`);
+  await page.locator('[data-chat-exchange="chat_request"]').first().getByText(/Demande depuis le chat/).waitFor();
+  await shot('chat-request-in-companion');
   // #46 : /clear demande d'abord ; l'ancien fil est archivé et reste lisible.
   await page.goto(`${origin}/#/agent/${ariId}`);
   const thread = page.locator('[id^="message-"]');

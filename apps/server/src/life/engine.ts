@@ -15,6 +15,7 @@ import { countThreadMessages, getTeamMessage, postTeamNote, updateTeamMessage } 
 import { decideReply, shouldWakeSender } from '../team/policy.ts';
 import { saveMessage } from '../conversations/repo.ts';
 import { publish } from '../bus.ts';
+import { resumeChat } from '../chats/turn.ts';
 import { runTask } from '../tasks/runner.ts';
 import { failStalledTasks } from '../tasks/service.ts';
 import { expireSecureLogins } from '../securelogin/service.ts';
@@ -152,6 +153,11 @@ export function registerLifeHandlers() {
   // Worker d'une tâche en arrière-plan. Ne lève jamais : l'issue est portée par l'état de la tâche.
   registerJobHandler('task.run', async ({ taskId }: { taskId: string }) => {
     await runTask(taskId).catch((error) => console.error('[task]', error));
+  });
+
+  // #62: a general chat resumes once the companions it asked have answered.
+  registerJobHandler('chat.resume', async ({ chatId, taskId }: { chatId: string; taskId: string }) => {
+    await resumeChat(chatId, taskId);
   });
 
   registerJobHandler('watch.check', async ({ activityId }: { activityId: string }) => {

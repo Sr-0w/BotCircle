@@ -223,7 +223,7 @@ data class ReplyRef(val messageId: String, val preview: String = "", val role: S
 
 @Immutable
 @Serializable
-data class EventMeta(val type: String = "system", val title: String = "", val fromAgentId: String? = null, val approvalId: String? = null, val taskId: String? = null)
+data class EventMeta(val type: String = "system", val title: String = "", val fromAgentId: String? = null, val approvalId: String? = null, val taskId: String? = null, val chatId: String? = null)
 
 /** Metadata attached to every message (see `MessageMetadata` in packages/shared). */
 @Immutable

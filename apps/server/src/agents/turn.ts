@@ -239,7 +239,10 @@ export function historyForModel(
   for (const m of [...messages].reverse()) {
     const meta = m.metadata ?? {};
     let msg: OpenDotsUIMessage;
-    if (meta.kind === 'event') {
+    if (meta.kind === 'event' && (meta.event?.type === 'chat_request' || meta.event?.type === 'chat_reply')) {
+      // A record of work handed over from a general chat: already handled by its own task, never a new request.
+      msg = { ...m, role: 'user', parts: [{ type: 'text', text: `[Pour information : ${meta.event.title}${meta.event.taskId ? ` (tâche ${meta.event.taskId}, déjà prise en charge)` : ''}]\n${messageText(m)}` }] };
+    } else if (meta.kind === 'event') {
       msg = { ...m, role: 'user', parts: [{ type: 'text', text: `[Événement : ${meta.event?.title ?? 'système'}]\n${messageText(m)}` }] };
     } else if (pair) {
       const mine = meta.agentId === self.id;

@@ -121,6 +121,8 @@ class MessageEnv(
     val onNeedTask: (String) -> Unit = {},
     val onOpenTask: (String) -> Unit = {},
     val onTaskAction: (taskId: String, action: String) -> Unit = { _, _ -> },
+    /** Opens a general chat (a request it handed to this companion, #63). */
+    val onOpenChat: (String) -> Unit = {},
     val fileActions: FileActions? = null,
     val onFileAccess: ((String) -> Unit)? = null,
     /** General chats sign every answer: the assistant, or the companion that contributed. */
@@ -344,6 +346,27 @@ private fun EventLine(message: ChatMessage, env: MessageEnv, modifier: Modifier)
     val text = remember(message.parts) { message.parts.filterIsInstance<Part.Text>().joinToString("\n") { it.text }.trim() }
     val from = event?.fromAgentId?.let { id -> env.agents.firstOrNull { it.id == id } }
     val c = Dot.colors
+    // #63: work handed over from a general chat, and the answer sent back: a record that opens that chat.
+    val chatId = event?.chatId
+    if (chatId != null && (event.type == "chat_request" || event.type == "chat_reply")) {
+        Column(
+            modifier.fillMaxWidth().clip(DotShapes.large).border(DotSpacing.hairline * 2, c.border, DotShapes.large)
+                .clickable(role = Role.Button) { env.onOpenChat(chatId) }
+                .padding(horizontal = DotSpacing.m, vertical = 10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(eventIcon(event.type), null, Modifier.size(16.dp), tint = c.textTertiary)
+                Spacer(Modifier.width(DotSpacing.s))
+                Text(event.title, style = Dot.type.label, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                formatWhen(message.meta.createdAt).takeIf { it.isNotEmpty() }?.let { Text("  ·  $it", style = Dot.type.caption, color = c.textTertiary, maxLines = 1) }
+            }
+            if (text.isNotEmpty()) {
+                Spacer(Modifier.height(DotSpacing.xs))
+                Text(text, style = Dot.type.callout, color = c.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        return
+    }
     // An exchange with a teammate is content, not a footnote: who, when, and the start of what was said.
     if (from != null && (event?.type == "agent_reply" || event?.type == "agent_message")) {
         val preview = remember(text, event.type) {

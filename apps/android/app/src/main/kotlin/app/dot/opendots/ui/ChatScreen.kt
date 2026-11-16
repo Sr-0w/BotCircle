@@ -158,7 +158,7 @@ private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
 }
 
 @Composable
-fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}) {
+fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}) {
     // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
     val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
     LaunchedEffect(session) { session.open() }
@@ -222,7 +222,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             onOpenWeb = { ui.serverUrl.takeIf { it.isNotBlank() }?.let { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } } },
             onOpenImage = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
             onShowWork = { workSheet = true },
-            tasks = ui.tasks, onNeedTask = app::loadTask, onOpenTask = { taskSheet = it }, onTaskAction = app::taskAction,
+            tasks = ui.tasks, onNeedTask = app::loadTask, onOpenTask = { taskSheet = it }, onTaskAction = app::taskAction, onOpenChat = onOpenChat,
             fileActions = fileActions, onFileAccess = { accessSheet = it }, attribution = general != null,
             secureLogins = ui.secureLogins, onNeedSecureLogin = app::ensureSecureLogin, onResolveSecureLogin = { id, outcome -> app.resolveSecureLogin(id, outcome) }, onTakeControl = onOpenDesktop, onOpenCode = onOpenCode,
             onEdit = if (general != null) { id, text -> editing = id to text } else null,

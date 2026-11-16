@@ -1,5 +1,6 @@
 import { artifactUrl, type MessageMetadata } from '@opendots/shared';
-import { getAgent } from '../agents/repo.ts';
+import { getAgent, mainConversationId } from '../agents/repo.ts';
+import { enqueue } from '../jobs/queue.ts';
 import { runTurn } from '../agents/turn.ts';
 import { artifactsByIds } from '../artifacts/service.ts';
 import { getConversation, saveMessage } from '../conversations/repo.ts';
@@ -73,5 +74,15 @@ async function post(task: TaskRow, text: string) {
     metadata,
   // Dans un chat général, la contribution est attribuée au compagnon (métadonnées) sans compter comme un non-lu de son propre fil.
   }, { author: 'agent', agentId: inChat ? null : task.agentId });
-  if (inChat) publish({ type: 'chat.changed', chatId: task.conversationId });
+  if (inChat) {
+    publish({ type: 'chat.changed', chatId: task.conversationId });
+    // #63: the companion's own thread keeps the answer it gave to that chat (a record, compact, linked back).
+    await saveMessage(await mainConversationId(task.agentId), {
+      id: newId('msg'), role: 'user',
+      parts: [{ type: 'text', text }],
+      metadata: { kind: 'event', autonomous: true, createdAt: new Date().toISOString(), event: { type: 'chat_reply', title: task.status === 'completed' ? `Réponse envoyée au chat « ${truncate(origin.title?.trim() || 'sans titre', 60)} »` : task.status === 'waiting_for_user' ? `En attente de toi dans le chat « ${truncate(origin.title?.trim() || 'sans titre', 60)} »` : `Échec signalé au chat « ${truncate(origin.title?.trim() || 'sans titre', 60)} »`, chatId: task.conversationId, taskId: task.id } },
+    }, { author: 'event', agentId: task.agentId });
+    // #62: the chat's assistant resumes with the real outcome, once per outcome (survives restarts: it is a job).
+    await enqueue('chat.resume', { chatId: task.conversationId, taskId: task.id }, { dedupeKey: `chat-resume:${task.id}:${task.status}`, maxAttempts: 2 });
+  }
 }
