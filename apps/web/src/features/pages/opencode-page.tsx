@@ -1,3 +1,4 @@
+import { CodeSessions } from '../code/code-sessions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LinkIcon, LoaderIcon, PlusIcon, ScanQrCodeIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
@@ -43,6 +44,7 @@ export function OpencodePage() {
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><OpencodeLogo size={20} />OpenCode</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('Connecte une machine de développement : tes compagnons autorisés pourront y déléguer du code à OpenCode, et tu suivras la session en direct.')}</p>
         </div>
+        {instances && <CodeSessions instances={instances} />}
         {!instances ? <LoaderIcon className="animate-spin" /> : instances.length === 0 && !draft ? <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">{t('Aucune instance connectée.')}</div> : null}
         {instances?.map((instance) => (
           <section key={instance.id} className="space-y-2 rounded-2xl border bg-card p-4" aria-label={instance.name} data-instance-state={instance.state}>

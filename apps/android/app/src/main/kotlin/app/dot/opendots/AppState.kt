@@ -300,6 +300,18 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         viewModelScope.launch { runCatching { client.task(id) }.onSuccess { task -> _state.update { it.copy(tasks = it.tasks + (task.id to task)) } } }
     }
 
+    fun startCodeSession(instanceId: String, directory: String?, instruction: String, onStarted: (String) -> Unit) = act {
+        val task = client.startCodeSession(instanceId, directory, instruction)
+        _state.update { it.copy(tasks = it.tasks + (task.id to task)) }
+        onStarted(task.id)
+    }
+
+    fun attachCodeSession(instanceId: String, sessionId: String, directory: String?, onReady: (String) -> Unit) = act {
+        val task = client.attachCodeSession(instanceId, sessionId, directory)
+        _state.update { it.copy(tasks = it.tasks + (task.id to task)) }
+        onReady(task.id)
+    }
+
     fun setCodeAutoResume(taskId: String, enabled: Boolean) = act { client.codeAutoResume(taskId, enabled); loadTask(taskId) }
 
     fun taskAction(id: String, action: String) = act { val task = client.taskAction(id, action); _state.update { it.copy(tasks = it.tasks + (task.id to task.copy(events = it.tasks[task.id]?.events.orEmpty()))) }; loadTask(id) }

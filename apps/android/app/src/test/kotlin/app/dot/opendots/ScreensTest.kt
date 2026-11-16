@@ -158,6 +158,9 @@ class ScreensTest {
                       "exchanges":[{"seq":1,"taskId":"tk2","author":"companion","agentId":"a1","kind":"delegation","text":"Group OAuth with the providers.","original":"tidy the settings","createdAt":"2026-11-13T09:01:00Z"}]}""")
                     path == "/opencode/tasks/tk2/prompt" -> json("""{"queued":true,"delivery":"queue"}""")
                     path == "/opencode/instances" && request.method == "GET" -> json(if (paired) """[{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}]""" else "[]")
+                    path == "/opencode/instances/oc9/projects" -> json("""[{"id":"p1","worktree":"/home/dev/botcircle","name":"botcircle"}]""")
+                    path == "/opencode/sessions" && request.method == "GET" -> json(if (paired) """[{"instanceId":"oc9","instanceName":"devbox","reachable":true,"sessions":[{"id":"ses_term","title":"Started in the terminal","directory":"/home/dev/botcircle","updatedAt":1,"busy":false,"additions":0,"deletions":0,"files":0,"taskId":null}]}]""" else "[]")
+                    path == "/opencode/sessions" -> json(codeTask.replace("\"tk2\"", "\"tk7\"").replace("\"requestedBy\":\"agent\"", "\"requestedBy\":\"user\""))
                     path == "/opencode/instances/pair" -> { paired = true; json("""{"id":"oc9","name":"devbox","baseUrl":"https://8fbd.opentunnel.xyz","username":"opencode","defaultDirectory":null,"hasPassword":true,"state":"online","version":"2.3.0","lastCheckedAt":null,"lastError":null,"activeTasks":0,"apiVersion":"v2","authKind":"pairing","tokenExpiresAt":"2026-12-15T10:00:00Z"}""") }
                     path == "/opencode/tasks/tk2/permissions/per1" -> json("""{"ok":true}""")
                     path == "/opencode/tasks/tk2/models" -> json("""{"current":$codeModel,"models":[{"providerID":"openai","providerName":"OpenAI","id":"gpt-5","name":"GPT-5","variants":[],"input":["text","image"]},{"providerID":"opencode","providerName":"OpenCode","id":"glm-5.3-flash-free","name":"GLM-5.3-Flash Free","variants":["low","high","max"],"input":["text","image"]},{"providerID":"opencode","providerName":"OpenCode","id":"iceman-free","name":"Iceman Free","variants":[],"input":["text"]}]}""")
@@ -305,6 +308,24 @@ class ScreensTest {
         assertEquals("""{"firstName":"Robin","lastName":null}""", posts.first { it.first == "/profile" }.second)
         waitFor("Robin")
         shoot("settings-profile-dark")
+    }
+
+    /** #47/#31: Code ＋ starts a real session directly (machine, project, instruction); sessions started in OpenCode are listed. */
+    @Test fun codeStartsASessionDirectlyAndListsSessionsFromOpenCode() {
+        paired = true
+        launch(ThemeMode.DARK)
+        waitFor("12,418 lines")
+        compose.onNodeWithContentDescription("Companions").performClick()
+        tab("Code")
+        waitFor("Started in the terminal")
+        waitFor("From OpenCode")
+        compose.onNodeWithContentDescription("New coding session").performClick()
+        waitFor("devbox")
+        waitFor("botcircle")
+        compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("code-instruction")) or (androidx.compose.ui.test.hasSetTextAction() and hasTestTag("code-instruction")))[0].performTextInput("Add a parser test.")
+        compose.onNodeWithText("Create and start").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/opencode/sessions" } }
+        assertEquals("""{"instanceId":"oc9","directory":"/home/dev/botcircle","instruction":"Add a parser test."}""", posts.first { it.first == "/opencode/sessions" }.second)
     }
 
     @Test fun workStaysOutOfTheThreadAndOpensInItsPanel() {

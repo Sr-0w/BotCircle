@@ -150,6 +150,9 @@ export const api = {
   secureLogin: (id: string) => request<SecureLoginDTO>('GET', `/secure-logins/${id}`),
   resolveSecureLogin: (id: string, outcome: 'authenticated' | 'cancelled' | 'failed') => request<SecureLoginDTO>('POST', `/secure-logins/${id}/resolve`, { outcome }),
 
+  codeSessions: () => request<{ instanceId: string; instanceName: string; reachable: boolean; sessions: { id: string; title: string; directory: string; updatedAt: number; busy: boolean; taskId: string | null }[] }[]>('GET', '/opencode/sessions'),
+  startCodeSession: (body: { instanceId: string; directory: string | null; instruction: string }) => request<TaskDTO>('POST', '/opencode/sessions', body),
+  attachCodeSession: (body: { instanceId: string; sessionId: string; directory: string | null }) => request<TaskDTO>('POST', '/opencode/sessions/attach', body),
   opencodeInstances: () => request<OpencodeInstanceDTO[]>('GET', '/opencode/instances'),
   saveOpencodeInstance: (input: { id?: string; name: string; baseUrl: string; username?: string; password?: string | null; defaultDirectory?: string | null }) => {
     const { id, ...body } = input;

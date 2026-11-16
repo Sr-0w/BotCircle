@@ -462,6 +462,14 @@ try {
   await page.locator('[data-testid="archive-dialog"]').getByText('Voici les notes.').first().waitFor();
   await page.waitForTimeout(400); await shot('clear-archive');
   await page.keyboard.press('Escape');
+  // #31/#47 : Code direct sur le web — une vraie session, sans Circle, ouverte aussitôt.
+  await page.goto(`${origin}/#/settings/opencode`);
+  const fresh = page.locator('[data-new-code-session]');
+  await fresh.getByRole('textbox', { name: 'Consigne' }).fill('Ajoute un test pour le parseur.');
+  await fresh.getByRole('button', { name: 'Créer et lancer' }).click();
+  await page.locator('[data-code-workspace]').first().waitFor();
+  await page.locator('[data-code-sessions]').getByText('Par toi').first().waitFor();
+  await shot('code-direct');
   assert.deepEqual(errors, []);
   console.log('Chromium : fichier joint, carte, accès et historique ; carte de tâche en direct et détails ; chat, @mention, intervention, renommage et suppression vérifiés.');
 } catch (error) {

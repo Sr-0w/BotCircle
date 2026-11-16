@@ -213,6 +213,64 @@ export async function startOpencodeTask(input: { agentId: string; conversationId
   return row;
 }
 
+// --- #31 / #47 : sessions directes, sans Circle ---------------------------------------------
+
+/** Owner of a coding session started by the user from Code, with no Circle in between. Nobody is woken for it. */
+export const DIRECT_OWNER = 'user';
+
+/** Code ＋: a real OpenCode session started by the user on a connected machine, in an allowed project. */
+export async function startDirectSession(input: { instanceId: string; directory?: string | null; instruction: string; title?: string | null; model?: OpencodeModelRef | null }) {
+  const instance = await getInstance(input.instanceId);
+  if (!instance) throw new OpencodeError('Machine introuvable.');
+  if (input.directory) {
+    const projects = await instanceProjects(instance).catch(() => []);
+    const allowed = [instance.defaultDirectory, ...projects.map((p) => p.worktree)].filter(Boolean).map((d) => d!.replace(/\/+$/, ''));
+    if (!allowed.includes(input.directory.replace(/\/+$/, ''))) throw new OpencodeError('Ce dossier n’est pas un projet connu de cette machine.');
+  }
+  const conversationId = newId('cv');
+  await db().insert(schema.conversations).values({ id: conversationId, kind: 'task', agentId: null, title: 'Code' });
+  const title = input.title?.trim() || truncate(input.instruction.replace(/\s+/g, ' ').trim(), 80);
+  return startOpencodeTask({ agentId: DIRECT_OWNER, conversationId, instance, directory: input.directory ?? null, title, instruction: input.instruction, requestedBy: 'user', model: input.model ?? null });
+}
+
+/**
+ * A session started in OpenCode itself, opened from Code: one canonical task per session (reused when it already
+ * exists), nothing is sent to OpenCode, nobody is woken.
+ */
+/** Every session of every connected machine (its default project), each linked to its task when it has one. */
+export async function allSessions(): Promise<{ instanceId: string; instanceName: string; reachable: boolean; sessions: (OpencodeSessionDTO & { taskId: string | null })[] }[]> {
+  const tasks = await db().select({ id: schema.tasks.id, external: schema.tasks.external }).from(schema.tasks).where(eq(schema.tasks.provider, 'opencode'));
+  const linked = new Map(tasks.filter((t) => t.external).map((t) => [`${t.external!.instanceId}:${t.external!.sessionId}`, t.id]));
+  return Promise.all((await listInstances()).map(async (row) => {
+    try {
+      const sessions = (await instanceSessions(row)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 50);
+      return { instanceId: row.id, instanceName: row.name, reachable: true, sessions: sessions.map((s) => ({ ...s, taskId: linked.get(`${row.id}:${s.id}`) ?? null })) };
+    } catch { return { instanceId: row.id, instanceName: row.name, reachable: false, sessions: [] }; }
+  }));
+}
+
+export async function attachSession(input: { instanceId: string; sessionId: string; directory?: string | null }) {
+  const instance = await getInstance(input.instanceId);
+  if (!instance) throw new OpencodeError('Machine introuvable.');
+  const existing = (await db().select().from(schema.tasks).where(eq(schema.tasks.provider, 'opencode'))).find((t) => t.external?.sessionId === input.sessionId && t.external.instanceId === instance.id);
+  if (existing) return existing;
+  const client = await clientFor(instance);
+  const session = await client.session(input.sessionId, input.directory ?? instance.defaultDirectory);
+  const messages = await client.messages(session.id, session.directory ?? input.directory ?? null, 30).catch(() => [] as RawMessage[]);
+  const lastAssistant = [...messages].reverse().find((m) => m.info.role === 'assistant');
+  const busy = Boolean((await client.statuses(session.directory ?? input.directory ?? null).catch(() => ({} as Record<string, unknown>)))[session.id]);
+  const id = newId('task'), conversationId = newId('cv');
+  await db().insert(schema.conversations).values({ id: conversationId, kind: 'task', agentId: null, title: 'Code' });
+  await db().insert(schema.tasks).values({
+    id, agentId: DIRECT_OWNER, conversationId, workConversationId: conversationId, title: (session.title || 'Session OpenCode').slice(0, 200), instruction: '',
+    requestedBy: 'opencode', provider: 'opencode', status: busy ? 'running' : 'completed', startedAt: new Date(session.time?.created ?? Date.now()), finishedAt: busy ? null : new Date(),
+    external: { instanceId: instance.id, sessionId: session.id, directory: session.directory ?? input.directory ?? null, seenMessageId: lastAssistant?.info.id ?? null, unreachable: false },
+  });
+  const row = (await getTask(id))!;
+  publish({ type: 'task.changed', task: await toTaskDTO(row) });
+  return row;
+}
+
 async function context(task: TaskRow) {
   const ext = task.external;
   if (task.provider !== 'opencode' || !ext) throw new OpencodeError('Cette tâche n’est pas une session OpenCode.');
@@ -412,7 +470,7 @@ async function conclude(task: TaskRow, instanceName: string, outcome: 'completed
   await log(task.agentId, `opencode.${outcome}`, `OpenCode ${outcome === 'completed' ? 'a terminé' : 'a échoué'} : ${task.title}`, { taskId: task.id });
   publish({ type: 'task.changed', task: await toTaskDTO(claimed) });
   // Le résultat est REMIS au compagnon, même si sa conversation est fermée : c'est lui qui relit, corrige ou informe.
-  await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: report(task, instanceName, outcome, text, diffs), depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode:${task.id}:${seenMessageId}` });
+  if (task.agentId !== DIRECT_OWNER) await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: report(task, instanceName, outcome, text, diffs), depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode:${task.id}:${seenMessageId}` });
 }
 
 // --- #49 : limites d'usage ------------------------------------------------------------------
@@ -464,7 +522,7 @@ async function needsAttention(task: TaskRow, instanceName: string, reason: strin
   await addTaskEvent(task.id, 'error', blocker);
   await exchange(row, { author: 'opencode', kind: 'failure', text: blocker });
   publish({ type: 'task.changed', task: await toTaskDTO(row) });
-  await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: `La session OpenCode « ${task.title} » (${instanceName}) est arrêtée et attend une action de l’utilisateur : ${truncate(reason, 600)}\n\nDis-le à l’utilisateur en une phrase : ce qu’il doit faire (facturation, connexion, accès) avant de relancer. Ne relance rien toi-même.`, depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode-attention:${task.id}:${seenMessageId}` });
+  if (task.agentId !== DIRECT_OWNER) await enqueue('agent.wake', { agentId: task.agentId, conversationId: task.conversationId, event: { type: 'task', title: `OpenCode : ${task.title}`, taskId: task.id }, text: `La session OpenCode « ${task.title} » (${instanceName}) est arrêtée et attend une action de l’utilisateur : ${truncate(reason, 600)}\n\nDis-le à l’utilisateur en une phrase : ce qu’il doit faire (facturation, connexion, accès) avant de relancer. Ne relance rien toi-même.`, depth: 0 }, { agentId: task.agentId, dedupeKey: `opencode-attention:${task.id}:${seenMessageId}` });
 }
 
 /**

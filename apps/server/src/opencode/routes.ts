@@ -1,3 +1,4 @@
+import { toTaskDTO } from '../tasks/service.ts';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
@@ -6,7 +7,7 @@ import { getTask, TaskError } from '../tasks/service.ts';
 import { OpencodeHttpError, OpencodeUnreachable, type PromptFile } from './client.ts';
 import {
   checkInstance, deleteInstance, getInstance, instanceProjects, instanceSessions, instructOpencode, listExchanges, listFiles, listInstances, OpencodeError, readFile,
-  pairInstance, replyPermission, replyQuestion, saveInstance, setTaskModel, syncTask, taskModels, toInstanceDTO, workspace, resumeAfterQuota, setAutoResume } from './service.ts';
+  pairInstance, replyPermission, replyQuestion, saveInstance, setTaskModel, syncTask, taskModels, toInstanceDTO, workspace, resumeAfterQuota, setAutoResume, startDirectSession, attachSession, allSessions } from './service.ts';
 
 const instanceSchema = z.object({
   name: z.string().min(1).max(60), baseUrl: z.string().min(1).max(500), username: z.string().max(100).optional(),
@@ -44,6 +45,16 @@ export function opencodeRoutes() {
   app.get('/instances/:id/projects', async (c) => c.json(await instanceProjects(await instance(c.req.param('id')))));
   app.get('/instances/:id/sessions', async (c) => c.json(await instanceSessions(await instance(c.req.param('id')), c.req.query('directory') || null)));
 
+  // #31 / #47: Code — every session of the connected machines; start one directly; open one started in OpenCode.
+  app.get('/sessions', async (c) => c.json(await allSessions()));
+  app.post('/sessions', async (c) => {
+    const body = z.object({ instanceId: z.string().min(1), directory: z.string().max(2000).nullable().optional(), instruction: z.string().min(1).max(8000), title: z.string().max(200).nullable().optional(), model: z.object({ providerID: z.string().min(1), id: z.string().min(1), variant: z.string().max(60).nullable().optional() }).strict().nullable().optional() }).strict().parse(await c.req.json());
+    return c.json(await toTaskDTO(await startDirectSession(body)));
+  });
+  app.post('/sessions/attach', async (c) => {
+    const body = z.object({ instanceId: z.string().min(1), sessionId: z.string().min(1), directory: z.string().max(2000).nullable().optional() }).strict().parse(await c.req.json());
+    return c.json(await toTaskDTO(await attachSession(body)));
+  });
   app.get('/exchanges', async (c) => c.json(await listExchanges({ limit: 300 })));
   app.get('/tasks/:id', async (c) => { const row = await task(c.req.param('id')); await syncTask(row).catch(() => {}); return c.json(await workspace((await getTask(row.id))!)); });
   // Consigne saisie par l'utilisateur dans l'espace de code : attribuée à l'utilisateur, pas à un compagnon.

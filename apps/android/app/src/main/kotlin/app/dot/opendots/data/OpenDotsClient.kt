@@ -273,6 +273,13 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     // --- OpenCode ---------------------------------------------------------------------------------
 
     suspend fun opencodeInstances(): List<OpencodeInstance> = get("/opencode/instances")
+    suspend fun opencodeProjects(instanceId: String): List<OpencodeProject> = get("/opencode/instances/$instanceId/projects")
+    suspend fun opencodeSessions(): List<OpencodeMachineSessions> = get("/opencode/sessions")
+    /** Code ＋: a session started directly by the user, no Circle in between. */
+    suspend fun startCodeSession(instanceId: String, directory: String?, instruction: String): BgTask =
+        OdJson.decodeFromJsonElement(json("POST", "/opencode/sessions", buildJsonObject { put("instanceId", instanceId); put("directory", directory); put("instruction", instruction) }))
+    suspend fun attachCodeSession(instanceId: String, sessionId: String, directory: String?): BgTask =
+        OdJson.decodeFromJsonElement(json("POST", "/opencode/sessions/attach", buildJsonObject { put("instanceId", instanceId); put("sessionId", sessionId); put("directory", directory) }))
     /** [body] holds name, baseUrl, username, defaultDirectory and, only when it changes, password. */
     suspend fun saveOpencodeInstance(id: String?, body: JsonObject): OpencodeInstance =
         OdJson.decodeFromJsonElement(json(if (id == null) "POST" else "PUT", "/opencode/instances" + (id?.let { "/$it" } ?: ""), body))

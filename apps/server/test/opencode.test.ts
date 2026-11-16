@@ -4,7 +4,7 @@ import { isActionToolPart } from '@opendots/shared';
 import { openDatabase, closeDatabase, db, schema } from '../src/db/client.ts';
 import { createAgent, mainConversationId } from '../src/agents/repo.ts';
 import { cancelTask, getTask, pauseTask, sendInstruction, taskEvents, toTaskDTO } from '../src/tasks/service.ts';
-import { resumeAfterQuota, setAutoResume } from '../src/opencode/service.ts';
+import { allSessions, attachSession, resumeAfterQuota, setAutoResume, startDirectSession } from '../src/opencode/service.ts';
 import { resumeTask } from '../src/tasks/service.ts';
 import { checkBaseUrl, deleteInstance, instructOpencode, listExchanges, OpencodeError, replyPermission, saveInstance, setOpencodeFetch, startOpencodeTask, syncTask, toInstanceDTO, workspace } from '../src/opencode/service.ts';
 import { opencodeTools } from '../src/opencode/tools.ts';
@@ -373,6 +373,42 @@ describe('OpenCode', () => {
       fake.finish(task.external!.sessionId, '', 'Tool bash failed: exit code 1');
       await syncTask((await getTask(task.id))!);
       expect((await getTask(task.id))!.status).toBe('failed');
+    });
+  });
+
+  describe('#31 / #47 : Code, sessions directes', () => {
+    it('lance une vraie session sans Circle, dans un projet connu seulement ; personne n’est réveillé', async () => {
+      const row = await instance();
+      await expect(startDirectSession({ instanceId: row.id, directory: '/etc', instruction: 'x' })).rejects.toThrow(OpencodeError);
+      const task = await startDirectSession({ instanceId: row.id, directory: '/home/dev/opendots', instruction: 'Ajoute un test pour le parseur.' });
+      expect(task).toMatchObject({ agentId: 'user', requestedBy: 'user', provider: 'opencode', status: 'running' });
+      const prompt = fake.calls.filter((c) => c.path.endsWith('/prompt_async')).at(-1)!;
+      expect(prompt.body.parts[0].text).toBe('Ajoute un test pour le parseur.');
+      fake.work(task.external!.sessionId, [{ tool: 'edit', status: 'completed' }]);
+      fake.finish(task.external!.sessionId, 'Test ajouté.');
+      await syncTask((await getTask(task.id))!);
+      expect((await getTask(task.id))!.status).toBe('completed');
+      const wakesForUser = (await db().select().from(schema.jobs).where(eq(schema.jobs.type, 'agent.wake'))).filter((j) => (j.payload as any).agentId === 'user');
+      expect(wakesForUser).toHaveLength(0);
+    });
+
+    it('liste les sessions des machines et ouvre une session lancée dans OpenCode, une seule fois, sans rien lui envoyer', async () => {
+      const row = await instance();
+      fake.sessions.set('ses_ext', { id: 'ses_ext', title: 'Depuis le terminal', directory: '/home/dev/opendots', time: { created: Date.now() - 60_000, updated: Date.now() } });
+      fake.messages.set('ses_ext', [{ info: { id: 'msg_x1', role: 'assistant', time: { created: Date.now(), completed: Date.now() } }, parts: [{ id: 'p', type: 'text', text: 'ok' }] }]);
+      const listed = (await allSessions()).find((i) => i.instanceId === row.id)!;
+      expect(listed.reachable).toBe(true);
+      expect(listed.sessions.find((s) => s.id === 'ses_ext')).toMatchObject({ title: 'Depuis le terminal', taskId: null });
+      const prompts = fake.calls.filter((c) => c.path.endsWith('/prompt_async')).length;
+      const a = await attachSession({ instanceId: row.id, sessionId: 'ses_ext' });
+      const b = await attachSession({ instanceId: row.id, sessionId: 'ses_ext' });
+      expect(b.id).toBe(a.id);
+      expect(a).toMatchObject({ requestedBy: 'opencode', status: 'completed' });
+      expect(fake.calls.filter((c) => c.path.endsWith('/prompt_async')).length).toBe(prompts);
+      expect((await allSessions()).find((i) => i.instanceId === row.id)!.sessions.find((s) => s.id === 'ses_ext')!.taskId).toBe(a.id);
+      // Continuing it from BotCircle sends to that very session.
+      await instructOpencode((await getTask(a.id))!, 'Continue', 'user');
+      expect(fake.calls.filter((c) => c.path.endsWith('/prompt_async')).at(-1)!.path).toContain('ses_ext');
     });
   });
 });

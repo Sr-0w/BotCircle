@@ -476,6 +476,19 @@ data class UserProfile(val firstName: String? = null, val lastName: String? = nu
     val display: String get() = listOfNotNull(firstName, lastName).joinToString(" ")
 }
 
+/** #31/#47: a project of a connected machine, and the sessions found on the machines. */
+@Immutable
+@Serializable
+data class OpencodeProject(val id: String = "", val worktree: String = "", val name: String? = null)
+
+@Immutable
+@Serializable
+data class OpencodeSessionInfo(val id: String, val title: String = "", val directory: String = "", val updatedAt: Long = 0, val busy: Boolean = false, val taskId: String? = null)
+
+@Immutable
+@Serializable
+data class OpencodeMachineSessions(val instanceId: String, val instanceName: String = "", val reachable: Boolean = true, val sessions: List<OpencodeSessionInfo> = emptyList())
+
 @Immutable
 @Serializable
 data class CodeChanges(val files: Int = 0, val additions: Int = 0, val deletions: Int = 0)

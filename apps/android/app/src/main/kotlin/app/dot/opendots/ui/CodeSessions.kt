@@ -1,5 +1,15 @@
 package app.dot.opendots.ui
 
+import app.dot.opendots.data.OpencodeMachineSessions
+import app.dot.opendots.data.OpencodeProject
+import app.dot.opendots.data.OpencodeInstance
+import app.dot.opendots.AppState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
+import app.dot.design.components.DotSpinner
+import app.dot.design.components.DotTextField
+import app.dot.design.components.DotIconButton
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +58,7 @@ import java.time.ZoneId
  * first, grouped by day. Who started it is always visible: you, or a Circle.
  */
 @Composable
-fun CodeSessionsPage(ui: AppUiState, onOpen: (String) -> Unit, onOpenInstances: () -> Unit) {
+fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, onOpenInstances: () -> Unit, onNew: () -> Unit) {
     var filter by rememberSaveable { mutableStateOf("all") }
     val sessions = remember(ui.tasks) { ui.tasks.values.filter { it.isCode }.sortedByDescending { it.createdAt } }
     val shown = remember(sessions, filter) {
@@ -65,8 +75,12 @@ fun CodeSessionsPage(ui: AppUiState, onOpen: (String) -> Unit, onOpenInstances: 
             when (day) { today -> 0; today.minusDays(1) -> 1; else -> 2 }
         }.toSortedMap()
     }
-    QuietPage(stringResource(R.string.code), onBack = null, inTabs = true) {
-        if (sessions.isEmpty()) {
+    // Sessions started in OpenCode itself on a connected machine, not yet opened here.
+    var machines by remember { mutableStateOf<List<OpencodeMachineSessions>?>(null) }
+    LaunchedEffect(Unit) { machines = runCatching { app.client.opencodeSessions() }.getOrNull() }
+    val outside = remember(machines) { machines.orEmpty().flatMap { m -> m.sessions.filter { it.taskId == null }.map { m to it } } }
+    QuietPage(stringResource(R.string.code), onBack = null, inTabs = true, actions = { DotIconButton(Icons.Outlined.Add, stringResource(R.string.code_new), onClick = onNew) }) {
+        if (sessions.isEmpty() && outside.isEmpty()) {
             item {
                 EmptyState(Icons.Outlined.Code, stringResource(R.string.code_empty_title), stringResource(R.string.code_empty_body)) {
                     DotButton(stringResource(R.string.code_connect_instance), onOpenInstances, style = ButtonStyle.Secondary)
@@ -88,6 +102,24 @@ fun CodeSessionsPage(ui: AppUiState, onOpen: (String) -> Unit, onOpenInstances: 
                 Hairline(inset = DotSpacing.gutter)
             }
         }
+        if (outside.isNotEmpty() && (filter == "all")) {
+            item(key = "outside") { SectionLabel(stringResource(R.string.code_from_opencode), Modifier.padding(top = DotSpacing.l)) }
+            items(outside, key = { (m, s) -> "o-${m.instanceId}-${s.id}" }) { (machine, session) ->
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button) { app.attachCodeSession(machine.instanceId, session.id, session.directory.ifBlank { null }) { onOpen(it) } }
+                        .padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("outside-session"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OpencodeLogo(width = 18.dp)
+                    Spacer(Modifier.width(DotSpacing.l))
+                    Column(Modifier.weight(1f)) {
+                        Text(session.title.ifBlank { stringResource(R.string.code_untitled) }, style = Dot.type.body, color = Dot.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(listOfNotNull(stringResource(R.string.code_from_opencode), machine.instanceName, session.directory.trimEnd('/').substringAfterLast('/').ifBlank { null }).joinToString(" · "), style = Dot.type.caption, color = Dot.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Hairline(inset = DotSpacing.gutter)
+            }
+        }
         item(key = "instances") {
             Text(
                 stringResource(R.string.code_manage_instances), style = Dot.type.callout, color = Dot.colors.textSecondary,
@@ -104,6 +136,7 @@ private fun CodeSessionRow(task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
     val by = when {
         circle != null -> stringResource(R.string.code_by, agentDisplayName(circle))
         task.requestedBy == "user" -> stringResource(R.string.code_by_you)
+        task.requestedBy == "opencode" -> stringResource(R.string.code_from_opencode)
         else -> stringResource(R.string.code_by_chat)
     }
     val changes = task.external?.changes?.takeIf { it.files > 0 && (it.additions > 0 || it.deletions > 0) }
@@ -127,6 +160,68 @@ private fun CodeSessionRow(task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
             Spacer(Modifier.width(DotSpacing.s))
             Text("+${changes.additions}", style = Dot.type.caption, color = c.success)
             Text(" −${changes.deletions}", style = Dot.type.caption, color = c.danger)
+        }
+    }
+}
+
+
+/**
+ * Code ＋ (#47): a new coding session, started directly — a connected machine, one of its projects, the instruction.
+ * The session's own default model is used; it can be changed in the session.
+ */
+@Composable
+fun NewCodeSessionPage(app: AppState, onBack: () -> Unit, onOpenInstances: () -> Unit, onStarted: (String) -> Unit) {
+    var instances by remember { mutableStateOf<List<OpencodeInstance>?>(null) }
+    var instanceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var projects by remember { mutableStateOf<List<OpencodeProject>>(emptyList()) }
+    var directory by rememberSaveable { mutableStateOf<String?>(null) }
+    var instruction by rememberSaveable { mutableStateOf("") }
+    var starting by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        instances = runCatching { app.client.opencodeInstances() }.getOrDefault(emptyList())
+        if (instanceId == null) instanceId = instances?.firstOrNull { it.state == "online" }?.id ?: instances?.firstOrNull()?.id
+    }
+    val instance = instances?.firstOrNull { it.id == instanceId }
+    LaunchedEffect(instanceId) {
+        projects = instanceId?.let { id -> runCatching { app.client.opencodeProjects(id) }.getOrDefault(emptyList()) }.orEmpty()
+        if (directory == null || projects.none { it.worktree == directory }) directory = instance?.defaultDirectory ?: projects.firstOrNull()?.worktree
+    }
+    QuietPage(stringResource(R.string.code_new), onBack) {
+        when {
+            instances == null -> item { Box(Modifier.fillMaxWidth().padding(DotSpacing.xxxl), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) } }
+            instances!!.isEmpty() -> item {
+                EmptyState(Icons.Outlined.Code, stringResource(R.string.code_no_machine), stringResource(R.string.code_empty_body)) {
+                    DotButton(stringResource(R.string.code_connect_instance), onOpenInstances, style = ButtonStyle.Secondary)
+                }
+            }
+            else -> {
+                item {
+                    SectionLabel(stringResource(R.string.code_machine))
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                        instances!!.forEach { DotFilterChip(it.name, selected = it.id == instanceId, onClick = { instanceId = it.id }, radio = true) }
+                    }
+                }
+                item {
+                    SectionLabel(stringResource(R.string.code_project), Modifier.padding(top = DotSpacing.l))
+                    val choices = (listOfNotNull(instance?.defaultDirectory) + projects.map { it.worktree }).distinct()
+                    if (choices.isEmpty()) Text(stringResource(R.string.code_project_default), style = Dot.type.caption, color = Dot.colors.textSecondary, modifier = Modifier.padding(horizontal = DotSpacing.gutter))
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = DotSpacing.gutter), horizontalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                        choices.forEach { dir -> DotFilterChip(dir.trimEnd('/').substringAfterLast('/').ifBlank { dir }, selected = dir == directory, onClick = { directory = dir }, radio = true) }
+                    }
+                }
+                item {
+                    SectionLabel(stringResource(R.string.code_instruction), Modifier.padding(top = DotSpacing.l))
+                    DotTextField(instruction, { instruction = it.take(8000) }, Modifier.padding(horizontal = DotSpacing.gutter).testTag("code-instruction"), placeholder = stringResource(R.string.code_instruction_hint), singleLine = false)
+                    Text(stringResource(R.string.code_model_note), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.s))
+                    Box(Modifier.padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.l)) {
+                        DotButton(stringResource(R.string.code_start), {
+                            val id = instanceId ?: return@DotButton
+                            starting = true
+                            app.startCodeSession(id, directory, instruction.trim()) { task -> starting = false; onStarted(task) }
+                        }, enabled = !starting && instanceId != null && instruction.isNotBlank(), loading = starting)
+                    }
+                }
+            }
         }
     }
 }

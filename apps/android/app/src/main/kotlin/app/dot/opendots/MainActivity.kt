@@ -60,6 +60,7 @@ import app.dot.opendots.ui.LocalRootBackdrop
 import app.dot.opendots.ui.LocalRootActions
 import app.dot.opendots.ui.RootActions
 import app.dot.opendots.ui.CodeSessionsPage
+import app.dot.opendots.ui.NewCodeSessionPage
 import app.dot.opendots.ui.CircleSection
 import app.dot.opendots.ui.SettingsSection
 import app.dot.opendots.ui.SettingsSectionPage
@@ -192,9 +193,9 @@ private fun dockItem(tab: Tab, ui: AppUiState): DotBottomBarItem = when (tab) {
 }
 
 /** Pages pushed on top of a tab. Back always leads to the page that opened them. */
-private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
+private val SETTINGS_PAGES get() = setOf(Page.Settings, Page.SettingsSection, Page.NewCodeSession, Page.Providers, Page.DefaultModel, Page.AgentBehaviour, Page.CodeInstances, Page.CodeWorkspace, Page.Team, Page.Activity, Page.Inbox)
 
-private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
+private enum class Page { None, Chat, Profile, CircleSection, SettingsSection, NewCodeSession, Model, Desktop, Settings, Catalog, GeneralChat, ChatSettings, ChatModel, Providers, DefaultModel, AgentBehaviour, CodeInstances, CodeWorkspace, Team, Activity, Inbox }
 
 @Composable
 private fun MainScreens(app: AppState, ui: AppUiState) {
@@ -228,6 +229,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             // Pages opened from Settings return to it; Settings returns to the tab it was opened from.
             // Settings is a tab: its pages return to it (the tab stays selected).
             Page.SettingsSection -> Page.None
+            Page.NewCodeSession -> Page.None
             Page.Catalog -> Page.SettingsSection
             Page.Providers, Page.AgentBehaviour -> Page.SettingsSection
             Page.CodeInstances -> if (tab == Tab.Settings) Page.SettingsSection else Page.None
@@ -270,7 +272,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                         when (tab) {
                             Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
                             Tab.Chat -> ChatsPage(app, ui) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
-                            Tab.Code -> CodeSessionsPage(ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances })
+                            Tab.Code -> CodeSessionsPage(app, ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { page = Page.NewCodeSession })
                             Tab.Settings -> SettingsScreen(app, ui, onOpenSection = { settingsSection = it; page = Page.SettingsSection })
                         }
                     }
@@ -286,6 +288,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             // Settings is the fourth tab now; an old saved page lands on it.
             current == Page.Settings -> LaunchedEffect(Unit) { tab = Tab.Settings; page = Page.None }
             current == Page.Activity -> TasksScreen(app, ui, onOpenCode = openCode, onBack = ::back, onOpenTeam = { page = Page.Team })
+            current == Page.NewCodeSession -> NewCodeSessionPage(app, onBack = ::back, onOpenInstances = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace }
             current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances })
             current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back)
             current == Page.Catalog -> QuietCatalogScreen(onBack = ::back)
