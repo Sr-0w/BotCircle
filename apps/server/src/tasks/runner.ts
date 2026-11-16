@@ -7,7 +7,7 @@ import { getConversation, saveMessage } from '../conversations/repo.ts';
 import { log } from '../journal.ts';
 import { publish } from '../bus.ts';
 import { errorMessage, newId, truncate } from '../util.ts';
-import { addTaskEvent, getTask, startNextTask, updateTask, type TaskRow } from './service.ts';
+import { addTaskEvent, getTask, reportRequest, startNextTask, updateTask, type TaskRow } from './service.ts';
 
 /**
  * Exécute une tâche jusqu'à ce qu'elle rende la main : terminée, échouée, annulée, en pause ou en
@@ -52,6 +52,8 @@ async function conclude(task: TaskRow, status: 'completed' | 'failed', outcome: 
   const done = await updateTask(task.id, { status, result: outcome.result ?? null, error: outcome.error ? truncate(outcome.error, 1000) : null, finishedAt: new Date(), currentAction: null, requiresUserInput: false });
   await addTaskEvent(task.id, status === 'completed' ? 'status' : 'error', status === 'completed' ? 'Terminée' : `Échec : ${truncate(outcome.error ?? '', 300)}`);
   await log(task.agentId, `task.${status}`, `${status === 'completed' ? 'Tâche terminée' : 'Tâche échouée'} : ${task.title}`, { taskId: task.id });
+  // Subtasks of one request report back together, once (#61).
+  if (await reportRequest(done)) { await startNextTask(task.agentId); return; }
   await post(done, status === 'completed'
     ? outcome.result || `La tâche « ${task.title} » est terminée.`
     : `La tâche « ${task.title} » n'a pas abouti : ${truncate(outcome.error ?? 'erreur inconnue', 600)}`);

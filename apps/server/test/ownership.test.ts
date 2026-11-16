@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { openDatabase, closeDatabase, db, schema } from '../src/db/client.ts';
 import { createAgent, mainConversationId } from '../src/agents/repo.ts';
-import { createTask, getTask } from '../src/tasks/service.ts';
+import { cancelTask, createTask, getTask, reportRequest, taskEvents } from '../src/tasks/service.ts';
 import { equivalentActiveTask, taskTools } from '../src/tasks/tools.ts';
 import { guardComputerControl } from '../src/computer/ownership.ts';
 
@@ -59,5 +59,41 @@ describe('#61 : un seul exécutant par travail et par ordinateur', () => {
 
     await db().update(schema.tasks).set({ status: 'completed' }).where(eq(schema.tasks.id, task.id));
     expect((await conversation.shell_exec.execute({}, {})).ok).toBe(true);
+  });
+
+  it('fencing : un worker dont la tâche n’est plus en cours n’agit plus sur l’ordinateur', async () => {
+    const agent = await createAgent({ name: 'Fence' });
+    const task = await createTask({ agentId: agent.id, conversationId: await mainConversationId(agent.id), title: 'Bureau', instruction: 'x', requestedBy: 'agent' });
+    let ran = 0;
+    const worker = { shell_exec: { execute: async (_i?: unknown, _o?: unknown) => { ran += 1; return { ok: true }; } } };
+    guardComputerControl(worker as any, agent.id, { taskId: task.id });
+    await db().update(schema.tasks).set({ status: 'running' }).where(eq(schema.tasks.id, task.id));
+    expect((await worker.shell_exec.execute({}, {})).ok).toBe(true);
+    await db().update(schema.tasks).set({ status: 'cancelled' }).where(eq(schema.tasks.id, task.id));
+    expect(await worker.shell_exec.execute({}, {})).toMatchObject({ ok: false, status: 'task_not_running' });
+    expect(ran).toBe(1);
+  });
+
+  it('les sous-tâches d’une même demande sont rapportées ensemble, une seule fois', async () => {
+    const agent = await createAgent({ name: 'Coord' });
+    const conv = await mainConversationId(agent.id);
+    const tools = taskTools({ agent, conversationId: conv, isMain: true, userTurn: true, depth: 0, tz: 'UTC', requestId: 'msg_req1' } as any) as any;
+    const a = await tools.task_start.execute({ title: 'Thème sombre', instruction: 'Installe et applique un thème GTK sombre.' }, {} as any);
+    const b = await tools.task_start.execute({ title: 'Polices', instruction: 'Installe JetBrains Mono et Inter, règle les polices du système.' }, {} as any);
+    expect(a.taskId).not.toBe(b.taskId);
+    expect((await getTask(a.taskId))!.requestId).toBe('msg_req1');
+    await db().update(schema.tasks).set({ status: 'completed', result: 'Arc-Dark appliqué.' }).where(eq(schema.tasks.id, a.taskId));
+    expect(await reportRequest((await getTask(a.taskId))!)).toBe(true);
+    const wakes = async () => (await db().select().from(schema.jobs).where(eq(schema.jobs.type, 'agent.wake'))).filter((j) => (j.payload as any).agentId === agent.id);
+    expect(await wakes()).toHaveLength(0);
+    expect((await taskEvents(a.taskId, 5)).some((e) => e.summary.includes('Résultat gardé'))).toBe(true);
+    // The last one ends (cancelled here): one wake with every real outcome.
+    await cancelTask(b.taskId);
+    const after = await wakes();
+    expect(after).toHaveLength(1);
+    expect((after[0].payload as any).text).toContain('Arc-Dark appliqué.');
+    expect((after[0].payload as any).text).toContain('annulée');
+    expect(await reportRequest((await getTask(b.taskId))!)).toBe(true);
+    expect(await wakes()).toHaveLength(1);
   });
 });

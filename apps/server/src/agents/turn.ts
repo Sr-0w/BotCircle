@@ -460,6 +460,8 @@ async function executeTurn(
     isMain: !pair && !taskId,
     userTurn: trigger.kind === 'user',
     taskId,
+    // Follows steers: a task started after a steer belongs to the latest message.
+    get requestId() { return triggerMessageId; },
     depth,
     tz,
     abortSignal: stream.abort.signal,

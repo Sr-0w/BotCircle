@@ -101,7 +101,7 @@ export async function updateTask(id: string, patch: Partial<Omit<TaskRow, 'id' |
 }
 
 /** Crée une tâche en file et lance le worker si le compagnon n'en exécute pas déjà une. */
-export async function createTask(input: { agentId: string; conversationId: string; title: string; instruction: string; requestedBy: 'agent' | 'user' | 'assistant'; artifacts?: string[]; model?: ModelConfig | null }): Promise<TaskRow> {
+export async function createTask(input: { agentId: string; conversationId: string; title: string; instruction: string; requestedBy: 'agent' | 'user' | 'assistant'; artifacts?: string[]; model?: ModelConfig | null; requestId?: string | null }): Promise<TaskRow> {
   const active = await db().select({ id: schema.tasks.id }).from(schema.tasks).where(and(eq(schema.tasks.agentId, input.agentId), inArray(schema.tasks.status, ACTIVE_TASK_STATUSES)));
   if (active.length >= MAX_ACTIVE_PER_AGENT) throw new TaskError(`Ce compagnon a déjà ${MAX_ACTIVE_PER_AGENT} tâches en cours ou en attente : termines-en ou annules-en une d'abord.`);
   const id = newId('task');
@@ -109,7 +109,7 @@ export async function createTask(input: { agentId: string; conversationId: strin
   await db().insert(schema.conversations).values({ id: workConversationId, kind: 'task', agentId: input.agentId, title: input.title.slice(0, 200) });
   await db().insert(schema.tasks).values({
     id, agentId: input.agentId, conversationId: input.conversationId, workConversationId,
-    title: input.title.trim().slice(0, 200), instruction: input.instruction.trim(), requestedBy: input.requestedBy, artifacts: input.artifacts ?? [], model: input.model ?? null,
+    title: input.title.trim().slice(0, 200), instruction: input.instruction.trim(), requestedBy: input.requestedBy, artifacts: input.artifacts ?? [], model: input.model ?? null, requestId: input.requestId ?? null,
   });
   await addTaskEvent(id, 'status', 'Tâche créée, en file');
   await log(input.agentId, 'task.created', `Tâche créée : ${input.title.slice(0, 120)}`, { taskId: id });
@@ -177,6 +177,29 @@ export async function sendInstruction(taskId: string, instruction: string, autho
   return (await getTask(taskId))!;
 }
 
+/**
+ * #61: subtasks the Circle started for one user request report back together. While a sibling still works, a
+ * finished subtask's result stays on its card; when the last one ends, the Circle is woken once with every real
+ * outcome and gives the user one coherent answer. Returns true when this task's outcome is handled that way.
+ */
+export async function reportRequest(task: TaskRow): Promise<boolean> {
+  if (!task.requestId || task.requestedBy !== 'agent') return false;
+  const siblings = await db().select().from(schema.tasks).where(and(eq(schema.tasks.requestId, task.requestId), eq(schema.tasks.agentId, task.agentId)));
+  if (siblings.length < 2) return false;
+  if (siblings.some((t) => ACTIVE_TASK_STATUSES.includes(t.status))) {
+    await addTaskEvent(task.id, 'note', 'Résultat gardé : il sera rapporté avec les autres sous-tâches de la même demande.');
+    return true;
+  }
+  const lines = siblings.map((t) => `- « ${t.title} » (${t.id}) : ${t.status === 'completed' ? `terminée.\n  ${(t.result ?? '').slice(0, 1500)}` : t.status === 'cancelled' ? 'annulée.' : `échec : ${(t.error ?? '').slice(0, 500)}`}`);
+  await enqueue('agent.wake', {
+    agentId: task.agentId, conversationId: task.conversationId,
+    event: { type: 'task', title: 'Sous-tâches terminées', taskId: task.id },
+    text: `Toutes les sous-tâches que tu as lancées pour la même demande de l'utilisateur sont finies :\n${lines.join('\n')}\n\nDonne à l'utilisateur UNE réponse cohérente avec ces résultats réels (ce qui est fait, ce qui a échoué, ce qui reste). Ne refais aucune de ces tâches.`,
+    depth: 0,
+  }, { agentId: task.agentId, dedupeKey: `request:${task.requestId}` });
+  return true;
+}
+
 export async function cancelTask(taskId: string): Promise<TaskRow> {
   const row = await getTask(taskId);
   if (!row) throw new TaskError('Tâche introuvable.');
@@ -186,6 +209,7 @@ export async function cancelTask(taskId: string): Promise<TaskRow> {
   const updated = await updateTask(taskId, { status: 'cancelled', finishedAt: new Date(), currentAction: null, requiresUserInput: false });
   await addTaskEvent(taskId, 'status', 'Annulée');
   live.get(liveKey(taskId))?.abort.abort();
+  await reportRequest(updated);
   await startNextTask(row.agentId);
   return updated;
 }

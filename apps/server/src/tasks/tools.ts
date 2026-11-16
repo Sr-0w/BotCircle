@@ -71,7 +71,7 @@ export function taskTools(ctx: ToolContext): ToolSet {
             const joined = await sendInstruction(twin.id, instruction);
             return { ok: true, status: 'joined_existing', taskId: joined.id, title: joined.title, note: 'Ce travail est déjà délégué à cette tâche : la consigne lui a été transmise, aucune nouvelle tâche n’a été créée. Ne le fais pas toi-même ; suis-la avec task_status. Pour plusieurs workers en parallèle, découpe en sous-tâches distinctes qui ne se recouvrent pas.' };
           }
-          const row = await createTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, title, instruction, requestedBy: 'agent', artifacts, model: model ?? null });
+          const row = await createTask({ agentId: ctx.agent.id, conversationId: ctx.conversationId, title, instruction, requestedBy: 'agent', artifacts, model: model ?? null, requestId: ctx.requestId ?? null });
           return { ok: true, status: row.status, taskId: row.id, title: row.title, model: model ? `${model.provider}:${model.model}` : 'companion default' };
         } catch (error) { return error instanceof TaskError || error instanceof ArtifactError ? fail(error) : (() => { throw error; })(); }
       },

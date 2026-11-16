@@ -62,6 +62,8 @@ export interface ToolContext {
   peerAgentId?: string;
   /** Tâche en arrière-plan exécutée par ce tour (worker). */
   taskId?: string;
+  /** #61: the user message this turn is working on; tasks started from it are its subtasks. */
+  readonly requestId?: string | null;
   /** Rend un artefact visible de l'utilisateur ; renvoie la conversation où il apparaît. */
   publishArtifact?: (artifact: import('../artifacts/service.ts').ArtifactRow) => Promise<string | null>;
 }

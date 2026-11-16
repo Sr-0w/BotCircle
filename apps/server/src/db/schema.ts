@@ -406,6 +406,8 @@ export const tasks = pgTable(
     model: jsonb('model').$type<ModelConfig | null>(),
     /** Model that really served the task's last run (resolved label). */
     usedModel: text('used_model'),
+    /** #61: the user request this task belongs to (the message that led to it); its subtasks report back together. */
+    requestId: text('request_id'),
     /** Pour une exécution externe : l'instance, la session et le dossier exacts. */
     external: jsonb('external').$type<TaskExternalRef | null>(),
     /** `agent` (délégation par le compagnon), `user` (mention depuis un chat) ou `assistant` (chat général). */

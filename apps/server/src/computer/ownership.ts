@@ -30,7 +30,11 @@ export function guardComputerControl(tools: Record<string, ExecutableTool | unde
     if (typeof item?.execute !== 'function') continue;
     const execute = item.execute;
     item.execute = async (input: unknown, options: unknown) => {
-      if (!owner.taskId) {
+      if (owner.taskId) {
+        // Fencing: a worker whose task was cancelled, paused or finished no longer acts on the computer.
+        const [row] = await db().select({ status: schema.tasks.status }).from(schema.tasks).where(eq(schema.tasks.id, owner.taskId));
+        if (row?.status !== 'running') return { ok: false, status: 'task_not_running', error: 'Cette tâche n’est plus en cours : arrête-toi sans agir.' };
+      } else {
         const task = await runningWorkerTask(agentId);
         if (task) return {
           ok: false,
