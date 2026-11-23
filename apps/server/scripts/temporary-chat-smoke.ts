@@ -99,22 +99,22 @@ try {
     await page.locator('#message-normal-smoke').getByText('Historique normal conservé', { exact: true }).waitFor();
     assert.deepEqual(await chatsList(), []);
 
-    // 1. New (empty) chat: the icon is there; it turns the chat ephemeral and the empty normal chat disappears.
+    // 1. New chat = a draft (nothing on the server): the icon is there; it turns the draft ephemeral.
     await newChat();
-    await page.waitForFunction(() => /^#\/chat\/(?!ephemeral$)[^/]+$/.test(location.hash));
+    await page.waitForFunction(() => location.hash === '#/chat/new');
     await toggle.waitFor();
-    assert.equal((await chatsList()).length, 1);
+    assert.deepEqual(await chatsList(), []);
     await toggle.click();
     await page.waitForFunction(() => location.hash === '#/chat/ephemeral');
     await page.locator('[data-ephemeral-badge]').waitFor();
     assert.deepEqual(await chatsList(), []);
     assert.equal(await page.locator('[data-chat-row]').count(), 0);
 
-    // 2. Toggle back before sending: a fresh normal chat is created; and again to ephemeral (the empty one is deleted).
+    // 2. Toggle back before sending: a fresh draft (still nothing on the server); and again to ephemeral.
     await toggle.click();
-    await page.waitForFunction(() => /^#\/chat\/(?!ephemeral$)[^/]+$/.test(location.hash));
+    await page.waitForFunction(() => location.hash === '#/chat/new');
     await toggle.waitFor();
-    assert.equal((await chatsList()).length, 1);
+    assert.deepEqual(await chatsList(), []);
     await toggle.click();
     await page.waitForFunction(() => location.hash === '#/chat/ephemeral');
     assert.deepEqual(await chatsList(), []);
@@ -166,10 +166,10 @@ try {
 
     // 4. Leaving = gone: another new chat deletes the session; a toast says so; nothing comes back.
     await newChat();
-    await page.waitForFunction(() => /^#\/chat\/(?!ephemeral$)[^/]+$/.test(location.hash));
+    await page.waitForFunction(() => location.hash === '#/chat/new');
     await page.getByText('Chat éphémère effacé', { exact: true }).waitFor();
     await expectGone(sessionIds[0]);
-    assert.equal((await chatsList()).length, 1);
+    assert.deepEqual(await chatsList(), []);
     assert.equal(await page.getByText('Prompt sensible de test').count(), 0);
     assert.equal(await page.getByText('Chat temporaire', { exact: true }).count(), 0); // the old sidebar entry is gone
 
@@ -193,7 +193,7 @@ try {
     await page.getByText('Réponse temporaire de test', { exact: true }).waitFor({ state: 'detached' });
     assert.deepEqual(errors, []);
     await context.close();
-    console.log(`PASS Chromium ${viewport.width}x${viewport.height}: icon on new chat, toggle on/off, empty normal chat removed/recreated, streaming, context, image + text file attachments, stop, never listed/saved, leave/reload deletes session`);
+    console.log(`PASS Chromium ${viewport.width}x${viewport.height}: icon on the new-chat draft, toggle on/off, no normal chat ever created, streaming, context, image + text file attachments, stop, never listed/saved, leave/reload deletes session`);
   }
   assert.equal(inferenceCalls, 14);
   assert.equal(abortedCalls, 2);

@@ -345,8 +345,8 @@ try {
   assert.equal(await web.getAttribute('data-chat-web'), 'on');
   await web.click();
   await page.locator('[data-chat-web="off"]').waitFor();
-  const chatId = page.url().split('/').pop()!;
-  assert.equal((await (await context.request.get(`${origin}/api/chats/${chatId}`)).json()).webSearch, false);
+  // New chat created on first message: until then a local draft, its settings kept in the page only.
+  assert.match(page.url(), /#\/chat\/new$/);
   await page.locator('[data-chat-web]').click();
   await page.locator('[data-chat-web="on"]').waitFor();
   await shot('15-chat-controls');
@@ -377,7 +377,9 @@ try {
   await intervention.getByText('Dev', { exact: true }).waitFor();
   await intervention.getByText('intervention').waitFor();
   assert.equal(await intervention.count(), 1);
+  await page.waitForURL(/#\/chat\/(?!new$)[^/]+$/);
   const chatUrl = page.url();
+  assert.equal((await (await context.request.get(`${origin}/api/chats/${chatUrl.split('/').pop()}`)).json()).webSearch, true);
   await page.getByRole('navigation', { name: 'Chats' }).getByText(/résume la réunion/).first().waitFor();
   await page.reload();
   await page.locator('[data-general-chat] [data-task-card]').getByText('intervention').waitFor(); // état relu après rechargement
