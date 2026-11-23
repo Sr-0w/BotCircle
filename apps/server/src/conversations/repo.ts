@@ -67,15 +67,15 @@ export async function pairConversationId(a: string, b: string): Promise<string> 
 export async function saveMessage(
   conversationId: string,
   msg: OpenDotsUIMessage,
-  opts: { author: 'user' | 'agent' | 'event'; agentId?: string | null; hidden?: boolean },
-) {
+  opts: { author: 'user' | 'agent' | 'event'; agentId?: string | null; hidden?: boolean; /** #65: insert once; a replay (job retry, restart) of an already stored id changes and announces nothing. */ ifAbsent?: boolean },
+): Promise<boolean> {
   // #56: nothing is written into a deleted conversation. A Circle's late result goes to its current thread instead;
   // a deleted general chat's is dropped (the task keeps its own record in Activity).
   const [target] = await db().select({ deletedAt: schema.conversations.deletedAt, agentId: schema.conversations.agentId, kind: schema.conversations.kind }).from(schema.conversations).where(eq(schema.conversations.id, conversationId));
   if (target?.deletedAt) {
-    if (!target.agentId || (target.kind !== 'main' && target.kind !== 'archive')) return;
+    if (!target.agentId || (target.kind !== 'main' && target.kind !== 'archive')) return false;
     const [main] = await db().select({ id: schema.conversations.id }).from(schema.conversations).where(and(eq(schema.conversations.kind, 'main'), eq(schema.conversations.agentId, target.agentId)));
-    if (!main) return;
+    if (!main) return false;
     conversationId = main.id;
   }
   const text = messageText(msg);
@@ -83,7 +83,7 @@ export async function saveMessage(
   delete (metadata as { reactions?: unknown }).reactions;
   const createdAt = metadata.createdAt ? new Date(metadata.createdAt) : new Date();
   const replyToId = metadata.replyTo?.messageId ?? null;
-  await db()
+  const insert = db()
     .insert(schema.messages)
     .values({
       id: msg.id,
@@ -97,7 +97,11 @@ export async function saveMessage(
       textContent: text,
       replyToId,
       createdAt,
-    })
+    });
+  if (opts.ifAbsent) {
+    const inserted = await insert.onConflictDoNothing().returning({ id: schema.messages.id });
+    if (!inserted.length) return false;
+  } else await insert
     .onConflictDoUpdate({
       target: schema.messages.id,
       set: {
@@ -118,6 +122,7 @@ export async function saveMessage(
     author: opts.author,
     preview: text.slice(0, 160),
   });
+  return true;
 }
 
 function rowToUI(r: typeof schema.messages.$inferSelect, reactions?: MessageReaction[]): OpenDotsUIMessage {

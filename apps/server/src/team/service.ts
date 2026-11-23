@@ -103,7 +103,8 @@ export async function postTeamNote(
           event: { type, title: `${titlePrefix} ${name}`, fromAgentId: peerAgentId },
         },
       },
-      { author: 'event', agentId },
+      // #65: a replayed job must not re-announce an old card as if it were new in the current chat.
+      { author: 'event', agentId, ifAbsent: true },
     );
   } catch {
     /* déjà enregistré (nouvelle tentative du job) */

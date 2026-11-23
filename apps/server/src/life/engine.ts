@@ -166,7 +166,7 @@ export async function deliverTeamResult(tm: TeamMessageRow, result: TurnResult, 
             replyTo: { messageId: `msg_rcv_${tm.id}`, preview: truncate(tm.content, 180), role: 'user' },
           },
         },
-        { author: 'agent', agentId: tm.toAgentId },
+        { author: 'agent', agentId: tm.toAgentId, ifAbsent: true },
       );
     } catch {
       /* déjà enregistré (nouvelle tentative du job) */
