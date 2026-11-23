@@ -1,3 +1,4 @@
+import { ResizablePanel } from '@/components/resizable-panel';
 import { openCodeWorkspace } from "@/lib/work-store";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeftIcon, MessagesSquareIcon } from "lucide-react";
@@ -29,8 +30,8 @@ export function TeamView() {
   }, [threads, selected]);
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className={cn("flex w-full flex-col border-r md:w-72", selected && "hidden md:flex")}>
+    <div data-panel-layout className="flex min-h-0 min-w-0 flex-1">
+      <ResizablePanel panel="team" className={cn("flex w-full flex-col border-r", selected && "hidden md:flex")}>
         <div className="px-4 pt-5 pb-3">
           <h2 className="font-semibold">{t("Échanges de l’équipe")}</h2>
           <p className="text-muted-foreground text-xs">{t("Ce que les Circles se disent entre eux.")}</p>
@@ -67,8 +68,8 @@ export function TeamView() {
             );
           })}
         </div>
-      </div>
-      <div className={cn("min-h-0 flex-1 flex-col", selected ? "flex" : "hidden md:flex")}>
+      </ResizablePanel>
+      <div className={cn("min-h-0 min-w-0 flex-1 flex-col", selected ? "flex" : "hidden md:flex")}>
         {selected ? (
           <Thread conversationId={selected} onBack={() => setSelected(null)} />
         ) : (
