@@ -48,6 +48,23 @@ data class ChatUiState(
     val waiting: Boolean get() = status == ChatStatus.Submitted || (status == ChatStatus.Streaming && messages.lastOrNull()?.isUser == true)
 }
 
+internal data class MergedHistory(val messages: List<ChatMessage>, val hasOlder: Boolean)
+
+/**
+ * #65: the re-read window [remote] replaces what the screen shows, except pages the user scrolled back to ("older"), the
+ * message being streamed and messages THIS device sent that the server has not returned yet. Any other message that is
+ * absent from the window is an old persisted one: it is never re-appended at the end (that put a day-old card in the
+ * middle of the current exchange).
+ */
+internal fun mergeHistory(current: List<ChatMessage>, remoteMessages: List<ChatMessage>, busy: Boolean, liveId: String?, olderLoaded: Boolean, localIds: Set<String>): MergedHistory {
+    val remote = remoteMessages.mapTo(HashSet()) { it.id }
+    val older = if (olderLoaded && current.any { it.id in remote }) current.takeWhile { it.id !in remote } else emptyList()
+    val streaming = if (busy) current.lastOrNull { !it.isUser && it.id == liveId } else null
+    val pending = if (busy) current.filter { it.id !in remote && it.id in localIds && it.id != streaming?.id && it !in older } else emptyList()
+    val base = remoteMessages.filter { it.id != streaming?.id }
+    return MergedHistory(older + base + pending + listOfNotNull(streaming), older.isNotEmpty())
+}
+
 /**
  * One companion's conversation: history, the live turn, and everything the user can do to it. It follows the same rules
  * as the web client: a turn belongs to the server (it keeps running when nobody listens), so the session only ever
@@ -63,6 +80,8 @@ class ChatSession(
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private var conversationId: String? = null
+    /** #65: ids of messages this device created and the server may not have returned yet (the only ones a re-read may keep on top). */
+    private val localIds = HashSet<String>()
     private var streamJob: Job? = null
     /** The message the followed stream is writing. Only that one is "live"; a turn steered meanwhile keeps its earlier message where it was (#55). */
     private var liveId: String? = null
@@ -135,6 +154,7 @@ class ChatSession(
             files.forEach { add(Part.File(it.url, it.mediaType, it.filename)) }
         }
         if (parts.isEmpty()) return
+        localIds += id
         val mine = ChatMessage(id, "user", parts, MessageMeta(kind = "chat", replyTo = replyTo, answer = answer))
         val steering = _state.value.busy
         streamJob?.cancel()
@@ -180,6 +200,7 @@ class ChatSession(
         val original = _state.value.messages[index]
         val files = original.parts.filterIsInstance<Part.File>()
         val id = "msg_" + UUID.randomUUID().toString().replace("-", "")
+        localIds += id
         val mine = ChatMessage(id, "user", listOf(Part.Text(text.trim())) + files, MessageMeta(kind = "chat"))
         streamJob?.cancel()
         _state.update { it.copy(messages = it.messages.take(index) + mine, status = ChatStatus.Submitted, error = null, notSent = false) }
@@ -247,13 +268,8 @@ class ChatSession(
             val history = client.messages(target)
             conversationId = history.conversationId
             _state.update { s ->
-                val remote = history.messages.mapTo(HashSet()) { it.id }
-                // Pages the user scrolled back to stay above the freshly read window.
-                val older = if (olderLoaded && s.messages.any { it.id in remote }) s.messages.takeWhile { it.id !in remote } else emptyList()
-                val streaming = if (s.busy) s.messages.lastOrNull { !it.isUser && it.id == liveId } else null
-                val pending = if (s.busy) s.messages.filter { it.id !in remote && it.id != streaming?.id && it !in older } else emptyList()
-                val base = history.messages.filter { it.id != streaming?.id }
-                s.copy(messages = older + base + pending + listOfNotNull(streaming), cursor = if (older.isEmpty()) history.cursor else s.cursor, loadError = null)
+                val merged = mergeHistory(s.messages, history.messages, s.busy, liveId, olderLoaded, localIds)
+                s.copy(messages = merged.messages, cursor = if (merged.hasOlder) s.cursor else history.cursor, loadError = null)
             }
             if (allowFollow && history.active && !_state.value.busy) follow(resume = true)
         } catch (e: Exception) {
