@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -71,12 +72,24 @@ internal fun mergeHistory(current: List<ChatMessage>, remoteMessages: List<ChatM
  * *follows* a stream, and re-reads history whenever the server says a turn finished.
  */
 class ChatSession(
-    val target: ChatTarget,
+    target: ChatTarget,
     private val client: OpenDotsClient,
     private val scope: CoroutineScope,
     private val onUnauthorized: () -> Unit = {},
+    /**
+     * A draft new chat: nothing exists on the server yet. Its first message calls [create] (which creates the chat and
+     * [adopt]s it), then goes to that chat; until then nothing is read from or written to the server.
+     */
+    private val create: (suspend () -> Any)? = null,
 ) {
-    private val _state = MutableStateFlow(ChatUiState())
+    var target: ChatTarget = target
+        private set
+    private var draft = create != null
+
+    /** The draft became this chat: the same session (history, live answer) goes on under its id. */
+    fun adopt(chat: ChatTarget) { target = chat; draft = false }
+
+    private val _state = MutableStateFlow(ChatUiState(loading = create == null))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private var conversationId: String? = null
@@ -89,6 +102,7 @@ class ChatSession(
     private var olderLoaded = false
 
     fun open() {
+        if (draft) { loaded = true; _state.update { it.copy(loading = false) }; return }
         if (loaded) { scope.launch { resync(); markRead() }; return }
         loaded = true
         scope.launch {
@@ -159,7 +173,11 @@ class ChatSession(
         val steering = _state.value.busy
         streamJob?.cancel()
         _state.update { it.copy(messages = it.messages + mine, status = ChatStatus.Submitted, error = null, notSent = false, steering = steering) }
-        follow(resume = false) { client.chat(target, id, text.trim(), files, replyTo, answer) }
+        follow(resume = false) {
+            // A draft's first message creates the chat first (new chat created on first message).
+            if (!draft) client.chat(target, id, text.trim(), files, replyTo, answer)
+            else kotlinx.coroutines.flow.flow { create?.invoke(); draft = false; emitAll(client.chat(target, id, text.trim(), files, replyTo, answer)) }
+        }
     }
 
     /**
@@ -210,6 +228,7 @@ class ChatSession(
     fun stop() {
         streamJob?.cancel()
         _state.update { it.copy(status = ChatStatus.Ready) }
+        if (draft) return
         scope.launch {
             runCatching { client.stop(target) }
             delay(300)
@@ -263,7 +282,7 @@ class ChatSession(
 
     /** Re-reads history. While a turn streams, the streamed message and unsent local messages are kept on top of it. */
     suspend fun resync(allowFollow: Boolean = true) {
-        if (!loaded) return
+        if (!loaded || draft) return
         try {
             val history = client.messages(target)
             conversationId = history.conversationId

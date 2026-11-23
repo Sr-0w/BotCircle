@@ -20,7 +20,7 @@ const shortName = (model: string) => model.split('/').pop() ?? model;
  * The chat's own controls, in the field: its model (for the next answers), the reasoning effort when the model has
  * one, and web search. Web search off is enforced on the server: the model is not given the web tools.
  */
-export function ChatControls({ chat, pickerRequest = 0 }: { chat: ChatDTO; pickerRequest?: number }) {
+export function ChatControls({ chat, pickerRequest = 0, onPatch }: { chat: ChatDTO; pickerRequest?: number; /** A draft chat keeps its settings locally until it is created. */ onPatch?: (change: { model?: ModelConfig | null; webSearch?: boolean }) => void }) {
   const chats = useStore((s) => s.chats);
   const [picking, setPicking] = useState(false);
   // /model opens the same picker.
@@ -29,6 +29,7 @@ export function ChatControls({ chat, pickerRequest = 0 }: { chat: ChatDTO; picke
   const model = chat.effectiveModel;
   useEffect(() => { let active = true; void modelsOf(model.provider).then((list) => active && setInfo(list.find((m) => m.id === model.model) ?? null)); return () => { active = false; }; }, [model.provider, model.model]);
   async function patch(change: { model?: ModelConfig | null; webSearch?: boolean }) {
+    if (onPatch) { onPatch(change); return; }
     try { const updated = await api.updateChat(chat.id, change); setStoreChats(chats.map((c) => (c.id === updated.id ? updated : c))); }
     catch (e) { toast.error((e as Error).message); }
   }

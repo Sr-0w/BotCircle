@@ -973,6 +973,7 @@ export const EN: Record<string, string> = {
   "Tape / dans le champ. @ pour solliciter un Circle ou un service, + pour joindre des fichiers.": "Type / in the field. @ to ask a Circle or a service, + to attach files.",
   "Nouveau chat (celui-ci reste dans la liste)": "New chat (this one stays in the list)",
   "Repartir de zéro avec les mêmes réglages": "Start over with the same settings",
+  "Ce chat est déjà vierge.": "This chat is already blank.",
   "Changer le modèle de ce chat": "Change this chat's model",
   "Recherche web : {v0}": "Web search: {v0}",
   "activée": "on",

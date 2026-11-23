@@ -415,7 +415,15 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     suspend fun avatarPresets(): List<AvatarPreset> = get("/avatars/presets")
     suspend fun setAvatar(agentId: String, preset: String?) { json("PUT", "/agents/$agentId/avatar", buildJsonObject { put("preset", preset) }) }
     suspend fun restoreAvatar(agentId: String) { json("POST", "/agents/$agentId/avatar/restore") }
-    suspend fun createChat(): GeneralChat = OdJson.decodeFromJsonElement(json("POST", "/chats", buildJsonObject { }))
+    /** A new chat is created by its first message (the draft's), with the model chosen in the draft, if any. */
+    suspend fun createChat(model: ModelConfig? = null): GeneralChat = OdJson.decodeFromJsonElement(json("POST", "/chats", buildJsonObject {
+        // Every field explicitly: the shared Json drops default values (the provider would be missing).
+        if (model != null) putJsonObject("model") {
+            put("provider", model.provider); put("model", model.model)
+            model.reasoning?.let { put("reasoning", it) }
+            model.providerOrder?.let { order -> putJsonArray("providerOrder") { order.forEach { add(JsonPrimitive(it)) } } }
+        }
+    }))
     /** `/clear` on a companion: archives its main thread (kept, readable) and opens an empty one. */
     suspend fun clearConversation(agentId: String, conversationId: String) {
         json("POST", "/agents/$agentId/clear", buildJsonObject { put("conversationId", conversationId) })

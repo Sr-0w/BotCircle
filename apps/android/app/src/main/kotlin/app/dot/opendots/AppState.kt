@@ -22,7 +22,9 @@ import app.dot.opendots.data.ServerEvent
 import app.dot.opendots.data.SessionStore
 import app.dot.opendots.data.UserRequest
 import app.dot.opendots.data.normalizeServerUrl
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +34,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import app.dot.opendots.data.ModelConfig
@@ -74,6 +79,14 @@ data class AppUiState(
     /** Secure sign-in requests seen by the app, by id. */
     val secureLogins: Map<String, SecureLogin> = emptyMap(),
     val currentChatId: String? = null,
+    /**
+     * New chat created on first message: "New chat" opens this local draft ([AppState.DRAFT_CHAT_ID]); it is in no list
+     * and nothing exists on the server until its first message creates the chat (with the draft's model and web search).
+     */
+    val draftChat: GeneralChat? = null,
+    /** Each draft's screen state slot; the chat a draft became ([draftBornId]) keeps it, so its screen is not rebuilt. */
+    val draftSlot: Int = 0,
+    val draftBornId: String? = null,
     /** #57: the new chat on screen is ephemeral (see [AppState.temporaryChat]): in no list, never saved. */
     val ephemeral: Boolean = false,
     /** #58: a conversation to open at a message (from search): its agent or chat id, and the message. */
@@ -89,7 +102,7 @@ data class AppUiState(
     val reduceTransparency: Boolean = false,
 ) {
     val currentAgent: Agent? get() = agents.firstOrNull { it.id == currentAgentId } ?: agents.firstOrNull()
-    val currentChat: GeneralChat? get() = chats.firstOrNull { it.id == currentChatId } ?: archivedChats.firstOrNull { it.id == currentChatId }
+    val currentChat: GeneralChat? get() = draftChat?.takeIf { it.id == currentChatId } ?: chats.firstOrNull { it.id == currentChatId } ?: archivedChats.firstOrNull { it.id == currentChatId }
     val activeTasks: List<BgTask> get() = tasks.values.filter { it.active }.sortedByDescending { it.createdAt }
     val pendingApprovals: List<Approval> get() = approvals.values.filter { it.status == "pending" }.sortedByDescending { it.createdAt }
 }
@@ -135,6 +148,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     private suspend fun enter(account: Account) {
         _state.update { it.copy(account = account) }
         val boot = client.bootstrap()
+        defaultModel = boot.defaultModel
         if (!boot.onboarded) { setStage(Stage.Onboarding(boot.openrouterConfigured)); return }
         val agents = client.agents().filterNot { it.archived }
         _state.update { s ->
@@ -309,7 +323,11 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun session(agentId: String): ChatSession = session(ChatTarget.Companion(agentId))
 
     fun session(target: ChatTarget): ChatSession =
-        sessions.getOrPut(target.id) { ChatSession(target, client, viewModelScope, ::unauthorized) }
+        sessions.getOrPut(target.id) {
+            // The draft's session creates its chat on its first message, then goes on under the chat's id.
+            if (target.id == DRAFT_CHAT_ID) ChatSession(target, client, viewModelScope, ::unauthorized, create = { createDraftChat() })
+            else ChatSession(target, client, viewModelScope, ::unauthorized)
+        }
 
     // --- Background tasks ---------------------------------------------------------------------
 
@@ -325,7 +343,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
                     s.copy(tasks = snapshot + receivedDuringFetch, tasksReady = true)
                 }
             }
-            runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list.filterNot { c -> c.id in vanishing }) } }
+            runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
             runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
             runCatching { client.secureLogins(pending = true) }.onSuccess { list -> _state.update { s -> s.copy(secureLogins = s.secureLogins.filterValues { !it.pending } + list.associateBy { it.id }) } }
         }
@@ -387,10 +405,66 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     fun selectChat(chatId: String) = _state.update { it.copy(currentChatId = chatId) }
 
-    // --- #57: ephemeral chat ------------------------------------------------------------------------
+    // --- New chat created on first message: the draft --------------------------------------------
 
-    /** Chats being deleted for the switch to ephemeral: a list refresh racing the delete must not show them again. */
-    private val vanishing = HashSet<String>()
+    /** The account's default model (bootstrap), shown by a draft that has no model of its own. */
+    private var defaultModel: ModelConfig? = null
+    /** The creation of the current draft's chat, shared by every caller (session send, file upload): one chat only. */
+    private var draftCreation: Deferred<GeneralChat>? = null
+
+    private fun freshDraft(seed: GeneralChat?): GeneralChat {
+        val model = seed?.model
+        return GeneralChat(id = DRAFT_CHAT_ID, model = model, effectiveModel = model ?: defaultModel ?: ModelConfig(), webSearch = seed?.webSearch ?: true)
+    }
+
+    private fun resetDraft() {
+        draftCreation = null
+        sessions.remove(DRAFT_CHAT_ID)
+    }
+
+    /**
+     * "New chat" (and `/new`, `/clear` with [seed]'s model and web search): a local draft on screen. Nothing is created
+     * on the server and nothing is listed until its first message ([createDraftChat]).
+     */
+    fun newChat(seed: GeneralChat? = null) {
+        resetDraft()
+        _state.update { it.copy(draftChat = freshDraft(seed), currentChatId = DRAFT_CHAT_ID, draftSlot = it.draftSlot + 1) }
+        if (defaultModel == null) viewModelScope.launch {
+            val model = runCatching { client.bootstrap().defaultModel }.getOrNull() ?: return@launch
+            defaultModel = model
+            _state.update { s -> s.draftChat?.takeIf { it.model == null }?.let { s.copy(draftChat = it.copy(effectiveModel = model)) } ?: s }
+        }
+    }
+
+    /** Leaving an untouched draft (back, another chat or tab): nothing to clean up anywhere, it just goes. */
+    fun discardDraft() {
+        if (_state.value.draftChat == null) return
+        resetDraft()
+        _state.update { s -> s.copy(draftChat = null, currentChatId = s.currentChatId.takeIf { it != DRAFT_CHAT_ID }) }
+    }
+
+    /**
+     * The draft's first message: the chat is created now, with the draft's model and web search. It joins the list, the
+     * screen goes on under its id (same session: the first answer streams on), and the draft is gone. Idempotent.
+     */
+    suspend fun createDraftChat(): GeneralChat {
+        val running = draftCreation?.takeUnless { it.isCompleted && it.getCompletionExceptionOrNull() != null }
+        val job = running ?: viewModelScope.async {
+            val draft = _state.value.draftChat ?: throw IllegalStateException("No draft chat")
+            var chat = client.createChat(draft.model)
+            if (!draft.webSearch) chat = client.updateChat(chat.id, buildJsonObject { put("webSearch", false) })
+            sessions.remove(DRAFT_CHAT_ID)?.let { session -> session.adopt(ChatTarget.General(chat.id)); sessions[chat.id] = session }
+            _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, draftChat = null, draftBornId = chat.id, currentChatId = if (s.currentChatId == DRAFT_CHAT_ID) chat.id else s.currentChatId) }
+            chat
+        }.also { draftCreation = it }
+        return try { job.await() } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            if (e is ApiException && e.status == 401) unauthorized()
+            throw e
+        }
+    }
+
+    // --- #57: ephemeral chat ------------------------------------------------------------------------
 
     /** Drops the ephemeral chat silently (sign-out, server change, expired session). */
     private fun dropEphemeral() {
@@ -399,36 +473,24 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     }
 
     /**
-     * The icon on a new, empty chat: it becomes ephemeral. The empty chat the server just created is deleted and leaves
-     * the list at once; the temporary conversation takes its place on screen and is never saved.
+     * The icon on a new chat (a draft, nothing on the server): it becomes ephemeral. There is nothing to delete; the
+     * temporary conversation takes the draft's place on screen, with its model, and is never saved.
      */
     fun startEphemeral(chat: GeneralChat) {
-        if (_state.value.ephemeral) return
-        sessions.remove(chat.id)
-        vanishing += chat.id
-        _state.update { s -> s.copy(ephemeral = true, chats = s.chats.filterNot { it.id == chat.id }, currentChatId = s.currentChatId.takeIf { it != chat.id }) }
-        val model = chat.effectiveModel
+        if (_state.value.ephemeral || chat.id != DRAFT_CHAT_ID) return
+        resetDraft()
+        _state.update { s -> s.copy(ephemeral = true, draftChat = null, currentChatId = s.currentChatId.takeIf { it != DRAFT_CHAT_ID }) }
         // Codex and a blank model stay unselected: the screen then asks for an OpenRouter or Ollama model.
-        temporaryChat.model(model)
+        temporaryChat.model(chat.effectiveModel)
         temporaryChat.start()
-        viewModelScope.launch {
-            try { client.deleteChat(chat.id, false, false) } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                if (e is ApiException && e.status == 401) unauthorized()
-            } finally { vanishing -= chat.id }
-            refreshChats()
-        }
     }
 
-    /** The icon again, before any message: back to a normal chat, which is created fresh. */
-    fun stopEphemeral(onCreated: () -> Unit = {}) {
+    /** The icon again, before any message: back to a normal new chat, a fresh draft (still nothing on the server). */
+    fun stopEphemeral() {
         if (!_state.value.ephemeral) return
-        act {
-            val chat = client.createChat()
-            temporaryChat.discard()
-            _state.update { s -> s.copy(ephemeral = false, chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
-            onCreated()
-        }
+        temporaryChat.discard()
+        resetDraft()
+        _state.update { it.copy(ephemeral = false, draftChat = freshDraft(null), currentChatId = DRAFT_CHAT_ID, draftSlot = it.draftSlot + 1) }
     }
 
     /** Leaving the ephemeral chat (back, another chat or tab, settings...): gone, with a short word if it had content. */
@@ -445,25 +507,25 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun setAvatar(agentId: String, preset: String?) = act { client.setAvatar(agentId, preset) }
     fun restoreAvatar(agentId: String) = act { client.restoreAvatar(agentId) }
 
-    fun createChat(onCreated: () -> Unit) = act {
-        val chat = client.createChat()
-        _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
-        onCreated()
-    }
-
-    /** `/clear` in a general chat: a fresh chat with the same model and web search; the old one stays in the list. */
-    fun restartChat(from: GeneralChat, onCreated: () -> Unit) = act {
-        var chat = client.createChat()
-        val patch = buildJsonObject {
-            from.model?.let { put("model", OdJson.encodeToJsonElement(ModelConfig.serializer(), it)) }
-            if (!from.webSearch) put("webSearch", false)
-        }
-        if (patch.isNotEmpty()) chat = client.updateChat(chat.id, patch)
-        _state.update { s -> s.copy(chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
-        onCreated()
-    }
+    /** `/clear` in a general chat: a fresh draft with the same model and web search; the old one stays in the list. */
+    fun restartChat(from: GeneralChat) = newChat(seed = from)
 
     fun updateChat(chatId: String, patch: JsonObject, onDone: () -> Unit = {}) = act {
+        // A draft keeps its settings here until its first message creates the chat with them.
+        if (chatId == DRAFT_CHAT_ID) {
+            _state.update { s ->
+                val draft = s.draftChat ?: return@update s
+                var next = draft
+                patch["model"]?.let { value ->
+                    val model = if (value is JsonNull) null else OdJson.decodeFromJsonElement(ModelConfig.serializer(), value)
+                    next = next.copy(model = model, effectiveModel = model ?: defaultModel ?: ModelConfig())
+                }
+                (patch["webSearch"] as? JsonPrimitive)?.booleanOrNull?.let { next = next.copy(webSearch = it) }
+                s.copy(draftChat = next)
+            }
+            onDone()
+            return@act
+        }
         val chat = client.updateChat(chatId, patch)
         _state.update { s -> s.copy(chats = s.chats.map { if (it.id == chat.id) chat else it }) }
         onDone()
@@ -480,7 +542,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun clearFocus() = _state.update { it.copy(focus = null) }
 
     private fun refreshChats() = viewModelScope.launch {
-        runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list.filterNot { c -> c.id in vanishing }) } }
+        runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
         runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
     }
 
@@ -616,6 +678,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         const val INVALID_URL = "invalid-url"
         const val FAILED = "failed"
         const val EPHEMERAL_ERASED = "ephemeral-erased"
+        /** The id the draft new chat goes by until its first message creates it (never a server id). */
+        const val DRAFT_CHAT_ID = "draft"
     }
 }
 

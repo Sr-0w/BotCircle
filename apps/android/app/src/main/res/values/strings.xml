@@ -100,6 +100,7 @@
     <string name="cmd_help">All commands</string>
     <string name="cmd_model">Change the model</string>
     <string name="cmd_new_chat">New chat (this one stays in the list)</string>
+    <string name="cmd_clear_draft">This chat is already blank.</string>
     <string name="cmd_stop">Stop the current answer (tasks keep going)</string>
     <string name="cmd_stop_none">No answer running: tasks are stopped from their card.</string>
     <string name="cmd_tasks">Tasks and interventions</string>

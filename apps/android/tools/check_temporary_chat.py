@@ -51,8 +51,10 @@ for start, end in [("fun changeServer()", "fun signIn"), ("fun signOut()", "fun 
     assert "dropEphemeral()" in state.split(start, 1)[1].split(end, 1)[0]
 assert "temporaryChat.discard()" in state.split("private fun dropEphemeral()", 1)[1].split("fun startEphemeral", 1)[0]
 start = state.split("fun startEphemeral", 1)[1].split("fun stopEphemeral", 1)[0]
-assert "client.deleteChat(chat.id" in start and "chats.filterNot { it.id == chat.id }" in start, "the empty normal chat must be deleted and unlisted"
-assert "client.createChat()" in state.split("fun stopEphemeral", 1)[1].split("fun exitEphemeral", 1)[0]
+# New chat created on first message: the icon sits on a draft, so there is no server chat to delete or recreate.
+assert "client.deleteChat" not in start and "client.createChat" not in start and "DRAFT_CHAT_ID" in start, "a draft becomes ephemeral without any server call"
+stop = state.split("fun stopEphemeral", 1)[1].split("fun exitEphemeral", 1)[0]
+assert "client.createChat" not in stop and "freshDraft(" in stop, "back to normal opens a fresh draft, nothing is created"
 assert "HEARTBEAT_MS = 30_000L" in (src / "chat/TemporaryChatSession.kt").read_text()
 assert "temporaryChat.dispose()" in state and "temporaryChat.foreground(visible)" in state
 print("PASS static: temporary endpoint family, named SSE cancellation, restricted providers and auth/lifecycle cleanup")

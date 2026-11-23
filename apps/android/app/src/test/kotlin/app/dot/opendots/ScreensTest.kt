@@ -52,6 +52,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 
 /**
  * Drives the real app (AppState, OpenDotsClient, every screen) against a fake BotCircle engine that speaks the real HTTP
@@ -163,7 +167,7 @@ class ScreensTest {
                     path == "/agents/a1/avatar" -> json("{}")
                     path == "/profile" && request.method == "PUT" -> json(request.body?.utf8() ?: "{}")
                     path == "/profile" -> json("""{"firstName":null,"lastName":null}""")
-                    path == "/bootstrap" -> json("""{"onboarded":$onboarded,"openrouterConfigured":true,"paused":false}""")
+                    path == "/bootstrap" -> json("""{"onboarded":$onboarded,"openrouterConfigured":true,"defaultModel":{"provider":"ollama","model":"llama4"},"paused":false}""")
                     path == "/agents" -> json(agents)
                     path == "/approvals" -> json(approvals)
                     path == "/activities" -> json(activities)
@@ -184,6 +188,7 @@ class ScreensTest {
                     path == "/chats" && request.url.queryParameter("archived") == "1" -> json("""[{"id":"ch0","title":"Old trip","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"archived":true,"archivedAt":"2026-11-10T09:00:00Z","createdAt":"2026-11-01T09:00:00Z","updatedAt":"2026-11-10T09:00:00Z","lastMessagePreview":"Rome in May"}]""")
                     path == "/chats" && request.method == "POST" -> { val id = "chn${newChatSeq.incrementAndGet()}"; newChats += id; json(newChatJson(id)) }
                     path == "/chats" -> json(chats.dropLast(1) + newChats.joinToString("") { "," + newChatJson(it) } + "]")
+                    path.startsWith("/chats/chn") && request.method == "PATCH" -> json(newChatJson(path.removePrefix("/chats/")).replace("\"model\":null", "\"model\":null,\"webSearch\":${"\"webSearch\":true" in (request.body?.utf8() ?: "")}"))
                     path.startsWith("/chats/chn") && request.method == "DELETE" -> { newChats.remove(path.removePrefix("/chats/")); json("""{"ok":true}""") }
                     Regex("/chats/chn\\d+/messages").matches(path) -> json("""{"conversationId":"${path.split("/")[2]}","cursor":null,"active":false,"tasks":[],"messages":[${if (path.split("/")[2] in sentChats) """{"id":"gn1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"Hello"}]}""" else ""}]}""")
                     Regex("/chats/chn\\d+/stream").matches(path) -> MockResponse.Builder().code(204).build()
@@ -721,7 +726,10 @@ class ScreensTest {
     private fun hasIcon() = compose.onAllNodesWithContentDescription("Ephemeral chat").fetchSemanticsNodes().isNotEmpty()
     private fun waitIcon(visible: Boolean) = compose.waitUntil(10_000) { hasIcon() == visible }
 
-    /** Chats tab, "New chat": the new empty chat opens (the fake server creates it as chn1). */
+    /** No chat was created or deleted on the server ("New chat" is a local draft until its first message). */
+    private fun nothingOnServer() = assertTrue(posts.toString(), posts.none { it.first == "/chats" || it.first.startsWith("/chats/chn") })
+
+    /** Chats tab, "New chat": a draft opens; nothing is created on the server (new chat created on first message). */
     private fun openNewChat(app: AppState) {
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Circles").performClick()
@@ -731,8 +739,10 @@ class ScreensTest {
         assertTrue(compose.onAllNodesWithText("Temporary chat").fetchSemanticsNodes().isEmpty())
         assertTrue(compose.onAllNodesWithTag("temporary-chat-action").fetchSemanticsNodes().isEmpty())
         compose.onNodeWithText("New chat").performClick()
-        compose.waitUntil(10_000) { pump(); app.state.value.currentChatId == "chn1" }
+        compose.waitUntil(10_000) { pump(); app.state.value.currentChatId == AppState.DRAFT_CHAT_ID }
         waitIcon(true)
+        nothingOnServer()
+        assertEquals(listOf("ch1"), app.state.value.chats.map { it.id })
     }
 
     @Test fun theIconSwitchesANewChatToEphemeralAndBack() {
@@ -740,23 +750,42 @@ class ScreensTest {
         val app = launch(ThemeMode.DARK)
         openNewChat(app)
         compose.onNodeWithContentDescription("Ephemeral chat").performClick()
-        // The empty normal chat is deleted and gone from the list; the screen says it is ephemeral and not saved.
+        // The draft becomes ephemeral: nothing to delete; the screen says it is ephemeral and not saved.
         waitFor("Ephemeral · not saved")
         waitFor("Not saved, gone when you leave")
-        compose.waitUntil(10_000) { posts.any { it.first == "/chats/chn1" } }
         assertTrue(app.state.value.ephemeral)
-        assertTrue(app.state.value.chats.none { it.id == "chn1" })
+        assertEquals(null, app.state.value.draftChat)
         compose.waitUntil(10_000) { pump(); app.temporaryChat.state.value.snapshot != null }
         assertEquals(1, posts.count { it.first == "/temporary-chats" })
-        // The same icon again, before any message: back to a normal chat, created fresh.
+        // The same icon again, before any message: back to a normal new chat, a fresh draft (still nothing created).
         waitIcon(true)
         compose.onNodeWithContentDescription("Ephemeral chat").performClick()
-        compose.waitUntil(10_000) { pump(); !app.state.value.ephemeral && app.state.value.currentChatId == "chn2" }
+        compose.waitUntil(10_000) { pump(); !app.state.value.ephemeral && app.state.value.currentChatId == AppState.DRAFT_CHAT_ID }
         compose.waitUntil(10_000) { posts.any { it.first == "/temporary-chats/$temporaryId" } }
         assertTrue(compose.onAllNodesWithText("Ephemeral · not saved").fetchSemanticsNodes().isEmpty())
         assertEquals(null, app.temporaryChat.state.value.snapshot)
-        assertTrue(app.state.value.chats.any { it.id == "chn2" })
         waitIcon(true)
+        nothingOnServer()
+        assertEquals(listOf("ch1"), app.state.value.chats.map { it.id })
+    }
+
+    @Test fun backFromAnUntouchedNewChatLeavesNothing() {
+        val app = launch(ThemeMode.DARK)
+        openNewChat(app)
+        // The model chosen in the draft stays local (no PATCH), like web search.
+        compose.onNodeWithTag("chat-web").performClick()
+        compose.waitUntil(10_000) { pump(); app.state.value.draftChat?.webSearch == false }
+        compose.onNodeWithContentDescription("Message, @ for a Circle…").performTextInput("never sent")
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Friday meeting")
+        compose.waitUntil(10_000) { pump(); app.state.value.draftChat == null && app.state.value.currentChatId == null }
+        nothingOnServer()
+        assertEquals(listOf("ch1"), app.state.value.chats.map { it.id })
+        assertTrue(compose.onAllNodesWithText("never sent").fetchSemanticsNodes().isEmpty())
+        // A new one is a fresh draft again (web search back on), still nothing on the server.
+        compose.onNodeWithText("New chat").performClick()
+        compose.waitUntil(10_000) { pump(); app.state.value.draftChat?.webSearch == true }
+        nothingOnServer()
     }
 
     @Test fun anEphemeralChatStreamsLikeANormalChatAndIsGoneWhenYouLeave() {
@@ -765,7 +794,8 @@ class ScreensTest {
         openNewChat(app)
         compose.onNodeWithContentDescription("Ephemeral chat").performClick()
         waitFor("Ephemeral · not saved")
-        compose.waitUntil(10_000) { pump(); posts.any { it.first == "/chats/chn1" } && app.temporaryChat.state.value.snapshot != null }
+        compose.waitUntil(10_000) { pump(); app.temporaryChat.state.value.snapshot != null }
+        nothingOnServer()
         // The new chat's model (Ollama) is already chosen; no attachment, mention or web control is offered.
         waitFor("llama4")
         assertTrue(compose.onAllNodesWithContentDescription("Attach files").fetchSemanticsNodes().isNotEmpty()) // "+": images and files
@@ -832,14 +862,47 @@ class ScreensTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("ephemeral-attachment").fetchSemanticsNodes().size == 2 }
     }
 
-    @Test fun aNormalNewChatLosesTheIconAfterItsFirstMessage() {
+    @Test fun aNormalNewChatIsCreatedByItsFirstMessageAndLosesTheIcon() {
         val app = launch(ThemeMode.DARK)
         openNewChat(app)
+        // Web search turned off in the draft is applied to the chat when it is created.
+        compose.onNodeWithTag("chat-web").performClick()
+        compose.waitUntil(10_000) { pump(); app.state.value.draftChat?.webSearch == false }
+        nothingOnServer()
         compose.onNodeWithContentDescription("Message, @ for a Circle…").performTextInput("Hello")
         compose.onNodeWithContentDescription("Send").performClick()
-        compose.waitUntil(10_000) { posts.any { it.first == "/chats/chn1/chat" } }
+        // Exactly one chat is created, then the message goes to it; the screen follows the chat, which is listed.
+        runCatching { compose.waitUntil(10_000) { pump(); posts.any { it.first == "/chats/chn1/chat" } } }
+            .onFailure { throw AssertionError("posts=$posts chat=${app.state.value.currentChatId} draft=${app.state.value.draftChat} chats=${app.state.value.chats.map { c -> c.id }} ui=${compose.onRoot().printToString()}", it) }
+        assertEquals(1, posts.count { it.first == "/chats" })
+        assertTrue(posts.indexOfFirst { it.first == "/chats" } < posts.indexOfFirst { it.first == "/chats/chn1/chat" })
+        assertTrue("\"webSearch\":false" in posts.first { it.first == "/chats/chn1" }.second)
+        assertTrue("\"text\":\"Hello\"" in posts.first { it.first == "/chats/chn1/chat" }.second)
+        compose.waitUntil(10_000) { pump(); app.state.value.currentChatId == "chn1" && app.state.value.draftChat == null }
+        assertTrue(app.state.value.chats.any { it.id == "chn1" })
+        waitFor("Hello")
         waitIcon(false)
         assertTrue(posts.none { it.first.startsWith("/temporary-chats") })
+        // Another message goes to the same chat: nothing else is created.
+        compose.onNodeWithContentDescription("Message, @ for a Circle…").performTextInput("Again")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(10_000) { pump(); posts.count { it.first == "/chats/chn1/chat" } == 2 }
+        assertEquals(1, posts.count { it.first == "/chats" })
+    }
+
+    @Test fun theModelChosenInANewChatIsTheOneItIsCreatedWith() {
+        val app = launch(ThemeMode.DARK)
+        openNewChat(app)
+        app.updateChat(AppState.DRAFT_CHAT_ID, kotlinx.serialization.json.buildJsonObject { putJsonObject("model") { put("provider", "openrouter"); put("model", "openai/gpt-5") } })
+        compose.waitUntil(10_000) { pump(); app.state.value.draftChat?.model?.model == "openai/gpt-5" }
+        waitFor("gpt-5")
+        nothingOnServer()
+        compose.onNodeWithContentDescription("Message, @ for a Circle…").performTextInput("Hello")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(10_000) { pump(); posts.any { it.first == "/chats/chn1/chat" } }
+        val created = posts.first { it.first == "/chats" }.second
+        assertTrue(created, "\"provider\":\"openrouter\"" in created && "\"model\":\"openai/gpt-5\"" in created)
+        assertTrue(posts.none { it.first == "/chats/chn1" }) // web search unchanged: no PATCH
     }
 
     @Test fun aTaskShowsItsRealStateAndJournal() {

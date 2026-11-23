@@ -100,6 +100,7 @@
     <string name="cmd_help">Toutes les commandes</string>
     <string name="cmd_model">Changer le modèle</string>
     <string name="cmd_new_chat">Nouveau chat (celui-ci reste dans la liste)</string>
+    <string name="cmd_clear_draft">Ce chat est déjà vierge.</string>
     <string name="cmd_stop">Arrêter la réponse en cours (les tâches continuent)</string>
     <string name="cmd_stop_none">Aucune réponse en cours : les tâches s’arrêtent depuis leur carte.</string>
     <string name="cmd_tasks">Tâches et interventions</string>
