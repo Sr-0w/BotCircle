@@ -29,7 +29,7 @@ export function ThreadSearchBar({ conversationId, onClose }: { conversationId: s
     focusMessage({ conversationId, messageId: matches[next].messageId, terms: termsOf(q) });
   };
   return (
-    <div className="flex items-center gap-1.5 border-b bg-background/95 px-3 py-1.5" role="search" data-thread-search onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
+    <div className="mt-[var(--header-h,0px)] flex items-center gap-1.5 border-b bg-background/95 px-3 py-1.5" role="search" data-thread-search onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
       <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
       <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Rechercher dans ce fil…')} aria-label={t('Rechercher dans ce fil…')}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); go(e.shiftKey ? 1 : -1); } }}
