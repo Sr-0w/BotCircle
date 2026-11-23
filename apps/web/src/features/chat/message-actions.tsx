@@ -6,6 +6,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 
+/** #73: actions are always rendered (never hover-gated); idle = muted, hover/focus only emphasise. */
+const ACTION_ICON = 'text-muted-foreground/70 hover:text-foreground focus-visible:text-foreground';
+
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '👀', '🔥'];
 
 export function scrollToMessage(id: string) {
@@ -97,7 +100,7 @@ export function MessageActions({ text, onReply, onReact, onEdit, onRegenerate, a
       <div data-no-press className="flex items-center gap-0.5">
         <DropdownMenu open={open} onOpenChange={setOpen}>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Actions du message')}>
+            <Button type="button" size="icon-xs" variant="ghost" className={ACTION_ICON} aria-label={t('Actions du message')}>
               <EllipsisIcon />
             </Button>
           </DropdownMenuTrigger>
@@ -113,11 +116,11 @@ export function MessageActions({ text, onReply, onReact, onEdit, onRegenerate, a
             {text && <DropdownMenuItem onSelect={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}{copied ? t('Copié') : t('Copier')}</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="flex items-center gap-0.5 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/bubble:opacity-100 [@media(hover:hover)]:group-focus-within/bubble:opacity-100">
-          <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Répondre')} onClick={onReply}><ReplyIcon /></Button>
-          {text && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={copied ? t('Copié') : t('Copier')} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</Button>}
-          {onEdit && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Modifier')} onClick={onEdit}><PencilIcon /></Button>}
-          {onRegenerate && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" aria-label={t('Régénérer')} onClick={onRegenerate}><RotateCcwIcon /></Button>}
+        <div className="flex items-center gap-0.5">
+          <Button type="button" size="icon-xs" variant="ghost" className={ACTION_ICON} aria-label={t('Répondre')} onClick={onReply}><ReplyIcon /></Button>
+          {text && <Button type="button" size="icon-xs" variant="ghost" className={ACTION_ICON} aria-label={copied ? t('Copié') : t('Copier')} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</Button>}
+          {onEdit && <Button type="button" size="icon-xs" variant="ghost" className={ACTION_ICON} aria-label={t('Modifier')} onClick={onEdit}><PencilIcon /></Button>}
+          {onRegenerate && <Button type="button" size="icon-xs" variant="ghost" className={ACTION_ICON} aria-label={t('Régénérer')} onClick={onRegenerate}><RotateCcwIcon /></Button>}
         </div>
         {copied && <span className="px-1 text-[11px] text-muted-foreground">{t('Copié')}</span>}
       </div>

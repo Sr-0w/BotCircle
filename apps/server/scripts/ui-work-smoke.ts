@@ -418,6 +418,21 @@ try {
   await page.getByRole('textbox', { name: /Rechercher un modèle/ }).waitFor().catch(async () => { await page.locator('[data-model-menu]').waitFor(); });
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('[data-general-chat] [id^="message-"]').count(), before46);
+  // #73 : les actions d'un message sont toujours visibles (le survol n'accentue que), sans déplacer le message.
+  const msgActions = page.locator('[data-general-chat] [id^="message-"]').last().locator('[data-no-press]');
+  await page.mouse.move(2, 2);
+  for (const name of ['Actions du message', 'Répondre', 'Copier']) {
+    const control = msgActions.getByRole('button', { name }).first();
+    await control.waitFor({ state: 'visible' });
+    assert.equal(await control.evaluate((el) => { let node: Element | null = el; let opacity = 1; while (node) { opacity *= Number(getComputedStyle(node).opacity); node = node.parentElement; } return opacity; }), 1, `${name} not hover-gated`);
+  }
+  const idleBox = await msgActions.boundingBox();
+  await msgActions.getByRole('button', { name: 'Répondre' }).hover();
+  const hoverBox = await msgActions.boundingBox();
+  assert.deepEqual(hoverBox, idleBox, 'hover does not move the message actions');
+  await msgActions.getByRole('button', { name: 'Répondre' }).focus();
+  assert(await msgActions.getByRole('button', { name: 'Répondre' }).evaluate((el) => el === document.activeElement), 'actions are keyboard focusable');
+  await page.mouse.move(2, 2);
   // Épingler : le chat reste en tête de liste.
   const row = page.getByRole('navigation', { name: 'Chats' }).locator('.group\\/chat').first();
   await row.hover();
@@ -489,15 +504,17 @@ try {
   await page.waitForTimeout(400); await shot('clear-archive');
   await page.keyboard.press('Escape');
   // #31/#47 : Code direct sur le web — une vraie session, sans Circle, ouverte aussitôt.
-  await page.goto(`${origin}/#/settings/opencode`);
-  const fresh = page.locator('[data-new-code-session]');
-  await fresh.getByRole('button', { name: 'Nouvelle session' }).click();
+  // #72 : Code est une destination (`#/code`) ; « Nouvelle session » ouvre la session exacte à son URL.
+  await page.goto(`${origin}/#/code`);
+  await page.locator('[data-code-page]').locator('[data-code-new]').click();
+  await page.waitForFunction(() => /^#\/code\/.+/.test(location.hash));
   const direct = page.locator('[data-code-workspace]').first();
   await direct.getByRole('textbox').fill('Ajoute un test pour le parseur.');
   await direct.getByRole('button', { name: 'Envoyer' }).click();
   await direct.locator('[data-code-message="user"]').getByText('Ajoute un test pour le parseur.').waitFor();
   await assertTimelineScroll(direct.getByRole('log'));
-  await page.locator('[data-code-sessions]').getByText('Par toi').first().waitFor();
+  await page.getByRole('button', { name: 'Fermer l’espace de code' }).click();
+  await page.locator('[data-code-page]').getByText('Par toi').first().waitFor();
   await shot('code-direct');
   assert.deepEqual(errors, []);
   console.log('Chromium : fichier joint, carte, accès et historique ; carte de tâche en direct et détails ; chat, @mention, intervention, renommage et suppression vérifiés.');
