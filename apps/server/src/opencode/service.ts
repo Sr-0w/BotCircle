@@ -268,6 +268,33 @@ async function openEmptySession(instance: InstanceRow, dir: string | null, conve
   return row;
 }
 
+/** #69: longest title kept (same bound as every task title). */
+export const SESSION_TITLE_MAX = 200;
+
+/**
+ * Manual rename of a Code session. BotCircle's title is the display title and is never replaced by an automatic one
+ * (`titleManual`). The OpenCode session is renamed too when its API offers it (1.x), best effort and never blocking;
+ * `upstream` tells the truth about it. The session id, history, status and running work are untouched: no prompt is sent.
+ */
+export async function renameTask(task: TaskRow, rawTitle: string): Promise<{ title: string; upstream: boolean }> {
+  if (task.provider !== 'opencode' || !task.external) throw new OpencodeError('Cette tâche n’est pas une session OpenCode.');
+  const title = rawTitle.replace(/\s+/g, ' ').trim();
+  if (!title) throw new OpencodeError('Le nom ne peut pas être vide.');
+  if (title.length > SESSION_TITLE_MAX) throw new OpencodeError(`Le nom ne peut pas dépasser ${SESSION_TITLE_MAX} caractères.`);
+  const ext = task.external;
+  let upstream = false;
+  try {
+    const instance = await getInstance(ext.instanceId);
+    if (instance) upstream = await (await clientFor(instance)).renameSession(ext.sessionId, title.slice(0, 120), ext.directory);
+  } catch { upstream = false; }
+  await updateTask(task.id, { title, external: { ...task.external, titleManual: true } });
+  if (task.workConversationId) await db().update(schema.conversations).set({ title }).where(eq(schema.conversations.id, task.workConversationId));
+  const row = (await getTask(task.id))!;
+  publish({ type: 'task.changed', task: await toTaskDTO(row) });
+  publish({ type: 'opencode.changed' });
+  return { title, upstream };
+}
+
 export async function attachSession(input: { instanceId: string; sessionId: string; directory?: string | null }) {
   const instance = await getInstance(input.instanceId);
   if (!instance) throw new OpencodeError('Machine introuvable.');
@@ -367,7 +394,7 @@ export async function instructOpencode(task: TaskRow, instruction: string, autho
   const delivered = await client.prompt(ext.sessionId, instruction, ext.directory, busy ? delivery : undefined, { files, model: client.version === 'v1' ? ext.model ?? null : null });
   await exchange(task, { author, kind: 'instruction', text: files.length ? `${instruction}\n\nFichiers joints : ${files.map((f) => f.name).join(', ')}` : instruction, original });
   // Une session terminée repart : la carte redevient « en cours », le prochain résultat sera un nouveau résultat.
-  await patchExternal(task, { promptedAt: Date.now(), unreachable: false, quota: null }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, ...(task.instruction ? {} : { instruction: instruction.trim().slice(0, 8000), title: truncate(instruction.replace(/\s+/g, ' ').trim(), 80) }), currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
+  await patchExternal(task, { promptedAt: Date.now(), unreachable: false, quota: null }, { status: 'running', finishedAt: null, result: null, error: null, blocker: null, requiresUserInput: false, ...(task.instruction ? {} : { instruction: instruction.trim().slice(0, 8000), ...(task.external?.titleManual ? {} : { title: truncate(instruction.replace(/\s+/g, ' ').trim(), 80) }) }), currentAction: busy ? (delivered === 'steer' ? 'Consigne intégrée au travail en cours' : 'Consigne placée à la suite du travail en cours') : 'Consigne transmise à OpenCode', lastHeartbeat: new Date() });
   return { queued: busy, delivery: busy ? (delivered ?? 'queue') : null };
 }
 

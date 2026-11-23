@@ -188,6 +188,7 @@ export const api = {
     if (!response.ok) { if (response.status === 401) window.dispatchEvent(new Event('opendots:unauthorized')); throw new ApiError(value.error ?? 'Envoi impossible.', response.status); }
     return value as { queued: boolean; delivery: 'steer' | 'queue' | null };
   },
+  renameCodeSession: (taskId: string, title: string) => request<{ title: string; upstream: boolean }>('PATCH', `/opencode/tasks/${taskId}`, { title }),
   codeAutoResume: (taskId: string, enabled: boolean) => request<{ ok: boolean }>('POST', `/opencode/tasks/${taskId}/auto-resume`, { enabled }),
   codeModels: (taskId: string) => request<OpencodeModelsDTO>('GET', `/opencode/tasks/${taskId}/models`),
   codeSetModel: (taskId: string, model: OpencodeModelRef) => request<OpencodeCurrentModelDTO>('POST', `/opencode/tasks/${taskId}/model`, model),

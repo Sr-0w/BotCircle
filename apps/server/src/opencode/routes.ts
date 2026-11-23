@@ -7,7 +7,7 @@ import { getTask, TaskError } from '../tasks/service.ts';
 import { OpencodeHttpError, OpencodeUnreachable, type PromptFile } from './client.ts';
 import {
   checkInstance, deleteInstance, getInstance, instanceProjects, instanceSessions, instructOpencode, listExchanges, listFiles, listInstances, OpencodeError, readFile,
-  pairInstance, replyPermission, replyQuestion, saveInstance, setTaskModel, syncTask, taskModels, toInstanceDTO, workspace, resumeAfterQuota, setAutoResume, startDirectSession, attachSession, allSessions } from './service.ts';
+  pairInstance, replyPermission, replyQuestion, saveInstance, setTaskModel, syncTask, taskModels, toInstanceDTO, workspace, resumeAfterQuota, setAutoResume, renameTask, startDirectSession, attachSession, allSessions } from './service.ts';
 
 const instanceSchema = z.object({
   name: z.string().min(1).max(60), baseUrl: z.string().min(1).max(500), username: z.string().max(100).optional(),
@@ -72,6 +72,11 @@ export function opencodeRoutes() {
     const text = body.text.trim();
     if (!text && !files.length) throw new OpencodeError('Écris un message ou joins un fichier.');
     return c.json(await instructOpencode(await task(c.req.param('id')), text || 'Voici des fichiers joints.', 'user', null, body.delivery, files));
+  });
+  // #69: manual rename; works while the session runs and never sends anything to it.
+  app.patch('/tasks/:id', async (c) => {
+    const { title } = z.object({ title: z.string().max(2000) }).strict().parse(await c.req.json());
+    return c.json(await renameTask(await task(c.req.param('id')), title));
   });
   app.get('/tasks/:id/models', async (c) => c.json(await taskModels(await task(c.req.param('id')))));
   app.post('/tasks/:id/model', async (c) => {

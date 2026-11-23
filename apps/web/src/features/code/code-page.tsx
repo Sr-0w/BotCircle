@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ACTIVE_TASK_STATUSES, type OpencodeInstanceDTO, type TaskDTO } from '@opendots/shared';
-import { CheckIcon, LoaderIcon, PlusIcon, SearchIcon, ServerIcon } from 'lucide-react';
+import { CheckIcon, EllipsisIcon, LoaderIcon, PencilIcon, PlusIcon, SearchIcon, ServerIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
 import { api } from '@/lib/api';
 import { useServerEvent, useStore } from '@/lib/store';
 import { t } from '@/lib/i18n';
 import { cn, relativeTime } from '@/lib/utils';
 import { CODE_STATUS } from '../chat/attachments';
+import { RenameTitle } from './rename-title';
 
 import type { CodeFilter as Filter } from './code-live';
 
@@ -193,24 +195,42 @@ function StatusPill({ label, running, tone }: { label: string; running?: boolean
 }
 
 function SessionRow({ task, origin, onOpen }: { task: TaskDTO; origin: string; onOpen: () => void }) {
+  const [editing, setEditing] = useState(false);
   const disconnected = Boolean(task.external?.unreachable) && ACTIVE_TASK_STATUSES.includes(task.status);
   const status = disconnected ? t('Déconnecté') : t(CODE_STATUS[task.status]);
   const changes = task.external?.changes;
+  // #69: rename from the row (…, right click, long press); the session itself is never touched.
   return (
-    <button type="button" onClick={onOpen} data-code-session={task.id} data-code-origin={task.requestedBy}
-      aria-label={[task.title, origin, status].join(', ')}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring">
-      <OpencodeLogo size={16} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{task.title}</span>
-        <span className="block truncate text-muted-foreground text-xs">{[origin, task.external?.instanceName, folder(task.external?.directory), relativeTime(task.startedAt ?? task.createdAt)].filter(Boolean).join(' · ')}</span>
-      </span>
-      {changes && changes.files > 0 && (changes.additions > 0 || changes.deletions > 0) && (
-        <span className="shrink-0 text-xs"><span className="text-success">+{changes.additions}</span> <span className="text-destructive">−{changes.deletions}</span></span>
+    <div className="flex items-center" data-code-row={task.id} onContextMenu={(e) => { e.preventDefault(); setEditing(true); }}>
+      {editing ? (
+        <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5"><OpencodeLogo size={16} /><RenameTitle taskId={task.id} value={task.title} onDone={() => setEditing(false)} /></div>
+      ) : (
+        <button type="button" onClick={onOpen} data-code-session={task.id} data-code-origin={task.requestedBy}
+          aria-label={[task.title, origin, status].join(', ')}
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring">
+          <OpencodeLogo size={16} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm">{task.title}</span>
+            <span className="block truncate text-muted-foreground text-xs">{[origin, task.external?.instanceName, folder(task.external?.directory), relativeTime(task.startedAt ?? task.createdAt)].filter(Boolean).join(' · ')}</span>
+          </span>
+          {changes && changes.files > 0 && (changes.additions > 0 || changes.deletions > 0) && (
+            <span className="shrink-0 text-xs"><span className="text-success">+{changes.additions}</span> <span className="text-destructive">−{changes.deletions}</span></span>
+          )}
+          {task.status === 'completed' && !disconnected
+            ? <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs" data-code-status={status}><CheckIcon className="size-3" />{status}</span>
+            : <StatusPill label={status} running={task.status === 'running' && !disconnected} tone={task.status === 'failed' || task.status === 'waiting_for_user' || disconnected ? 'danger' : 'muted'} />}
+        </button>
       )}
-      {task.status === 'completed' && !disconnected
-        ? <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs" data-code-status={status}><CheckIcon className="size-3" />{status}</span>
-        : <StatusPill label={status} running={task.status === 'running' && !disconnected} tone={task.status === 'failed' || task.status === 'waiting_for_user' || disconnected ? 'danger' : 'muted'} />}
-    </button>
+      {!editing && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="icon-xs" variant="ghost" className="mr-2 shrink-0 text-muted-foreground/70 hover:text-foreground" aria-label={t('Actions de la session')} data-code-row-menu><EllipsisIcon /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setEditing(true)} data-code-rename-item><PencilIcon />{t('Renommer')}</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }

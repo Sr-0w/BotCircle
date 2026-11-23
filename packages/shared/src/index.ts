@@ -380,6 +380,8 @@ export interface TaskExternalRef {
   /** Dernier message assistant déjà pris en compte, pour ne rien rapporter deux fois. */
   seenMessageId?: string | null;
   promptedAt?: number;
+  /** #69: the title was set by the user; no automatic title (first message, upstream sync) replaces it. */
+  titleManual?: boolean;
   /** `true` tant que l'instance ne répond pas : l'état affiché est le dernier connu, pas un échec. */
   unreachable?: boolean;
   /**
