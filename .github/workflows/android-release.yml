@@ -60,7 +60,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: |
             mkdir -p apps/android/app/build/emulator
-            adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apk=apps/android/app/build/outputs/apk/release/app-release.apk; [ -f "$apk" ] || apk=apps/android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r "$apk"
             adb logcat -c
             adb shell am start -W -n app.dot.opendots/.MainActivity > apps/android/app/build/emulator/launch.txt
             adb shell uiautomator dump /sdcard/botcircle-startup.xml
@@ -88,7 +89,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           apk="BotCircle-${TAG#android-v}.apk"
-          cp apps/android/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "$apk"
           gh release create "$TAG" "$apk" --prerelease --target "$GITHUB_SHA" \
             --title "BotCircle Android ${TAG#android-v}" \
-            --notes "Alpha build of the native Android app (Kotlin, Jetpack Compose, Quiet UI). Debug-signed: uninstall it before installing a later build signed with another key. Requires Android 8.0+; backdrop blur needs Android 12+. Connect it to your own BotCircle server (HTTPS)."
+            --notes "Alpha build of the native Android app (Kotlin, Jetpack Compose, Quiet UI). Release build signed with the fixed BotCircle key: it updates the previous signed build in place (builds up to 0.1.0-alpha.36 were debug-signed: uninstall those once). Requires Android 8.0+; backdrop blur needs Android 12+. Connect it to your own BotCircle server (HTTPS)."
