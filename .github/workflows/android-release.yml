@@ -60,8 +60,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: |
             mkdir -p apps/android/app/build/emulator
-            apk=apps/android/app/build/outputs/apk/release/app-release.apk; [ -f "$apk" ] || apk=apps/android/app/build/outputs/apk/debug/app-debug.apk
-            adb install -r "$apk"
+            # One line: the emulator runner executes each script line in its own shell.
+            if [ -f apps/android/app/build/outputs/apk/release/app-release.apk ]; then adb install -r apps/android/app/build/outputs/apk/release/app-release.apk; else adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk; fi
             adb logcat -c
             adb shell am start -W -n app.dot.opendots/.MainActivity > apps/android/app/build/emulator/launch.txt
             adb shell uiautomator dump /sdcard/botcircle-startup.xml
