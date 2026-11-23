@@ -1,17 +1,20 @@
 import { createHash } from 'node:crypto';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { streamText } from 'ai';
+import { streamText, type ModelMessage } from 'ai';
 import { z } from 'zod';
 import { currentAccount } from '../auth/context.ts';
 import { onSessionRevoked } from '../auth/store.ts';
 import { resolveModel } from '../models/gateway.ts';
-import { TemporaryError, TemporaryStore, MAX_TEXT } from './store.ts';
+import { TemporaryError, TemporaryStore, MAX_TEXT, type TemporarySession } from './store.ts';
+import { attachmentSchema, prepareAttachments, userContent, TURN_BODY_LIMIT } from './attachments.ts';
 
 const turnSchema = z.object({
-  text: z.string().trim().min(1).max(16_000),
+  // May be empty when attachments are present (checked in the handler).
+  text: z.string().trim().max(16_000),
+  attachments: z.array(attachmentSchema).optional(),
   // Codex's local app-server diagnostics have not been audited for this mode.
   model: z.object({
     provider: z.enum(['openrouter', 'ollama']),
@@ -32,7 +35,10 @@ export function temporaryRoutes(store = defaultStore, resolve = resolveModel) {
   app.onError((error, c) => c.json({
     error: error instanceof TemporaryError ? error.message : 'Requête temporaire impossible. Aucun diagnostic de contenu conservé.',
   }, error instanceof TemporaryError ? error.status : 400));
-  app.use('*', bodyLimit({ maxSize: 70_000 }));
+  // Only the turn route may carry attachments (base64); everything else stays tiny.
+  const onError = (c: Context) => c.json({ error: 'Requête trop volumineuse : 5 pièces jointes, 10 Mo chacune, 20 Mo par message.' }, 413);
+  const small = bodyLimit({ maxSize: 70_000, onError }), large = bodyLimit({ maxSize: TURN_BODY_LIMIT, onError });
+  app.use('*', (c, next) => (c.req.method === 'POST' && c.req.path.endsWith('/turn') ? large(c, next) : small(c, next)));
   app.use('*', async (c, next) => {
     const token = getCookie(c, 'opendots_session');
     if (!currentAccount() || !token) return c.json({ error: 'Connexion requise.' }, 401);
@@ -42,8 +48,10 @@ export function temporaryRoutes(store = defaultStore, resolve = resolveModel) {
     c.header('X-Accel-Buffering', 'no');
   });
   const owner = (token: string) => `${currentAccount()!.id}:${createHash('sha256').update(token).digest('hex')}`;
-  const view = (s: ReturnType<TemporaryStore['create']>) => ({
-    id: s.id, expiresAt: Math.min(s.expiresAt, s.idleUntil), messages: s.messages, busy: !!s.active,
+  // Snapshots carry attachment metadata only, never bytes.
+  const view = (s: TemporarySession) => ({
+    id: s.id, expiresAt: Math.min(s.expiresAt, s.idleUntil), busy: !!s.active,
+    messages: s.messages.map(({ files: _bytes, ...message }) => message),
   });
   app.post('/', c => {
     const token = getCookie(c, 'opendots_session')!;
@@ -63,7 +71,9 @@ export function temporaryRoutes(store = defaultStore, resolve = resolveModel) {
   app.post('/:id/turn', async c => {
     const session = store.get(c.req.param('id'), owner(getCookie(c, 'opendots_session')!));
     const body = turnSchema.parse(await c.req.json());
-    const controller = store.begin(session, body.text);
+    if (!body.text && !body.attachments?.length) throw new TemporaryError(400, 'Message vide.');
+    const files = await prepareAttachments(body.attachments);
+    const controller = store.begin(session, body.text, files.reduce((n, f) => n + f.size, 0));
     const disconnect = () => controller.abort();
     c.req.raw.signal.addEventListener('abort', disconnect, { once: true });
     const timeout = setTimeout(disconnect, 120_000);
@@ -81,7 +91,7 @@ export function temporaryRoutes(store = defaultStore, resolve = resolveModel) {
           const result = streamText({
             model: resolved.model, providerOptions: resolved.providerOptions,
             system: 'You are a general-purpose assistant in a temporary chat. No persistent memory or tools are available. Do not claim to schedule tasks, use tools or remember information beyond this session.',
-            messages: [...session.messages.map(({ role, content }) => ({ role, content })), { role: 'user', content: body.text }],
+            messages: [...session.messages.map(({ role, content, files: kept }): ModelMessage => (role === 'user' ? { role, content: userContent(content, kept) } : { role, content })), { role: 'user', content: userContent(body.text, files) } satisfies ModelMessage],
             // No tools, delegation, uploads, telemetry, durable callbacks or retries.
             tools: {}, toolChoice: 'none', maxRetries: 0, maxOutputTokens: 8192,
             abortSignal: controller.signal, onError: () => {},
@@ -102,7 +112,7 @@ export function temporaryRoutes(store = defaultStore, resolve = resolveModel) {
             await stream.writeSSE({ event: 'stopped', data: '{}' });
           } else {
             // Commit complete turns only; interrupted turns can be safely retried.
-            session.messages.push({ role: 'user', content: body.text }, { role: 'assistant', content: text, model: body.model });
+            session.messages.push({ role: 'user', content: body.text, ...(files.length ? { attachments: files.map(({ name, mediaType, size }) => ({ name, mediaType, size })), files } : {}) },{ role: 'assistant', content: text, model: body.model });
             await stream.writeSSE({ event: 'done', data: '{}' });
           }
         } catch {

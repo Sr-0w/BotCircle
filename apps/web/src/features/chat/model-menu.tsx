@@ -13,7 +13,9 @@ const PROVIDER_NAMES: Record<string, string> = { openrouter: 'OpenRouter', ollam
  * The models of every configured provider, searchable, grouped by provider, favourites first. A star keeps a model on
  * top of every picker, on every device (it is an account setting).
  */
-export function ModelMenu({ current, onPick, onClose, footer }: { current: ModelConfig; onPick: (model: ModelInfo) => void; onClose: () => void; footer?: React.ReactNode }) {
+export function ModelMenu({ current, onPick, onClose, footer, unavailable }: { current: ModelConfig; onPick: (model: ModelInfo) => void; onClose: () => void; footer?: React.ReactNode;
+  /** A reason (shown as a tooltip) makes that model visible but not selectable. */
+  unavailable?: (model: ModelInfo) => string | undefined }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.availableModels>> | null>(null);
   const [error, setError] = useState(''), [query, setQuery] = useState('');
   const [favorites, setFavorites] = useState<Favorite[]>([]);
@@ -60,7 +62,7 @@ export function ModelMenu({ current, onPick, onClose, footer }: { current: Model
               const fav = isFavorite(m);
               return (
                 <div key={`${m.provider}/${m.id}`} className={cn('group/model flex items-center gap-1 pr-2 hover:bg-accent', on && 'bg-accent/60')} data-model-option={`${m.provider}/${m.id}`}>
-                  <button type="button" onClick={() => onPick(m)} className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm">
+                  <button type="button" onClick={() => onPick(m)} disabled={!!unavailable?.(m)} title={unavailable?.(m)} className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50">
                     <span className="min-w-0 flex-1 truncate">{m.name || m.id}</span>
                     {title === t('Favoris') && <span className="shrink-0 text-[11px] text-muted-foreground">{PROVIDER_NAMES[m.provider]}</span>}
                     {m.vision && <EyeIcon className="size-3 shrink-0 text-muted-foreground" aria-label={t('Lit les images')} />}

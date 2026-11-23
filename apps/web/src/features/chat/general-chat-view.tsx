@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FloatingComposer } from '@/components/floating-composer';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { AlertCircleIcon } from 'lucide-react';
+import { AlertCircleIcon, GhostIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ChatDTO } from '@opendots/shared';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Shimmer } from '@/components/ai-elements/shimmer';
@@ -22,7 +24,7 @@ import { ClearDialog } from './clear-dialog';
 import { ThinkingOrb, type OrbState } from '@/components/thinking-orb';
 
 /** The orb follows what the request is really doing, read from the streamed parts, never from the text. */
-function orbState(status: string, last: ODMessage | undefined): OrbState {
+export function orbState(status: string, last: ODMessage | undefined): OrbState {
   if (status === 'submitted' || last?.role !== 'assistant') return 'working';
   const part = last.parts.at(-1) as { type: string; state?: string } | undefined;
   if (!part) return 'working';
@@ -37,7 +39,7 @@ function orbState(status: string, last: ODMessage | undefined): OrbState {
  * Un chat général : un fil sans compagnon propriétaire, tenu par un assistant au modèle choisi.
  * `@Nom` fait intervenir un compagnon ; sa carte d'intervention puis sa réponse signée arrivent dans le fil.
  */
-export function GeneralChatView({ chat }: { chat: ChatDTO }) {
+export function GeneralChatView({ chat, onEphemeral }: { chat: ChatDTO; /** #57: switches this new, empty chat to ephemeral mode. */ onEphemeral?: (chat: ChatDTO) => void }) {
   const [initial, setInitial] = useState<ODMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -46,10 +48,10 @@ export function GeneralChatView({ chat }: { chat: ChatDTO }) {
   }, [chat.id]);
   if (error) return <div className="p-6 text-destructive text-sm">{error}</div>;
   if (!initial) return <div className="flex-1" />;
-  return <Inner key={chat.id} chat={chat} initial={initial} />;
+  return <Inner key={chat.id} chat={chat} initial={initial} onEphemeral={onEphemeral} />;
 }
 
-function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] }) {
+function Inner({ chat: info, initial, onEphemeral }: { chat: ChatDTO; initial: ODMessage[]; onEphemeral?: (chat: ChatDTO) => void }) {
   const uploaded = useRef(new WeakMap<File, { type: 'file'; url: string; filename: string; mediaType: string }>());
   const agents = useStore((s) => s.agents);
   const mentions = useMemo(() => agents.filter((agent) => agent.named).map((agent) => ({ id: agent.id, name: agent.name, color: agent.color, description: agent.description })), [agents]);
@@ -115,6 +117,17 @@ function Inner({ chat: info, initial }: { chat: ChatDTO; initial: ODMessage[] })
     <ChatActionsContext.Provider value={actions}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-general-chat>
         <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
+        {/* #57: only a new chat (no message yet, none sent in this session) can become ephemeral; never afterwards. */}
+        {onEphemeral && messages.length === 0 && !busy && !info.archived && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-end px-4 sm:px-6">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="pointer-events-auto" aria-label={t('Chat éphémère')} aria-pressed={false} onClick={() => onEphemeral(info)} data-ephemeral-toggle><GhostIcon /></Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('Chat éphémère : jamais sauvegardé')}</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       <Conversation className="min-h-0 flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
             {messages.length === 0 && (

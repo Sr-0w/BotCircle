@@ -25,7 +25,9 @@ export type SlashCommand = { name: string; description: string; args?: { value: 
  * File picker, drag-and-drop and paste share one draft. Images keep their preview; any other file is listed
  * with its name and size and sent unchanged. `mentions` enables @companion completion.
  */
-export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand, commands, mentionLabel }: {
+export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply, onClearReply, mentions, tools, onCommand, commands, mentionLabel, noFiles }: {
+  /** Hides every way to attach files (button, paste, drop), for conversations that cannot carry them. */
+  noFiles?: boolean;
   onSubmit: (text: string, files: File[]) => void | Promise<void>;
   onStop: () => void; busy: boolean; placeholder: string; autoFocus?: boolean;
   /** The conversation's own controls (model, effort, web…), under the text. */
@@ -47,7 +49,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
   useEffect(() => () => { for (const item of draft.current) if (item.preview) URL.revokeObjectURL(item.preview); }, []);
   function replace(next: DraftFile[]) { draft.current = next; setFiles(next); }
   function add(incoming: File[]) {
-    if (submitting.current) return;
+    if (submitting.current || noFiles) return;
     let warning = ''; const next = [...draft.current];
     for (const file of incoming) {
       if (next.length >= MAX_FILES) { warning = t('Tu peux joindre jusqu’à {n} fichiers par message.', { n: MAX_FILES }); break; }
@@ -140,9 +142,9 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
 
   return <form
     onSubmit={(event) => { event.preventDefault(); void submit(); }}
-    onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); setDragging(true); } }}
+    onDragOver={(event) => { if (!noFiles && event.dataTransfer.types.includes('Files')) { event.preventDefault(); setDragging(true); } }}
     onDragLeave={() => setDragging(false)}
-    onDrop={(event) => { if (event.dataTransfer.files.length) { event.preventDefault(); add(Array.from(event.dataTransfer.files)); } setDragging(false); }}
+    onDrop={(event) => { if (noFiles) { event.preventDefault(); return; } if (event.dataTransfer.files.length) { event.preventDefault(); add(Array.from(event.dataTransfer.files)); } setDragging(false); }}
     className={cn('quiet-glass relative flex w-full flex-col gap-2 rounded-3xl border p-2 shadow-sm transition-shadow', 'focus-within:border-ring/60 focus-within:shadow-md', dragging && 'border-ring ring-2 ring-ring/30')}>
     <input ref={picker} type="file" multiple className="hidden" aria-label={t('Choisir des fichiers')} onChange={(event) => { add(Array.from(event.target.files ?? [])); event.target.value = ''; }} />
  {slash && <div role="listbox" aria-label={t('Commandes')} data-slash-palette className="absolute bottom-full left-3 mb-2 w-80 max-w-[calc(100%-1.5rem)] overflow-hidden rounded-xl border bg-popover p-1 shadow-md">
@@ -171,7 +173,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
     {error && <p role="alert" className="px-3 text-xs text-destructive">{error}</p>}
     <div className="flex items-end gap-2">
       {/* "+" holds the less frequent actions: attach files, ask a companion (no separate @ button). */}
-      {mentions?.length ? (
+      {noFiles ? <span className="w-2 shrink-0" aria-hidden /> : mentions?.length ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" disabled={uploading} aria-label={t('Ajouter')}><PlusIcon /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top">
@@ -185,7 +187,7 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
         onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
         onPaste={(event) => {
           const pasted = Array.from(event.clipboardData.items).filter((item) => item.kind === 'file').map((item) => item.getAsFile()).filter((file): file is File => file !== null);
-          if (pasted.length) { event.preventDefault(); add(pasted); }
+          if (pasted.length && !noFiles) { event.preventDefault(); add(pasted); }
         }}
         onKeyDown={(event) => {
           if (mention && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey) { event.preventDefault(); pick(mention.options[0].name); return; }
@@ -206,6 +208,6 @@ export function Composer({ onSubmit, onStop, busy, placeholder, autoFocus, reply
       {busy && <Button type="button" size="icon" variant="secondary" className="size-9 rounded-full" onClick={onStop} aria-label={t('Arrêter')}><SquareIcon className="size-3.5 fill-current" /></Button>}
       <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full" disabled={uploading || (!value.trim() && !files.length)} aria-label={t('Envoyer')}>{uploading ? <LoaderIcon className="animate-spin" /> : <ArrowUpIcon />}</Button>
     </div>
-    {tools && <div className="-mt-1 flex items-center pl-10">{tools}</div>}
+    {tools && <div className={cn('-mt-1 flex items-center', noFiles ? 'pl-3' : 'pl-10')}>{tools}</div>}
   </form>;
 }
