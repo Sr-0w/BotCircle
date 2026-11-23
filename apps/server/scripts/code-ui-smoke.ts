@@ -1,3 +1,4 @@
+import { checkDockedPanels } from './check-docked-panels.ts';
 /**
  * #72: the Web Code destination, in the real app (real server, real browser, fake `opencode serve`). Code is fixed
  * above Settings even with a long chat list; one canonical list with All / Mine / Circles; OpenCode-only sessions;
@@ -84,12 +85,16 @@ try {
     await context.addCookies([{ name: 'opendots_session', value: token, url: origin }]);
     const page = await context.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`${origin}/#/chat/${fixture.chat}`);
+    if (!mobile) await checkDockedPanels(page, fixture);
     // A draft in a general chat: it must survive a trip to Code and back.
     const composer = page.locator('[data-floating-composer] textarea');
     await composer.waitFor();
     await composer.fill('Brouillon à garder');
 
-    if (mobile) await page.getByRole('button', { name: 'Menu' }).click();
+    if (mobile) {
+      await page.getByRole('button', { name: 'Menu' }).click();
+      assert.equal(await page.getByRole('separator', { name: /.+/ }).count(), 0);
+    }
     const nav = page.locator('[data-nav-code]').last();
     await nav.waitFor();
     // Fixed above Settings, visible without scrolling the long chat list.

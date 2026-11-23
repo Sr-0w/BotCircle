@@ -231,3 +231,34 @@
 
 /* #58: searched words inside a message. */
 ::highlight(od-search) { background-color: color-mix(in oklab, var(--color-yellow-400, #facc15) 55%, transparent); color: inherit; }
+
+.panel-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 25;
+  width: 12px;
+  touch-action: none;
+  cursor: col-resize;
+  outline: 0;
+}
+.panel-divider::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 2px;
+  background: transparent;
+}
+.panel-divider:hover::after,
+.panel-divider:focus-visible::after,
+.panel-divider[data-dragging]::after {
+  background: var(--ring);
+}
+@media (pointer: coarse) {
+  .panel-divider { width: 24px; }
+}
+.resizing-panel, .resizing-panel * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}

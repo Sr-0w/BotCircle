@@ -1,3 +1,4 @@
+import { ResizablePanel } from '@/components/resizable-panel';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, BellIcon, BotIcon, CalendarClockIcon, ChevronRightIcon, CpuIcon, KeyRoundIcon, LoaderIcon, MonitorIcon, PaletteIcon, PlugIcon, SearchIcon, ShieldCheckIcon, SparklesIcon, UsersIcon, ServerIcon, HouseIcon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
@@ -65,14 +66,16 @@ export function SettingsPage({ section, onSectionChange }: { section: SettingsSe
       <button type="button" onClick={() => { onSectionChange(item.id); setIndex(false); }} className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-accent"><item.icon className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{t(item.label)}</span><span className="block truncate text-xs text-muted-foreground">{t(item.description)}</span></span>{item.id === 'approvals' && pending.length > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{pending.length}</span>}<ChevronRightIcon className="size-4 text-muted-foreground" /></button>
     </div>)}{!matches.length && <p className="p-4 text-center text-sm text-muted-foreground">{t('Aucun réglage trouvé.')}</p>}</nav>
   </div></div>;
-  return <Tabs value={section} onValueChange={value => onSectionChange(value as SettingsSection)} orientation={wide ? 'vertical' : 'horizontal'} className="min-h-0 min-w-0 flex-1 gap-0">
+  return <Tabs data-panel-layout value={section} onValueChange={value => onSectionChange(value as SettingsSection)} orientation={wide ? 'vertical' : 'horizontal'} className="min-h-0 min-w-0 flex-1 gap-0">
     {!wide && <button type="button" onClick={() => setIndex(true)} className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5 text-left text-sm text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-4" />{t('Paramètres')}</button>}
-    <TabsList ref={navigation} hidden={!wide} aria-label={t('Rubriques des paramètres')} className={!wide ? 'hidden' : wide ? 'w-52 shrink-0 items-stretch justify-start gap-0.5 rounded-none border-r bg-sidebar/40 p-3 data-[orientation=vertical]:h-full' : 'h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b bg-background p-2'}>
-      {sections.map((item, index) => <div key={item.id} className={wide ? 'w-full' : 'shrink-0'}>
-        {wide && (index === 0 || item.group !== sections[index - 1].group) && <p className="px-2 pt-5 pb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t(item.group)}</p>}
-        <TabsTrigger value={item.id} className={wide ? 'h-auto w-full justify-start gap-2 rounded-lg px-2.5 py-2 text-left text-xs data-[state=active]:bg-accent data-[state=active]:shadow-none' : 'shrink-0 gap-1.5 whitespace-nowrap px-3 py-2 text-xs'}><item.icon className="size-3.5 shrink-0" />{t(item.label)}{item.id === 'approvals' && pending.length > 0 && <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{pending.length}</span>}</TabsTrigger>
-      </div>)}
-    </TabsList>
+    <ResizablePanel panel="settings" className="hidden lg:block">
+      <TabsList ref={navigation} hidden={!wide} aria-label={t('Rubriques des paramètres')} className={!wide ? 'hidden' : wide ? 'w-full overflow-y-auto shrink-0 items-stretch justify-start gap-0.5 rounded-none border-r bg-sidebar/40 p-3 data-[orientation=vertical]:h-full' : 'h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b bg-background p-2'}>
+        {sections.map((item, index) => <div key={item.id} className={wide ? 'w-full' : 'shrink-0'}>
+          {wide && (index === 0 || item.group !== sections[index - 1].group) && <p className="px-2 pt-5 pb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t(item.group)}</p>}
+          <TabsTrigger value={item.id} className={wide ? 'h-auto w-full justify-start gap-2 whitespace-normal rounded-lg px-2.5 py-2 text-left text-xs data-[state=active]:bg-accent data-[state=active]:shadow-none' : 'shrink-0 gap-1.5 whitespace-nowrap px-3 py-2 text-xs'}><item.icon className="size-3.5 shrink-0" />{t(item.label)}{item.id === 'approvals' && pending.length > 0 && <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{pending.length}</span>}</TabsTrigger>
+        </div>)}
+      </TabsList>
+    </ResizablePanel>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <Suspense fallback={<div className="flex flex-1 items-center justify-center"><LoaderIcon className="animate-spin" /></div>}>
         <TabsContent value={section} className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden">

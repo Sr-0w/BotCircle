@@ -1,3 +1,4 @@
+import { ResizablePanel } from '@/components/resizable-panel';
 import { ImageLightbox } from './chat/image-lightbox';
 import { ConfirmHost } from '@/lib/confirm';
 import { focusMessage } from '@/lib/search-focus';
@@ -374,8 +375,8 @@ export function Shell() {
   const sidebar = <Sidebar route={route} go={navigate} />;
 
   return (
-    <div className="flex h-dvh overflow-hidden">
-      <aside className="hidden w-72 shrink-0 border-r md:block">{sidebar}</aside>
+    <div data-panel-layout className="flex h-dvh overflow-hidden">
+      <ResizablePanel panel="navigation" className="hidden border-r md:block">{sidebar}</ResizablePanel>
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetContent side="left" className="w-80 p-0">
           <SheetTitle className="sr-only">{t("Navigation")}</SheetTitle>
@@ -445,7 +446,7 @@ export function Shell() {
           ) : null}
         </header>
 
-        <div className="flex min-h-0 flex-1">
+        <div data-panel-layout className="flex min-h-0 flex-1">
           <Suspense fallback={<div className="flex-1" />}>
           {inCode && (route.id
             ? <div className="flex min-w-0 flex-1 flex-col" data-code-route-session={route.id}>
@@ -469,9 +470,9 @@ export function Shell() {
                 <GeneralChatView chat={currentChat} onEphemeral={enterEphemeral} />
               </div>
               {panelOpen && !codeTask && (
-                <aside className="hidden w-[340px] shrink-0 border-l lg:block">
+                <ResizablePanel panel="chat" className="hidden border-l lg:block">
                   <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
-                </aside>
+                </ResizablePanel>
               )}
             </>
           ) : current ? (
@@ -481,17 +482,17 @@ export function Shell() {
                 <ChatView agent={current} />
               </div>
               {panelOpen && !codeTask && (
-                <aside className="hidden w-[340px] shrink-0 border-l lg:block">
+                <ResizablePanel panel="circle" className="hidden border-l lg:block">
                   <AgentPanel agent={current} />
-                </aside>
+                </ResizablePanel>
               )}
             </>
           ) : null}
           {codeTask && wideScreen && !inCode && (
-            <aside className="w-[min(46vw,640px)] shrink-0 border-l">
+            <ResizablePanel panel="code" className="border-l">
               {/* Expand = the Code destination at this exact session (#72); the conversation stays as it was. */}
               <CodeWorkspace taskId={codeTask} onToggleExpand={() => navigate({ view: 'code', id: codeTask })} onClose={() => setCodeTask(null)} />
-            </aside>
+            </ResizablePanel>
           )}
           </div>
           </Suspense>
