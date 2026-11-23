@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useAccount } from '@/lib/account';
-import { api } from '@/lib/api';
+import { api, signOut } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { AccountAvatar } from './account-avatar';
 
@@ -59,7 +59,7 @@ export function ProfileCard() {
           <DialogHeader><DialogTitle>{t('Se déconnecter ?')}</DialogTitle><DialogDescription>{t('Tes Circles continuent de travailler sur le serveur.')}</DialogDescription></DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setLeaving(false)}>{t('Annuler')}</Button>
-            <Button variant="destructive" onClick={() => api.logout().then(() => location.reload())}>{t('Se déconnecter')}</Button>
+            <Button variant="destructive" onClick={() => signOut()}>{t('Se déconnecter')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

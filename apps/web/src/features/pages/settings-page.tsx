@@ -9,6 +9,7 @@ import { useAccount } from '@/lib/account';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { ProfileCard } from '../profile-card';
+import { SsoSettings } from '../sso-settings';
 import { NotificationsPage } from './notifications-page';
 import { SettingsPanel } from '../settings-dialog';
 import { ApprovalCard } from '../chat/approval-card';
@@ -77,7 +78,7 @@ export function SettingsPage({ section, onSectionChange }: { section: SettingsSe
       <Suspense fallback={<div className="flex flex-1 items-center justify-center"><LoaderIcon className="animate-spin" /></div>}>
         <TabsContent value={section} className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         {accountSection ? <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-3xl space-y-6 p-5 sm:p-8"><div><p className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">{t('Paramètres')}<ChevronRightIcon className="size-3" />{t(selected.group)}</p><h1 className="text-2xl font-semibold tracking-tight">{t(selected.label)}</h1><p className="mt-1 text-sm text-muted-foreground">{t(selected.description)}</p></div>
-          {section === 'general' && <ProfileCard />}
+          {section === 'general' && <><ProfileCard /><SsoSettings /></>}
           <SettingsPanel key={section} section={section as 'general' | 'providers' | 'models' | 'agents' | 'tools'} onOpenSection={onSectionChange} />
         </div></div> : section === 'notifications' ? <NotificationsPage /> : section === 'opencode' ? <OpencodePage /> : section === 'ssh' ? <SshPage /> : section === 'homeassistant' ? <HomeAssistantPage /> : section === 'connectors' ? <ConnectorsPage /> : section === 'computer' ? <ComputerPage /> : section === 'tasks' ? <TasksPage /> : section === 'skills' ? <SkillsPage /> : section === 'team' ? <TeamView /> : <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-3xl space-y-5 p-5 sm:p-8"><h1 className="flex items-center gap-2 text-2xl font-semibold"><ShieldCheckIcon className="size-5" />{t('Validations')}</h1><p className="text-sm text-muted-foreground">{t('Les actions en attente de ton accord et les dernières décisions.')}</p>{!pending.length && <div className="rounded-2xl border p-8 text-center text-sm text-muted-foreground">{t('Rien n’attend ta validation.')}</div>}{pending.map(a => <ApprovalCard key={a.id} approvalId={a.id} />)}{approvals.some(a => a.status !== 'pending') && <h2 className="pt-4 text-sm font-medium text-muted-foreground">{t('Récemment')}</h2>}{approvals.filter(a => a.status !== 'pending').slice(0, 8).map(a => <ApprovalCard key={a.id} approvalId={a.id} />)}</div></div>}
         </TabsContent>

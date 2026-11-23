@@ -1,4 +1,6 @@
 import { getSetting, setSetting } from './settings.ts';
+import { currentAccount } from './auth/context.ts';
+import { authStore } from './auth/store.ts';
 
 /** #54: how the user wants to be called. Per account (each account has its own database); both parts optional. */
 export interface UserProfile { firstName: string | null; lastName: string | null }
@@ -11,7 +13,14 @@ const clean = (value: unknown) => {
 
 export async function getUserProfile(): Promise<UserProfile> {
   const stored = await getSetting('user.profile');
-  return { firstName: stored?.firstName ?? null, lastName: stored?.lastName ?? null };
+  if (stored) return { firstName: stored.firstName ?? null, lastName: stored.lastName ?? null };
+  // #77: never set by the user → the verified name from their linked SSO identity, if any (a manual edit always wins).
+  const account = currentAccount();
+  if (account) {
+    const { rows } = await (await authStore()).query<{ given_name: string | null; family_name: string | null }>('SELECT given_name,family_name FROM identities WHERE user_id=$1 AND (given_name IS NOT NULL OR family_name IS NOT NULL) ORDER BY last_login_at DESC NULLS LAST LIMIT 1', [account.id]);
+    if (rows[0]) return { firstName: clean(rows[0].given_name), lastName: clean(rows[0].family_name) };
+  }
+  return { firstName: null, lastName: null };
 }
 
 export async function setUserProfile(input: { firstName?: unknown; lastName?: unknown }): Promise<UserProfile> {

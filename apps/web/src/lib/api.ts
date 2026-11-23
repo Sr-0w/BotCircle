@@ -45,7 +45,19 @@ import type { Account } from './account';
 
 export type ODMessage = UIMessage<MessageMetadata>;
 
-export type NotificationCategory = 'messages' | 'tasks' | 'approvals' | 'code' | 'scheduled';
+/** #77 SSO (OIDC). Never carries a token or the client secret. */
+export interface SsoPublic { enabled: boolean; label: string; localLogin: boolean }
+export interface LinkedIdentity { issuer: string; subject: string; email: string | null; linkedAt: string; lastLoginAt: string | null }
+export interface OidcAdminInput { enabled: boolean; issuer: string; clientId: string; clientSecret: string; scopes: string; label: string; jit: boolean; localLogin: boolean; allowedDomains: string[]; allowedGroups: string[]; adminGroups: string[]; groupsClaim: string; sessionHours: number }
+export interface OidcAdminView extends Omit<OidcAdminInput, 'clientSecret'> { hasSecret: boolean; source: 'environment' | 'local'; callbackUrl: string; androidRedirect: string; postLogoutUrl: string }
+/** Starts the SSO login (top-level navigation: the IdP page must be the real one, never framed). */
+export const startSso = (mode: 'login' | 'link' = 'login') => location.assign(`/api/auth/oidc/start?client=web&returnTo=${encodeURIComponent('/' + location.hash)}${mode === 'link' ? '&mode=link' : ''}`);
+/** Ends the BotCircle session, then the IdP session when the provider supports RP-initiated logout. */
+export async function signOut() {
+  const res = await api.logout().catch(() => null);
+  if (res?.endSessionUrl) location.assign(res.endSessionUrl); else location.reload();
+}
+export type NotificationCategory ='messages' | 'tasks' | 'approvals' | 'code' | 'scheduled';
 export interface NotificationPrefs { enabled: boolean; categories: Record<NotificationCategory, boolean>; mutedAgents: string[]; mutedChats: string[]; quietHours: { start: string; end: string; timezone: string } | null; preview: boolean }
 export interface PushDevice { id: string; kind: 'webpush' | 'unifiedpush'; label: string; createdAt: string; lastOkAt: string | null; failures: number; endpointHost: string }
 export interface SearchHit { messageId: string; conversationId: string; seq: number; role: 'user' | 'assistant'; kind: 'chat' | 'circle'; agentId: string | null; title: string; archived: boolean; current: boolean; snippet: string; highlights: [number, number][]; createdAt: string; score: number }
@@ -233,11 +245,16 @@ export const api = {
   startOAuth: (provider: IntegrationProvider, permissions: string[], connectorId?: string, requestedBy?: string, handoffId?: string) => request<{ url: string; expiresAt: number }>('POST', '/integrations/oauth/start', { provider, permissions, connectorId, requestedBy, handoffId }),
   testIntegration: (id: string) => request<{ ok: boolean; connector: ConnectorDTO }>('POST', `/integrations/${id}/test`),
   disconnectIntegration: (id: string, revoke = false) => request<{ ok: boolean; warning?: string }>('POST', `/integrations/${id}/disconnect`, { revoke }),
-  me: () => request<{ account: Account | null; registrationOpen: boolean }>('GET', '/auth/me'),
+  me: () => request<{ account: Account | null; registrationOpen: boolean; sso?: SsoPublic }>('GET', '/auth/me'),
+  identities: () => request<{ identities: LinkedIdentity[]; hasPassword: boolean }>('GET', '/auth/identities'),
+  unlinkIdentity: (issuer: string, subject: string) => request<{ ok: boolean }>('DELETE', '/auth/identities', { issuer, subject }),
+  oidcConfig: () => request<OidcAdminView>('GET', '/auth/oidc/config'),
+  saveOidcConfig: (input: Partial<OidcAdminInput> & { currentPassword?: string }) => request<OidcAdminView>('PUT', '/auth/oidc/config', input),
+  testOidc: (issuer: string) => request<Record<string, string | string[] | null>>('POST', '/auth/oidc/test', { issuer }),
   accountProfile: () => request<AccountProfileDTO>('GET', '/account/profile'),
   login: (email: string, password: string) => request<{ account: Account }>('POST', '/auth/login', { email, password }),
   register: (email: string, password: string) => request<{ account: Account }>('POST', '/auth/register', { email, password }),
-  logout: () => request<{ ok: boolean }>('POST', '/auth/logout'),
+  logout: () => request<{ ok: boolean; endSessionUrl?: string | null }>('POST', '/auth/logout'),
   bootstrap: () => request<BootstrapDTO>("GET", "/bootstrap"),
   saveKey: (key: string) => request<{ ok: boolean }>("POST", "/onboarding/key", { key }),
   completeOnboarding: (model: ModelConfig, timezone: string) =>

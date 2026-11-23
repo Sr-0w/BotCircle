@@ -36,7 +36,7 @@ describe('authentification et séparation des comptes', () => {
     expect(sessions.rows.every((s) => !cookieA.includes(s.hash) && !cookieB.includes(s.hash))).toBe(true);
   });
   it('ne renvoie ni mot de passe ni dossier serveur dans le profil', async () => {
-    expect(await (await request('/auth/me', 'GET', undefined, cookieA)).json()).toEqual({ account: { id: a.id, email: a.email, role: 'user' }, registrationOpen: true });
+    expect(await (await request('/auth/me', 'GET', undefined, cookieA)).json()).toEqual({ account: { id: a.id, email: a.email, role: 'user' }, registrationOpen: true, sso: { enabled: false, label: 'SSO', localLogin: true } });
   });
   it('refuse les mutations de session venant d’un autre site', async () => {
     expect((await request('/auth/logout', 'POST', {}, cookieA, 'https://evil.example')).status).toBe(403);
