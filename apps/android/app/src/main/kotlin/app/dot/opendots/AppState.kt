@@ -81,6 +81,7 @@ data class AppUiState(
     /** #56: archived chats (hidden from the list, restorable). */
     val archivedChats: List<GeneralChat> = emptyList(),
     val connected: Boolean = true,
+    val tasksReady: Boolean = false,
     val paused: Boolean = false,
     val busy: Boolean = false,
     val formError: String? = null,
@@ -110,6 +111,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     /** Separate RAM-only state (#57: the ephemeral mode of a new chat). Never inserted into chats, archives or SessionStore. */
     val temporaryChat = TemporaryChatSession(client, viewModelScope, onUnauthorized = ::unauthorized)
     private var eventsJob: Job? = null
+    private var taskSnapshot = 0L
     private var foreground = true
 
     init { start() }
@@ -213,6 +215,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         if (!configurationChange) temporaryChat.foreground(visible)
         foreground = visible
         if (_state.value.stage !is Stage.Main) return
+        taskSnapshot++
+        _state.update { it.copy(tasksReady = false) }
         if (visible) { listen(); refresh() } else stopListening()
     }
 
@@ -242,7 +246,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
                 } catch (e: Exception) {
                     if (e is ApiException && e.status == 401) { unauthorized(); return@launch }
                 }
-                _state.update { it.copy(connected = false) }
+                taskSnapshot++
+                _state.update { it.copy(connected = false, tasksReady = false) }
                 delay(backoff)
                 backoff = (backoff * 2).coerceAtMost(15_000L)
             }
@@ -311,7 +316,15 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     /** Tasks and chats are read from the server: the app shows persisted state, also after a restart. */
     private fun loadWork() {
         viewModelScope.launch {
-            runCatching { client.tasks() }.onSuccess { list -> _state.update { s -> s.copy(tasks = list.associate { it.id to it.copy(events = s.tasks[it.id]?.events.orEmpty()) }) } }
+            val request = ++taskSnapshot
+            val before = _state.value.tasks
+            runCatching { client.tasks() }.onSuccess { list ->
+                if (request == taskSnapshot) _state.update { s ->
+                    val receivedDuringFetch = s.tasks.filter { (id, task) -> before[id] !== task }
+                    val snapshot = list.associate { it.id to it.copy(events = s.tasks[it.id]?.events.orEmpty()) }
+                    s.copy(tasks = snapshot + receivedDuringFetch, tasksReady = true)
+                }
+            }
             runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list.filterNot { c -> c.id in vanishing }) } }
             runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
             runCatching { client.secureLogins(pending = true) }.onSuccess { list -> _state.update { s -> s.copy(secureLogins = s.secureLogins.filterValues { !it.pending } + list.associateBy { it.id }) } }

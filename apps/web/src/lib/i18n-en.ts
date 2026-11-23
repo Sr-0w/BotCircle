@@ -1,5 +1,13 @@
 /** Dictionnaire anglais : clé = texte français. */
 export const EN: Record<string, string> = {
+  "État inconnu": "Unknown status",
+  "Limite d’usage": "Usage limit",
+  "Action requise": "Action required",
+  "Réponse nécessaire": "Answer needed",
+  "Activité OpenCode": "OpenCode activity",
+  "Voir dans Code": "View in Code",
+  "{count} en cours": "{count} running",
+  "{count} en cours · {status}": "{count} running · {status}",
   "Aller au dernier message": "Jump to latest message",
   "Modèle et recherche web conservés": "Model and web search kept",
   "Interventions en cours non interrompues": "Running contributions not interrupted",

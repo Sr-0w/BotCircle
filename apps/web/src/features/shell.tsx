@@ -450,7 +450,7 @@ export function Shell() {
           <Suspense fallback={<div className="flex-1" />}>
           {inCode && (route.id
             ? <div className="flex min-w-0 flex-1 flex-col" data-code-route-session={route.id}>
-                <CodeWorkspace key={route.id} taskId={route.id} expanded onClose={() => navigate({ view: 'code', id: null })} />
+                <CodeWorkspace key={route.id} taskId={route.id} expanded onClose={() => { if (window.history.state?.codeFromConversation) window.history.back(); else navigate({ view: 'code', id: null }); }} />
               </div>
             : <CodePage filter={codeFilter} onFilter={setCodeFilter} onOpen={(id) => navigate({ view: 'code', id })} />)}
           <div className={inCode ? 'hidden' : 'contents'} aria-hidden={inCode || undefined}>

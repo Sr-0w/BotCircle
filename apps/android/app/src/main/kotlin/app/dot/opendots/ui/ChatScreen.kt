@@ -168,7 +168,7 @@ private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
 }
 
 @Composable
-fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}, workRequest: Int = 0, onEphemeral: (() -> Unit)? = null) {
+fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}, workRequest: Int = 0, onEphemeral: (() -> Unit)? = null, screenVisible: Boolean = true) {
     // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
     val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
     LaunchedEffect(session) { session.open() }
@@ -445,13 +445,17 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
 
         // The composer floats in the same glass as the header's buttons: the messages pass under it, blurred.
         val ready = images.all { it.attachment != null || it.failed }
-        Box(
+        Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .onSizeChanged { size -> with(density) { size.height.toDp() }.let { if (it != composerHeight) composerHeight = it } }
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
                 .padding(horizontal = DotSpacing.m).padding(bottom = DotSpacing.s),
-            contentAlignment = Alignment.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            CodeActivityCapsule(
+                conversationId = general?.id ?: agent.mainConversationId, tasks = ui.tasks.values, agents = ui.agents,
+                synchronized = ui.connected && ui.tasksReady, screenVisible = screenVisible, backdrop = backdrop, onOpenCode = onOpenCode,
+            )
             DotComposer(
                 value = draft,
                 onValueChange = { draft = it },

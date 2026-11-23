@@ -828,4 +828,12 @@
     </plurals>
     <string name="code_rename_title">Renommer la session</string>
     <string name="code_rename_label">Nom de la session</string>
+    <string name="code_activity_title">Activité OpenCode</string>
+    <string name="code_activity_view">Voir dans Code</string>
+    <string name="code_activity_quota">Limite d’usage</string>
+    <string name="code_activity_unknown">État inconnu</string>
+    <string name="code_activity_mixed">%1$d en cours · %2$s</string>
+    <plurals name="code_activity_running"><item quantity="one">%d en cours</item><item quantity="other">%d en cours</item></plurals>
+    <string name="code_activity_attention">Action requise</string>
+    <string name="code_activity_question">Réponse nécessaire</string>
 </resources>

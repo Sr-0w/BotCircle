@@ -53,7 +53,9 @@ process.env.OPENDOTS_DATA_DIR = dir;
 const { createApplication } = await import('../src/app.ts');
 const { authStore, registerUser, createSession, closeAuthStore } = await import('../src/auth/store.ts');
 const { withAccount } = await import('../src/auth/context.ts');
-const { openDatabase, closeAllDatabases } = await import('../src/db/client.ts');
+const { db, openDatabase, closeAllDatabases, schema } = await import('../src/db/client.ts');
+const { saveMessage } = await import('../src/conversations/repo.ts');
+const { getTask, updateTask } = await import('../src/tasks/service.ts');
 const { createAgent, mainConversationId } = await import('../src/agents/repo.ts');
 const { setSetting, setOpenRouterKey } = await import('../src/settings.ts');
 const { createChat } = await import('../src/chats/repo.ts');
@@ -69,11 +71,25 @@ const fixture = await withAccount(account, async () => {
   for (let i = 0; i < 60; i++) chat = (await createChat({ title: `Chat ${String(i).padStart(2, '0')}` })).id;
   const instance = await saveInstance({ name: 'PC de dev', baseUrl: 'https://code.example.test', password: 'smoke-secret', defaultDirectory: '/home/dev/botcircle' });
   const task = await startOpencodeTask({ agentId: ari.id, conversationId: await mainConversationId(ari.id), instance: (await getInstance(instance.id))!, sessionId: 'ses_ari', title: 'Refactor par Ari', instruction: 'Regroupe les réglages.', requestedBy: 'agent' });
-  return { ari: ari.id, chat, ariTask: task.id };
+  return { ari: ari.id, chat, ariTask: task.id, instanceId: instance.id, circleConversation: task.conversationId };
 });
 await withAccount(other, async () => { await openDatabase({ memory: true }); await setSetting('onboarding.done', true); });
 const app = createApplication(async () => { await openDatabase({ memory: true }); });
-const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
+const eventStreams = new Set<ReadableStreamDefaultReader<Uint8Array>>();
+const server = serve({ fetch: async (request) => {
+  const response = await app.fetch(request);
+  if (new URL(request.url).pathname !== '/api/events' || !response.body) return response;
+  const reader = response.body.getReader();
+  eventStreams.add(reader);
+  return new Response(new ReadableStream({
+    async pull(controller) {
+      const event = await reader.read();
+      if (event.done) { eventStreams.delete(reader); controller.close(); }
+      else controller.enqueue(event.value);
+    },
+    cancel() { eventStreams.delete(reader); return reader.cancel(); },
+  }), { headers: response.headers, status: response.status });
+}, port: 0, hostname: '127.0.0.1' });
 await new Promise<void>((resolve) => server.listening ? resolve() : server.once('listening', resolve));
 const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 const browser = await chromium.launch({ executablePath: process.env.OPENDOTS_CHROMIUM_PATH || undefined, headless: true, args: ['--no-sandbox'] });
@@ -169,6 +185,137 @@ try {
     }
     await context.close();
   }
+  // #66/#67: the existing registry and SSE drive both activity surfaces.
+  await withAccount(account, async () => {
+    for (let index = 1; index <= 55; index++) {
+      await saveMessage(fixture.circleConversation, {
+        id: "scroll-" + index, role: 'user', parts: [{ type: 'text', text: "Message de discussion " + index }],
+        metadata: { kind: 'chat', createdAt: new Date().toISOString() },
+      }, { author: 'user' });
+    }
+  });
+  for (const viewport of [{ width: 360, height: 760 }, { width: 1365, height: 820 }]) {
+    const context = await browser.newContext({ locale: 'fr-BE', viewport, reducedMotion: 'no-preference' });
+    await context.addCookies([{ name: 'opendots_session', value: token, url: origin }]);
+    const page = await context.newPage();
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(origin + '/#/agent/' + fixture.ari);
+    const capsule = page.locator('[data-code-activity-capsule]');
+    await capsule.waitFor();
+    assert.equal(await capsule.count(), 1);
+    assert.match(await capsule.innerText(), /Refactor par Ari.*En cours/s);
+    const composer = page.locator('[data-floating-composer] textarea');
+    await composer.fill('Brouillon pour la capsule');
+    await page.waitForFunction(() => document.querySelector('[data-code-activity-capsule] [data-code-motion="on"]'));
+    assert.equal(await capsule.locator('[data-opencode-logo]').evaluate(el => getComputedStyle(el).animationName), 'code-logo-breathe');
+    assert.equal(await capsule.locator('.code-activity-dots i').first().evaluate(el => getComputedStyle(el).animationName), 'code-dot-breathe');
+    const bounds = await capsule.boundingBox(), editor = await composer.boundingBox();
+    assert(bounds && editor && bounds.height <= 44 && bounds.width < 310 && bounds.y + bounds.height < editor.y);
+    const scrollBefore = await page.locator('#message-scroll-35').evaluate(el => {
+      const viewport = el.closest('div.overflow-y-auto')!;
+      viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }));
+      viewport.scrollTop = 200;
+      return viewport.scrollTop;
+    });
+    assert(scrollBefore > 0);
+    assert.equal((await capsule.boundingBox())?.y, bounds.y);
+    await capsule.click();
+    await page.locator('[data-code-activity-task="' + fixture.ariTask + '"]').waitFor();
+    await page.getByRole('button', { name: 'Voir dans Code' }).click();
+    await page.locator('[data-code-route-session="' + fixture.ariTask + '"]').waitFor();
+    await page.getByRole('button', { name: 'Fermer l’espace de code' }).click();
+    await capsule.waitFor();
+    assert.equal(await composer.inputValue(), 'Brouillon pour la capsule');
+    assert.equal(await page.locator('#message-scroll-35').evaluate(el => el.closest('div.overflow-y-auto')!.scrollTop), scrollBefore);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await capsule.locator('[data-code-motion="off"]').waitFor();
+    assert.equal(await capsule.locator('[data-opencode-logo]').evaluate(el => getComputedStyle(el).animationName), 'none');
+    await context.close();
+  }
+
+  const next = await withAccount(account, async () => {
+    const previous = (await getTask(fixture.ariTask))!;
+    await db().insert(schema.tasks).values({ ...previous, id: 'task_older_link', createdAt: new Date(1), status: 'completed' });
+    const task = await startOpencodeTask({
+      agentId: fixture.ari, conversationId: fixture.circleConversation, instance: (await getInstance(fixture.instanceId))!,
+      title: 'Deuxième projet', instruction: 'Ajoute les tests.', requestedBy: 'agent',
+    });
+    const unrelated = await startOpencodeTask({
+      agentId: fixture.ari, conversationId: fixture.chat, instance: (await getInstance(fixture.instanceId))!,
+      title: 'Travail du chat général', instruction: 'Vérifie le formulaire.', requestedBy: 'agent',
+    });
+    await db().insert(schema.tasks).values(Array.from({ length: 20 }, (_, index) => ({
+      ...previous, id: 'task_finished_' + index, workConversationId: 'work_finished_' + index,
+      title: 'Session terminée ' + index, status: 'completed' as const,
+      external: { ...previous.external!, sessionId: 'finished_' + index },
+      createdAt: new Date(Date.now() + 1000 * index), startedAt: new Date(Date.now() + 1000 * index),
+    })));
+    return { task: task.id, unrelated: unrelated.id };
+  });
+  const activityContext = await browser.newContext({ locale: 'fr-BE', viewport: { width: 1365, height: 820 } });
+  await activityContext.addCookies([{ name: 'opendots_session', value: token, url: origin }]);
+  const page = await activityContext.newPage();
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(origin + '/#/chat/' + fixture.chat);
+  const capsule = page.locator('[data-code-activity-capsule]');
+  await capsule.getByText('Travail du chat général').waitFor();
+  await page.goto(origin + '/#/agent/' + fixture.ari);
+  await capsule.getByText('2 en cours', { exact: true }).waitFor();
+  await capsule.click();
+  assert.equal(await page.locator('[data-code-activity-task]').count(), 2);
+  assert.equal(await page.locator('[data-code-activity-task="task_older_link"]').count(), 0);
+  await page.keyboard.press('Escape');
+  await page.goto(origin + '/#/code');
+  const codePage = page.locator('[data-code-page]');
+  const runningRow = codePage.locator('[data-code-session="' + next.unrelated + '"]');
+  const secondRow = codePage.locator('[data-code-session="' + next.task + '"]');
+  await runningRow.locator('[data-code-motion="off"]').waitFor({ state: 'attached' }); // below the viewport
+  await runningRow.scrollIntoViewIfNeeded();
+  await runningRow.locator('[data-code-motion="on"]').waitFor();
+  await secondRow.scrollIntoViewIfNeeded();
+  await secondRow.locator('[data-code-motion="on"]').waitFor();
+  await codePage.locator('[data-code-session="task_finished_19"] [data-code-motion="off"]').waitFor({ state: 'attached' });
+  await codePage.evaluate(el => { el.scrollTop = 0; });
+  await runningRow.locator('[data-code-motion="off"]').waitFor({ state: 'attached' });
+  await page.goto(origin + '/#/agent/' + fixture.ari);
+  await capsule.getByText('2 en cours', { exact: true }).waitFor();
+
+  await withAccount(account, () => updateTask(fixture.ariTask, { status: 'paused' }));
+  await capsule.getByText('1 en cours · En pause').waitFor();
+  await withAccount(account, () => updateTask(next.task, { status: 'waiting_for_user', requiresUserInput: true, blocker: 'Une autorisation attend ta réponse' }));
+  await capsule.getByText('Autorisation nécessaire').waitFor();
+  await capsule.locator('[data-code-motion="off"]').waitFor();
+  await page.goto(origin + '/#/settings/approvals');
+  await page.locator('[data-code-inbox="' + next.task + '"]').waitFor();
+  await page.goto(origin + '/#/code');
+  await runningRow.scrollIntoViewIfNeeded();
+  await runningRow.locator('[data-code-motion="on"]').waitFor();
+  await page.locator('[data-code-session="' + fixture.ariTask + '"]').locator('[data-code-motion="off"]').waitFor();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await runningRow.locator('[data-code-motion="off"]').waitFor();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(origin + '/#/agent/' + fixture.ari);
+  await capsule.getByText('Autorisation nécessaire').waitFor();
+  await Promise.all([...eventStreams].map(reader => reader.cancel()));
+  await capsule.getByText('Déconnecté').waitFor();
+  // An inaccessible session reconciles to a static disconnected state; on reconnect the other task finishes.
+  await withAccount(account, async () => {
+    await updateTask(fixture.ariTask, { status: 'completed', finishedAt: new Date() });
+    const row = (await getTask(next.task))!;
+    await updateTask(next.task, { external: { ...row.external!, unreachable: true } });
+  });
+  await capsule.getByText('Deuxième projet').waitFor();
+  await capsule.getByText('Déconnecté').waitFor();
+  await withAccount(account, () => updateTask(next.task, { status: 'failed', finishedAt: new Date(), error: 'La session a été supprimée dans OpenCode.' }));
+  await capsule.getByText('Échec').waitFor();
+  await capsule.locator('[data-code-motion="off"]').waitFor();
+  await capsule.waitFor({ state: 'detached', timeout: 6000 });
+  await page.reload();
+  await page.locator('[data-floating-composer] textarea').waitFor();
+  assert.equal(await capsule.count(), 0);
+  await activityContext.close();
+  console.log('PASS #66/#67 Chromium 360 + 1365 : capsule fixe, détails, session canonique, brouillon et scroll, deux sessions, Inbox, mouvement réduit, reconnexion et disparition après échec.');
+
   // Another account sees none of these sessions.
   const intruder = await (await nativeFetch(`${origin}/api/opencode/sessions`, { headers: { cookie: `opendots_session=${otherToken}` } })).json();
   assert.deepEqual(intruder, []);

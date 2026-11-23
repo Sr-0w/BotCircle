@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -229,6 +230,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     // The code workspace opens from a task card anywhere; Back returns to the page that opened it.
     var codeTask by rememberSaveable { mutableStateOf<String?>(null) }
     var codeFrom by rememberSaveable { mutableStateOf(Page.None) }
+    val chatState = rememberSaveableStateHolder()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     // #64: a tapped notification opens its exact place.
     val openTarget by app.openTarget.collectAsStateWithLifecycle()
@@ -320,7 +322,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                         when (tab) {
                             Tab.Circles -> CompanionsPage(ui) { picked -> app.selectAgent(picked.id); page = Page.Chat }
                             Tab.Chat -> ChatsPage(app, ui, onSearch = { q -> searchQuery = q; page = Page.Search }) { picked -> app.selectChat(picked.id); page = Page.GeneralChat }
-                            Tab.Code -> CodeSessionsPage(app, ui, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { app.newCodeSession(onNoMachine = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace } })
+                            Tab.Code -> CodeSessionsPage(app, ui, screenVisible = current == page, onOpen = openCode, onOpenInstances = { page = Page.CodeInstances }, onNew = { app.newCodeSession(onNoMachine = { page = Page.CodeInstances }) { id -> codeTask = id; codeFrom = Page.None; page = Page.CodeWorkspace } })
                             Tab.Settings -> SettingsScreen(app, ui, onOpenSection = { settingsSection = it; page = Page.SettingsSection })
                         }
                     }
@@ -342,7 +344,7 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.SettingsSection -> SettingsSectionPage(app, ui, settingsSection, onBack = ::back, onOpenCatalog = { page = Page.Catalog }, onOpenWeb = openWeb, onOpenProviders = { page = Page.Providers }, onOpenModel = { page = Page.DefaultModel }, onOpenBehaviour = { page = Page.AgentBehaviour }, onOpenCode = { page = Page.CodeInstances }, onOpenSsh = { page = Page.Ssh }, onOpenHomeAssistant = { page = Page.HomeAssistant })
             current == Page.HomeAssistant -> HomeAssistantPage(app, ui, onBack = ::back)
             current == Page.Ssh -> SshPage(app, ui, onBack = ::back)
-            current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back)
+            current == Page.Inbox -> ApprovalsScreen(app, ui, onBack = ::back, onOpenCode = openCode)
             current == Page.Search -> SearchPage(app, ui, searchQuery, onBack = ::back,
                 onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat },
                 onOpenAgent = { id -> app.selectAgent(id); page = Page.Chat })
@@ -353,13 +355,17 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
             current == Page.Team -> TeamExchangesPage(app, ui, onBack = ::back)
             current == Page.CodeInstances -> OpencodeInstancesPage(app, onBack = ::back)
             current == Page.CodeWorkspace && codeTask != null -> CodeWorkspacePage(app, ui, codeTask!!, onBack = ::back)
-            current == Page.Chat -> ChatScreen(app, ui, agent!!, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); desktopFromChat = true; page = Page.Desktop }, onOpenCode = openCode, onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat }, workRequest = workRequest)
+            current == Page.Chat -> chatState.SaveableStateProvider("circle:" + agent!!.id) {
+                ChatScreen(app, ui, agent, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); desktopFromChat = true; page = Page.Desktop }, onOpenCode = openCode, onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat }, workRequest = workRequest, screenVisible = current == page)
+            }
             current == Page.GeneralChat && ui.ephemeral -> EphemeralChatScreen(app, ui, onBack = ::back, onNormal = { app.stopEphemeral() })
-            current == Page.GeneralChat -> ChatScreen(
-                app, ui, Agent(id = chat!!.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
-                onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
-                onEphemeral = { app.startEphemeral(chat) },
-            )
+            current == Page.GeneralChat -> chatState.SaveableStateProvider("chat:" + chat!!.id) {
+                ChatScreen(
+                    app, ui, Agent(id = chat.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
+                    onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
+                    onEphemeral = { app.startEphemeral(chat) }, screenVisible = current == page,
+                )
+            }
             current == Page.ChatSettings -> ChatSettingsPage(app, ui, chat!!, onBack = ::back, onChangeModel = { modelFromChat = false; page = Page.ChatModel }, onDeleted = { page = Page.None })
             current == Page.ChatModel -> ModelPickerPage(app, chat!!.title, chat.effectiveModel, onBack = ::back) { provider, model ->
                 app.updateChat(chat.id, buildJsonObject { putJsonObject("model") { put("provider", provider); put("model", model) } })

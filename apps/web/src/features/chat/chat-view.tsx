@@ -19,6 +19,7 @@ import { api, type ODMessage } from "@/lib/api";
 import type { MessageReplyRef } from "@opendots/shared";
 import { useServerEvent } from "@/lib/store";
 import { DotAvatar } from "../dot-avatar";
+import { CodeActivityCapsule } from '../code/code-activity';
 import { FloatingComposer } from '@/components/floating-composer';
 import { Composer, isChatImage } from "./composer";
 import { liveStep, MessageView } from "./message-parts";
@@ -213,6 +214,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
         <ConversationScrollButton className="bottom-[calc(var(--composer-h,6rem)+0.75rem)] z-20" />
       </Conversation>
       <FloatingComposer><div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-6 sm:pb-5">
+        <CodeActivityCapsule key={agent.mainConversationId} conversationId={agent.mainConversationId} />
         <Composer
           busy={busy}
           autoFocus

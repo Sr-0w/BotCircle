@@ -398,6 +398,7 @@ data class BgTask(
     val artifacts: List<Artifact> = emptyList(),
     val createdAt: String = "",
     val finishedAt: String? = null,
+    val lastHeartbeat: String? = null,
     val events: List<BgTaskEvent> = emptyList(),
     /** `opencode`: the work happens in a remote OpenCode session, opened in the code workspace. */
     val provider: String = "worker",
@@ -572,11 +573,11 @@ data class CodeChanges(val files: Int = 0, val additions: Int = 0, val deletions
 /** #49: the session waits for a provider usage limit to reset, then resumes in the same session. */
 @Immutable
 @Serializable
-data class CodeQuota(val provider: String? = null, val resetAt: Long? = null, val nextAttemptAt: Long = 0, val autoResume: Boolean = true)
+data class CodeQuota(val provider: String? = null, val resetAt: Long? = null, val nextAttemptAt: Long = 0, val autoResume: Boolean = true, val kind: String? = null)
 
 @Immutable
 @Serializable
-data class TaskExternal(val instanceId: String = "", val instanceName: String = "OpenCode", val sessionId: String = "", val directory: String? = null, val unreachable: Boolean = false, val changes: CodeChanges? = null, val quota: CodeQuota? = null) {
+data class TaskExternal(val instanceId: String = "", val instanceName: String = "OpenCode", val sessionId: String = "", val directory: String? = null, val unreachable: Boolean = false, val changes: CodeChanges? = null, val quota: CodeQuota? = null, val model: OpencodeCurrentModel? = null) {
     /** Last path segment: enough to recognise the project on a card. */
     val project: String? get() = directory?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }
 }

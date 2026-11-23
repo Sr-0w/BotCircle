@@ -10,6 +10,7 @@ interface State {
   approvals: ApprovalDTO[];
   /** Tâches en arrière-plan connues du client, tenues à jour par les événements du serveur. */
   tasks: TaskDTO[];
+  tasksReady: boolean;
   /** Chats généraux, du plus récent au plus ancien. */
   chats: ChatDTO[];
   /** #56: archived chats (hidden from the list, restorable). */
@@ -21,7 +22,8 @@ interface State {
 }
 
 let generation = 0;
-let state: State = { agents: [], approvals: [], tasks: [], chats: [], archivedChats: [], secureLogins: [], connected: false, paused: false };
+let taskSnapshot = 0;
+let state: State = { agents: [], approvals: [], tasks: [], tasksReady: false, chats: [], archivedChats: [], secureLogins: [], connected: false, paused: false };
 const listeners = new Set<() => void>();
 const eventListeners = new Set<(e: ServerEvent) => void>();
 
@@ -74,10 +76,22 @@ function refreshAgent(id: string) {
   );
 }
 
+async function refreshTasks() {
+  const requestGeneration = generation;
+  const request = ++taskSnapshot;
+  const before = new Map(state.tasks.map((task) => [task.id, task]));
+  const snapshot = await api.tasks().catch(() => null);
+  if (requestGeneration !== generation || request !== taskSnapshot || !snapshot) return;
+  const merged = new Map(snapshot.map((task) => [task.id, task]));
+  // An SSE update received while the request was in flight is newer than the snapshot.
+  for (const task of state.tasks) if (before.get(task.id) !== task) merged.set(task.id, task);
+  set({ tasks: [...merged.values()], tasksReady: true });
+}
+
 export async function loadInitial() {
   const requestGeneration = generation;
-  const [agents, approvals, settings, tasks, chats, archivedChats] = await Promise.all([api.agents(), api.approvals(), api.settings(), api.tasks().catch(() => []), api.chats().catch(() => []), api.archivedChats().catch(() => [])]);
-  if (requestGeneration === generation) set({ agents, approvals, tasks, chats, archivedChats, paused: settings.paused });
+  const [agents, approvals, settings, chats, archivedChats] = await Promise.all([api.agents(), api.approvals(), api.settings(), api.chats().catch(() => []), api.archivedChats().catch(() => []), refreshTasks()]);
+  if (requestGeneration === generation) set({ agents, approvals, chats, archivedChats, paused: settings.paused });
 }
 
 function handle(e: ServerEvent) {
@@ -145,7 +159,7 @@ export function clearAccountState() {
   source?.close(); source = null;
   for (const timer of refreshTimers.values()) window.clearTimeout(timer);
   refreshTimers.clear();
-  set({ agents: [], approvals: [], tasks: [], chats: [], archivedChats: [], secureLogins: [], connected: false, paused: false });
+  set({ agents: [], approvals: [], tasks: [], tasksReady: false, chats: [], archivedChats: [], secureLogins: [], connected: false, paused: false });
 }
 
 export function connectEvents() {
@@ -154,11 +168,11 @@ export function connectEvents() {
   const connectedSource = source;
   source.onopen = () => {
     if (source !== connectedSource) return;
-    set({ connected: true });
+    set({ connected: true, tasksReady: false });
     // Après une reconnexion, on resynchronise l'état.
     loadInitial().catch(() => {});
   };
-  source.onerror = () => { if (source === connectedSource) set({ connected: false }); };
+  source.onerror = () => { if (source === connectedSource) { taskSnapshot++; set({ connected: false, tasksReady: false }); } };
   source.onmessage = (msg) => {
     if (source !== connectedSource) return;
     try {
