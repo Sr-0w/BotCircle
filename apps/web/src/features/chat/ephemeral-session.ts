@@ -53,6 +53,9 @@ export class EphemeralSession {
     if (id) void request(`/${id}`, { method: 'DELETE', keepalive: true }).catch(() => {});
   }
 
+  /** (Re)attach to a mounted view. StrictMode unmounts then remounts once in dev: a discarded session must accept sends again. */
+  open() { this.closed = false; }
+
   /** After a server-side loss (expiry, restart): forget the id so the next send starts a clean session. */
   forget() { this.id = null; }
 }

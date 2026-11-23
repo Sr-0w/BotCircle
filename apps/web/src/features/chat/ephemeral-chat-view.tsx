@@ -94,6 +94,7 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
     toast(t('Chat éphémère expiré : son contenu a été effacé.'));
   }, [session, setMessages, clearError]);
   useEffect(() => {
+    session.open();
     const timer = window.setInterval(() => void session.keepalive().then((alive) => { if (!alive) lost(); }), HEARTBEAT_MS);
     const warn = (event: BeforeUnloadEvent) => { if (messagesRef.current.length) { event.preventDefault(); event.returnValue = ''; } };
     const leave = () => session.discard();
