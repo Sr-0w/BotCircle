@@ -557,10 +557,11 @@ internal fun ChatHeader(
                 Text(name, style = Dot.type.label, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).semantics { heading() })
                 if (status != null) Text("  ·  $status", style = Dot.type.caption, color = if (agent.state == "error" && ui.connected) c.danger else c.textTertiary, maxLines = 1)
             }
-            if (ephemeral) Row(Modifier.padding(top = 4.dp).testTag("ephemeral-badge"), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(13.dp), tint = c.accent)
-                Text(" " + stringResource(R.string.ephemeral_badge), style = Dot.type.caption, color = c.accent, maxLines = 1)
-            }
+        }
+        // Outside the title column (narrowed to stay clear of the side buttons), so the badge is never cut.
+        if (ephemeral) Row(Modifier.align(Alignment.TopCenter).padding(top = 38.dp, start = 64.dp, end = 64.dp).testTag("ephemeral-badge"), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(13.dp), tint = c.accent)
+            Text(" " + stringResource(R.string.ephemeral_badge), style = Dot.type.caption, color = c.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (onEphemeral != null || !ephemeral) DotFloatingCapsule(Modifier.align(Alignment.TopEnd)) {
             // The Circle's computer is one tap away; its work lives in Data & connections (and the live status line).
