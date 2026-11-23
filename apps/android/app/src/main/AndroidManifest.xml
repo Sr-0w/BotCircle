@@ -29,6 +29,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- #77: return from the SSO sign-in in the system browser (one-time code, bound to the app's PKCE verifier). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="botcircle" android:host="auth" android:path="/callback" />
+            </intent-filter>
         </activity>
 
         <!-- #64: UnifiedPush — pushes from the self-hosted server, through the distributor the user chose (e.g. ntfy). -->

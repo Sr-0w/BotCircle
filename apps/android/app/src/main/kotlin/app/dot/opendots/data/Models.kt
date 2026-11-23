@@ -18,7 +18,11 @@ val OdJson = Json {
 data class Account(val id: String = "", val email: String = "", val role: String = "")
 
 @Serializable
-data class MeResponse(val account: Account? = null, val registrationOpen: Boolean = true)
+data class MeResponse(val account: Account? = null, val registrationOpen: Boolean = true, val sso: SsoInfo = SsoInfo())
+
+/** #77: the server's single sign-on (OIDC), as shown on the sign-in screen. */
+@Serializable
+data class SsoInfo(val enabled: Boolean = false, val label: String = "SSO", val localLogin: Boolean = true)
 
 @Serializable
 data class AccountResponse(val account: Account)

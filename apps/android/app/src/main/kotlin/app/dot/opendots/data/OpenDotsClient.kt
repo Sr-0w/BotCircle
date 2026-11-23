@@ -188,6 +188,13 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         return OdJson.decodeFromJsonElement<AccountResponse>(json("POST", if (register) "/auth/register" else "/auth/login", body)).account
     }
 
+    /** #77: where the system browser starts the SSO sign-in; only the PKCE challenge leaves the app. */
+    fun ssoStartUrl(challenge: String): String = store.serverUrl!!.trimEnd('/') + "/api/auth/oidc/start?client=android&challenge=" + challenge
+
+    /** #77: trades the one-time code from botcircle://auth/callback (+ the app's verifier) for a BotCircle session cookie. */
+    suspend fun ssoExchange(code: String, verifier: String): Account =
+        OdJson.decodeFromJsonElement<AccountResponse>(json("POST", "/auth/oidc/exchange", buildJsonObject { put("code", code); put("verifier", verifier) })).account
+
     suspend fun signOut() {
         runCatching { json("POST", "/auth/logout") }
         store.sessionCookie = null

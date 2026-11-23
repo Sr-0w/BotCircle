@@ -124,7 +124,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) handleNotification(intent)
+        if (savedInstanceState == null) { handleNotification(intent); handleSsoCallback(intent) }
         setContent {
             val ui by app.state.collectAsStateWithLifecycle()
             val mode = runCatching { ThemeMode.valueOf(ui.themeMode) }.getOrDefault(ThemeMode.SYSTEM)
@@ -145,6 +145,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleNotification(intent)
+        handleSsoCallback(intent)
+    }
+
+    /** #77: botcircle://auth/callback from the system browser; the code is useless without this app's PKCE verifier. */
+    private fun handleSsoCallback(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (intent.action != Intent.ACTION_VIEW || uri.scheme != "botcircle" || uri.host != "auth" || uri.path != "/callback") return
+        app.completeSso(uri.getQueryParameter("code"), uri.getQueryParameter("error"))
+        intent.data = null
     }
 
     /** #64: a tapped notification names what to open; access is checked again by the server when it loads. */
@@ -182,7 +191,7 @@ fun OpenDotsRoot(app: AppState, ui: AppUiState) {
             Stage.Starting -> StartingScreen()
             Stage.Server -> ServerScreen(app, ui)
             is Stage.Unreachable -> UnreachableScreen(app, ui, stage.message)
-            is Stage.SignIn -> SignInScreen(app, ui, stage.registrationOpen)
+            is Stage.SignIn -> SignInScreen(app, ui, stage.registrationOpen, stage.sso)
             is Stage.Onboarding -> OnboardingScreen(app, ui, stage.keyConfigured)
             Stage.Main -> MainScreens(app, ui)
         }

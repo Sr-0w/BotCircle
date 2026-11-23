@@ -826,4 +826,13 @@
         <item quantity="one">Worked for %d s</item>
         <item quantity="other">Worked for %d s</item>
     </plurals>
+    <!-- #77 single sign-on (OIDC) -->
+    <string name="sso_continue">Continue with %1$s</string>
+    <string name="sso_admin_recovery">Administrator recovery access</string>
+    <string name="sso_failed">Single sign-on failed. Try again.</string>
+    <string name="sso_denied">Sign-in cancelled.</string>
+    <string name="sso_expired">The sign-in expired. Start again.</string>
+    <string name="sso_forbidden">Your account is not allowed on this BotCircle.</string>
+    <string name="sso_unlinked">No BotCircle account is linked to this identity. Sign in with your password, then link your account in Settings on the web.</string>
+    <string name="sso_unavailable">The identity provider can’t be reached. Try again later.</string>
 </resources>

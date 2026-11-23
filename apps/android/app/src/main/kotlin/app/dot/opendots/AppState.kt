@@ -8,6 +8,7 @@ import app.dot.opendots.chat.TemporaryChatSession
 import app.dot.opendots.data.Account
 import app.dot.opendots.data.Activity
 import app.dot.opendots.data.Agent
+import app.dot.opendots.data.SsoInfo
 import app.dot.opendots.data.AvatarPreset
 import app.dot.opendots.data.ApiException
 import app.dot.opendots.data.Approval
@@ -50,7 +51,7 @@ sealed interface Stage {
     data object Server : Stage
     /** The chosen server did not answer. */
     data class Unreachable(val message: String) : Stage
-    data class SignIn(val registrationOpen: Boolean) : Stage
+    data class SignIn(val registrationOpen: Boolean, val sso: SsoInfo = SsoInfo()) : Stage
     data class Onboarding(val keyConfigured: Boolean) : Stage
     data object Main : Stage
 }
@@ -122,7 +123,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         viewModelScope.launch {
             try {
                 val me = client.me()
-                if (me.account == null) { client.forgetSession(); setStage(Stage.SignIn(me.registrationOpen)) } else enter(me.account)
+                if (ssoInFlight) return@launch // #77: a browser sign-in is finishing; its session must not be dropped here
+                if (me.account == null) { client.forgetSession(); setStage(Stage.SignIn(me.registrationOpen, me.sso)) } else enter(me.account)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 setStage(Stage.Unreachable(e.message.orEmpty()))
@@ -150,7 +152,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         val url = normalizeServerUrl(input) ?: throw IllegalArgumentException(INVALID_URL)
         val me = client.connect(url)
         _state.update { it.copy(serverUrl = url.toString()) }
-        if (me.account == null) setStage(Stage.SignIn(me.registrationOpen)) else enter(me.account)
+        if (me.account == null) setStage(Stage.SignIn(me.registrationOpen, me.sso)) else enter(me.account)
     }
 
     fun changeServer() {
@@ -160,6 +162,28 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     }
 
     fun signIn(email: String, password: String, register: Boolean) = form { enter(client.signIn(email, password, register)) }
+
+    // --- #77: single sign-on (OIDC) in the system browser -----------------------------------------
+    /** New PKCE verifier (kept until the callback, also across process death); returns the URL to open in the browser. */
+    fun ssoStartUrl(): String {
+        val verifier = b64url(ByteArray(32).also { java.security.SecureRandom().nextBytes(it) })
+        store.ssoVerifier = verifier
+        return client.ssoStartUrl(b64url(java.security.MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))))
+    }
+
+    /** botcircle://auth/callback?code=… | ?error=… — only accepted while this app has a sign-in in progress. */
+    fun completeSso(code: String?, error: String?) {
+        val verifier = store.ssoVerifier
+        store.ssoVerifier = null
+        if (verifier == null || code.isNullOrBlank()) {
+            if (verifier != null || error != null) _state.update { it.copy(formError = SSO_ERROR_PREFIX + (error ?: "sso_failed"), busy = false) }
+            return
+        }
+        form { ssoInFlight = true; try { enter(client.ssoExchange(code, verifier)) } finally { ssoInFlight = false } }
+    }
+
+    @Volatile private var ssoInFlight = false
+    private fun b64url(bytes: ByteArray) = android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
 
     fun signOut() {
         dropEphemeral()
@@ -601,6 +625,8 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     companion object {
         /** Sentinels the UI maps to localized text. */
         const val INVALID_URL = "invalid-url"
+        /** #77: formError for an SSO failure, followed by the server's stable code (sso_denied, sso_forbidden…). */
+        const val SSO_ERROR_PREFIX = "sso:"
         const val FAILED = "failed"
         const val EPHEMERAL_ERASED = "ephemeral-erased"
     }

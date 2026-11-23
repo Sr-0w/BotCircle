@@ -21,6 +21,8 @@ interface SessionStore {
     var themeMode: String
     var reduceTransparency: Boolean
     var lastAgentId: String?
+    /** #77: PKCE verifier of an SSO sign-in in progress (survives the app being killed while the browser is open). */
+    var ssoVerifier: String?
 }
 
 class MemorySessionStore(
@@ -29,6 +31,7 @@ class MemorySessionStore(
     override var themeMode: String = "SYSTEM",
     override var reduceTransparency: Boolean = false,
     override var lastAgentId: String? = null,
+    override var ssoVerifier: String? = null,
 ) : SessionStore
 
 class PrefsSessionStore(context: Context) : SessionStore {
@@ -49,6 +52,10 @@ class PrefsSessionStore(context: Context) : SessionStore {
     override var lastAgentId: String?
         get() = prefs.getString("agent", null)
         set(value) = prefs.edit().putString("agent", value).apply()
+
+    override var ssoVerifier: String?
+        get() = prefs.getString("ssoVerifier", null)
+        set(value) = prefs.edit().putString("ssoVerifier", value).apply()
 
     private var memoryCookie: String? = null
     private var loaded = false

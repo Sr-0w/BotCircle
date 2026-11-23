@@ -826,4 +826,13 @@
         <item quantity="one">A travaillé %d s</item>
         <item quantity="other">A travaillé %d s</item>
     </plurals>
+    <!-- #77 connexion unique (OIDC) -->
+    <string name="sso_continue">Continuer avec %1$s</string>
+    <string name="sso_admin_recovery">Accès administrateur de secours</string>
+    <string name="sso_failed">La connexion unique a échoué. Réessaie.</string>
+    <string name="sso_denied">Connexion annulée.</string>
+    <string name="sso_expired">La connexion a expiré. Recommence.</string>
+    <string name="sso_forbidden">Ton compte n’est pas autorisé sur ce BotCircle.</string>
+    <string name="sso_unlinked">Aucun compte BotCircle n’est lié à cette identité. Connecte-toi avec ton mot de passe, puis lie ton compte dans les paramètres sur le web.</string>
+    <string name="sso_unavailable">Le fournisseur d’identité est injoignable. Réessaie plus tard.</string>
 </resources>

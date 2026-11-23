@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -62,13 +63,25 @@ import app.dot.opendots.AppState
 import app.dot.opendots.AppUiState
 import app.dot.opendots.R
 import app.dot.opendots.data.ModelInfo
+import app.dot.opendots.data.SsoInfo
 
 @Composable
 private fun formError(raw: String?): String? = when (raw) {
     null -> null
     AppState.INVALID_URL -> stringResource(R.string.server_invalid)
-    else -> raw.ifBlank { stringResource(R.string.generic_error) }
+    in SSO_CODES.keys -> stringResource(SSO_CODES.getValue(raw))
+    else -> if (raw.startsWith(AppState.SSO_ERROR_PREFIX)) stringResource(R.string.sso_failed) else raw.ifBlank { stringResource(R.string.generic_error) }
 }
+
+/** #77: the server's stable SSO error codes, in plain words (no token or technical detail). */
+private val SSO_CODES = mapOf(
+    AppState.SSO_ERROR_PREFIX + "sso_denied" to R.string.sso_denied,
+    AppState.SSO_ERROR_PREFIX + "sso_expired" to R.string.sso_expired,
+    AppState.SSO_ERROR_PREFIX + "sso_forbidden" to R.string.sso_forbidden,
+    AppState.SSO_ERROR_PREFIX + "sso_unlinked" to R.string.sso_unlinked,
+    AppState.SSO_ERROR_PREFIX + "sso_conflict" to R.string.sso_unlinked,
+    AppState.SSO_ERROR_PREFIX + "sso_unavailable" to R.string.sso_unavailable,
+)
 
 /** The calm frame of every "before the conversation" screen: one orb, one title, one sentence, then the form. */
 @Composable
@@ -126,12 +139,30 @@ fun UnreachableScreen(app: AppState, ui: AppUiState, message: String) {
 }
 
 @Composable
-fun SignInScreen(app: AppState, ui: AppUiState, registrationOpen: Boolean) {
+fun SignInScreen(app: AppState, ui: AppUiState, registrationOpen: Boolean, sso: SsoInfo = SsoInfo()) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var register by rememberSaveable { mutableStateOf(false) }
+    // #77: SSO only → the password form is the administrators' recovery route, folded away.
+    var recovery by rememberSaveable { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val submit = { if (email.isNotBlank() && password.isNotEmpty()) app.signIn(email, password, register) }
+    val passwordForm = !sso.enabled || sso.localLogin || recovery
     Gate(stringResource(if (register) R.string.register_title else R.string.sign_in_title), stringResource(R.string.sign_in_body, ui.serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/'))) {
+        if (sso.enabled && !register) {
+            // The system browser (never an embedded WebView): the provider's own page, its MFA and passkeys.
+            DotPrimaryButton(stringResource(R.string.sso_continue, sso.label), {
+                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(app.ssoStartUrl())).addCategory(android.content.Intent.CATEGORY_BROWSABLE)) }
+            }, Modifier.fillMaxWidth().testTag("sso-button"), loading = ui.busy)
+            if (!passwordForm) {
+                formError(ui.formError)?.let { Spacer(Modifier.height(DotSpacing.m)); Text(it, style = Dot.type.caption, color = Dot.colors.danger) }
+                Spacer(Modifier.height(DotSpacing.s))
+                DotButton(stringResource(R.string.sso_admin_recovery), { recovery = true }, Modifier.fillMaxWidth(), style = ButtonStyle.Ghost)
+                DotButton(stringResource(R.string.change_server), app::changeServer, Modifier.fillMaxWidth(), style = ButtonStyle.Ghost)
+                return@Gate
+            }
+            Spacer(Modifier.height(DotSpacing.xl))
+        }
         DotTextField(email, { email = it }, label = stringResource(R.string.email), keyboardType = KeyboardType.Email, contentType = ContentType.EmailAddress + ContentType.Username)
         Spacer(Modifier.height(DotSpacing.l))
         DotTextField(
