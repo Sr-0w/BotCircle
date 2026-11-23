@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockLanguageModelV4 } from 'ai/test';
+import sharp from 'sharp';
+import { readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { requireAccount } from '../src/auth/routes.ts';
 import { authStore, closeAuthStore, createSession, registerUser, revokeSession } from '../src/auth/store.ts';
@@ -226,6 +229,106 @@ describe('authenticated temporary API', () => {
         } else expect(next.status).toBe(404);
       } finally { if (action === 'timeout') vi.useRealTimers(); }
     });
+
+  describe('attachments (RAM only)', () => {
+    const b64 = (data: Buffer | string) => Buffer.from(data).toString('base64');
+    const attach = (id: string, text: string, attachments: unknown[]) => call(`/${id}/turn`, 'POST', { text, model: modelConfig, attachments });
+    const png = () => sharp({ create: { width: 16, height: 16, channels: 3, background: '#cc2200' } }).png().toBuffer();
+    const listing = async (dir: string): Promise<string[]> => {
+      const out: string[] = [];
+      const walk = async (d: string) => {
+        for (const entry of await readdir(d, { withFileTypes: true }).catch(() => [])) {
+          const path = join(d, entry.name);
+          if (entry.isDirectory()) await walk(path); else out.push(`${path}:${(await stat(path)).size}`);
+        }
+      };
+      await walk(dir);
+      return out.sort();
+    };
+
+    it('feeds images and text files to the model, keeps them for later turns, and returns metadata only', async () => {
+      const { id } = await create();
+      const image = await png();
+      const res = await attach(id, 'regarde', [
+        { name: 'rouge.png', mediaType: 'image/png', data: b64(image) },
+        { name: 'notes.txt', mediaType: 'text/plain', data: b64('secret-file-content') },
+      ]);
+      expect(await res.text()).toContain('event: done');
+      const user = options.prompt.filter((m: any) => m.role === 'user').at(-1).content;
+      expect(user.some((p: any) => p.type === 'file' && p.mediaType === 'image/jpeg')).toBe(true);
+      expect(JSON.stringify(user)).toContain('secret-file-content');
+      const snapshot = await (await call(`/${id}`)).json() as any;
+      expect(snapshot.messages[0].attachments).toEqual([
+        { name: 'rouge.png', mediaType: 'image/png', size: image.length },
+        { name: 'notes.txt', mediaType: 'text/plain', size: 'secret-file-content'.length },
+      ]);
+      expect(JSON.stringify(snapshot)).not.toContain(b64('secret-file-content'));
+      expect(JSON.stringify(snapshot)).not.toContain('files');
+      // A later turn still sees both files.
+      expect(await (await turn(id, 'et ensuite ?')).text()).toContain('event: done');
+      const earlier = options.prompt.filter((m: any) => m.role === 'user')[0].content;
+      expect(earlier.some((p: any) => p.type === 'file' && p.mediaType === 'image/jpeg')).toBe(true);
+      expect(JSON.stringify(earlier)).toContain('secret-file-content');
+    });
+
+    it('accepts attachments without text, rejects an empty message', async () => {
+      const { id } = await create();
+      expect((await call(`/${id}/turn`, 'POST', { text: '', model: modelConfig })).status).toBe(400);
+      const res = await attach(id, '', [{ name: 'a.txt', mediaType: 'text/plain', data: b64('hello') }]);
+      expect(await res.text()).toContain('event: done');
+    });
+
+    it('enforces count, per-file, per-turn and per-session limits with fixed messages', async () => {
+      const { id } = await create();
+      const small = { name: 'a.txt', mediaType: 'text/plain', data: b64('x') };
+      const tooMany = await attach(id, 'x', Array(6).fill(small));
+      expect(tooMany.status).toBe(400);
+      expect((await tooMany.json() as any).error).toMatch(/5 pièces jointes/);
+      const big = (n: number) => ({ name: 'big.bin', mediaType: 'application/octet-stream', data: b64(Buffer.alloc(Math.floor(n), 1)) });
+      const file = await attach(id, 'x', [big(10 * 1024 * 1024 + 1)]);
+      expect(file.status).toBe(413);
+      expect((await file.json() as any).error).toMatch(/10 Mo/);
+      const turnLimit = await attach(id, 'x', [big(6.9 * 1024 * 1024), big(6.9 * 1024 * 1024), big(6.9 * 1024 * 1024)]);
+      expect(turnLimit.status).toBe(413);
+      expect((await turnLimit.json() as any).error).toMatch(/20 Mo/);
+      expect((await attach(id, 'x', [{ name: 'x', mediaType: 'text/plain', data: '***' }])).status).toBe(400);
+      expect((await attach(id, 'x', [{ name: 'x.png', mediaType: 'image/png', data: b64('not an image') }])).status).toBe(400);
+      expect(options).toBeUndefined();
+      // 50 MB per session: five turns of 10 MB fit, the next does not.
+      for (let i = 0; i < 5; i++) expect(await (await attach(id, 'ok', [big(10 * 1024 * 1024)])).text()).toContain('event: done');
+      const session = await attach(id, 'one more', [big(1024)]);
+      expect(session.status).toBe(413);
+      expect((await session.json() as any).error).toMatch(/50 Mo/);
+    }, 60_000);
+
+    it('keeps bytes in RAM only: nothing written to disk or the database, purged on delete', async () => {
+      await withAccount(account, async () => {
+        const dir = account.dataDir;
+        const tables = async () => Promise.all([db().select().from(schema.artifacts), db().select().from(schema.messages), db().select().from(schema.conversations), db().select().from(schema.journal), db().select().from(schema.jobs)]);
+        const [files, rows] = [await listing(dir), await tables()];
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {}), err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+          const { id } = await create();
+          expect(await (await attach(id, 'x', [{ name: 'r.png', mediaType: 'image/png', data: b64(await png()) }, { name: 'n.txt', mediaType: 'text/plain', data: b64('private') }])).text()).toContain('event: done');
+          expect(await listing(dir)).toEqual(files);
+          expect(await tables()).toEqual(rows);
+          expect([...log.mock.calls, ...err.mock.calls].flat().join(' ')).not.toMatch(/private|r\.png/);
+          expect((await call(`/${id}`, 'DELETE')).status).toBe(200);
+          expect((await call(`/${id}`)).status).toBe(404);
+          const fresh = await create();
+          expect((await (await call(`/${fresh.id}`)).json() as any).messages).toEqual([]);
+        } finally { log.mockRestore(); err.mockRestore(); }
+        expect(await listing(dir)).toEqual(files);
+      });
+    });
+
+    it('purges attachment bytes on expiry', async () => {
+      const { id } = await create();
+      await (await attach(id, 'x', [{ name: 'n.txt', mediaType: 'text/plain', data: b64('private') }])).text();
+      now += IDLE_MS + 1; store.sweep();
+      expect((await call(`/${id}`)).status).toBe(404);
+    });
+  });
 
   it('does not resurrect expired state or state lost to a server restart', async () => {
     const { id } = await create();

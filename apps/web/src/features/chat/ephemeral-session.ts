@@ -9,6 +9,14 @@ import { t } from '@/lib/i18n';
  */
 const HEADERS = { 'content-type': 'application/json', 'x-opendots-client': '1' };
 export class EphemeralGone extends Error {}
+export const MAX_EPHEMERAL_FILES = 5, MAX_EPHEMERAL_FILE_BYTES = 10 * 1024 * 1024, MAX_EPHEMERAL_TURN_BYTES = 20 * 1024 * 1024;
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
 
 function request(path: string, init: RequestInit = {}) {
   return fetch(`/api/temporary-chats${path}`, { ...init, headers: HEADERS, cache: 'no-store' });
@@ -61,9 +69,10 @@ export class EphemeralSession {
 }
 
 /** A ChatTransport that maps the temporary turn SSE (`delta` / `done` / `stopped` / `failure`) to UI message chunks. */
-export function ephemeralTransport(session: EphemeralSession, getModel: () => ModelConfig | null, onTurnEnd: (completed: boolean) => void): ChatTransport<ODMessage> {
+export function ephemeralTransport(session: EphemeralSession, getModel: () => ModelConfig | null, onTurnEnd: (completed: boolean) => void, onTurnStart: (committedCount: number) => void): ChatTransport<ODMessage> {
   return {
     sendMessages: async ({ messages, abortSignal }) => {
+      onTurnStart(messages.length - 1); // everything before the new user message is what the server holds
       const last = messages[messages.length - 1];
       const text = last?.parts.map((part) => (part.type === 'text' ? part.text : '')).join('') ?? '';
       const model = getModel();
@@ -71,8 +80,12 @@ export function ephemeralTransport(session: EphemeralSession, getModel: () => Mo
       if (!model) { onTurnEnd(false); throw new Error(t('Choisis un modèle compatible (OpenRouter ou Ollama).')); }
       let res: Response;
       try {
+        // Attachments travel inline (base64) in the turn request: no upload endpoint, nothing stored client-side.
+        const attachments = await Promise.all((last?.parts ?? []).filter((part) => part.type === 'file').map(async (part) => ({
+          name: part.filename ?? 'fichier', mediaType: part.mediaType || 'application/octet-stream', data: await blobToBase64(await (await fetch(part.url)).blob()),
+        })));
         const id = await session.ensure();
-        res = await request(`/${id}/turn`, { method: 'POST', signal: abortSignal, body: JSON.stringify({ text, model: { provider: model.provider, model: model.model, reasoning: model.reasoning ?? null } }) });
+        res = await request(`/${id}/turn`, { method: 'POST', signal: abortSignal, body: JSON.stringify({ text, model: { provider: model.provider, model: model.model, reasoning: model.reasoning ?? null }, ...(attachments.length ? { attachments } : {}) }) });
       } catch (e) { onTurnEnd(false); throw e; }
       if (!res.ok || !res.body) {
         onTurnEnd(false);

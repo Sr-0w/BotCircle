@@ -19,8 +19,9 @@ Ephemeral chat is a **mode of a new, empty general chat**, not a separate page:
   saved, gone when you leave, the provider still processes messages).
 - The model defaults to the new chat's effective model when it is OpenRouter or
   Ollama and can be changed with the usual model menu; Codex is listed but
-  disabled. Attachments, `@Circle` mentions, slash commands, web search, edit and
-  regenerate are not offered.
+  disabled. Files and images can be attached ("+", paste, drag and drop) and
+  appear in the bubble like in a normal chat (local previews). `@Circle`
+  mentions, slash commands, web search, edit and regenerate are not offered.
 - The empty normal chat created by "New chat" is deleted when switching to
   ephemeral mode (and removed from the sidebar); switching back creates a fresh
   one. The server session is created lazily on the first send, so toggling costs
@@ -94,11 +95,12 @@ its local app-server diagnostic persistence has been audited.
 
 All tools are **disabled by policy** in this increment (`tools: {}`,
 `toolChoice: 'none'`), including read-only Web tools. Tool calls unexpectedly
-returned by a model are rejected, never executed. Uploads, file URLs/parts,
-structured Circle/plugin mentions, delegation, schedules, connector actions,
-memory writes, sharing and export are not accepted by the strict turn schema.
-Plain `@Circle` or `/clear` text is just text, never a server action. No upload
-picker or export/share controls are offered. This is a deliberate restriction,
+returned by a model are rejected, never executed. File URLs/artifact
+references, structured Circle/plugin mentions, delegation, schedules, connector
+actions, memory writes, sharing and export are not accepted by the strict turn
+schema. The only file input is the inline `attachments` field described below.
+Plain `@Circle` or `/clear` text is just text, never a server action. No
+export/share controls are offered. This is a deliberate restriction,
 not a claim to preserve full tool parity. Other API actions explicitly performed
 by the user outside this session retain their ordinary durable semantics.
 
@@ -120,9 +122,25 @@ Responses, including SSE, are `Cache-Control: no-store`.
 | --- | --- |
 | `POST /` | Create RAM session; return `{id, expiresAt, messages, busy}` |
 | `GET /:id` | Snapshot of completed turns; renews the 30 min idle window (keepalive) |
-| `POST /:id/turn` | Strict `{text, model: {provider, model, reasoning?}}`; OpenRouter/Ollama only |
+| `POST /:id/turn` | Strict `{text, model: {provider, model, reasoning?}, attachments?: [{name, mediaType, data}]}`; OpenRouter/Ollama only. `text` may be empty if attachments are present; `data` is base64 without `data:` prefix |
 | `POST /:id/stop` | Abort this session's inference only |
 | `DELETE /:id` | Abort and purge; unknown/expired/foreign IDs return 404 |
+
+### Attachments
+
+Up to 5 per turn, 10 MB decoded each, 20 MB per turn and 50 MB per session;
+over-limit requests get 400/413 with a fixed French message (the turn route alone
+accepts a ~28 MB body; every other route stays at 70 kB). Bytes are held in the
+RAM session only (never in artifacts, the uploads/attachments directories, the
+DB, logs or the journal) and are zeroed and dropped on `DELETE`, expiry, logout
+and shutdown. Snapshots (`POST /`, `GET /:id`) return metadata only: user
+messages gain `attachments: [{name, mediaType, size}]`, never the bytes.
+Earlier attachments stay in the context of later turns. The model input mirrors
+the normal chat: images go through the same normalization (JPEG, 2048 px max)
+and are sent as image parts regardless of the model (a non-vision model gets the
+same provider behaviour as in a normal chat); PDFs are sent as file parts;
+UTF-8 text files are inlined (first 60,000 characters, flagged as untrusted
+external data); other binaries are mentioned by name/type only.
 
 SSE events: `delta` (JSON string), `done`, `stopped`, `failure` (fixed JSON string).
 Concurrent sends return 409. Expired, discarded or inaccessible sessions return

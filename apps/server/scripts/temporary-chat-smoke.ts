@@ -1,9 +1,10 @@
 /** Real HTTP + desktop/mobile Chromium; local mocked Ollama, no paid inference. */
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import sharp from 'sharp';
 import { serve } from '@hono/node-server';
 
 const dir = await mkdtemp(join(tmpdir(), 'temporary-chat-smoke-'));
@@ -28,7 +29,11 @@ globalThis.fetch = async (input, init) => {
         },
       }), { headers: { 'content-type': 'text/event-stream' } });
     }
-    const answer = userMessages.length === 1 ? 'Réponse temporaire de test' : 'Contexte temporaire retrouvé';
+    const everything = JSON.stringify(userMessages);
+    const hasImage = /image_url|data:image\/jpeg;base64/.test(everything), hasText = everything.includes('contenu-secret-du-fichier');
+    let answer = userMessages.length === 1 ? 'Réponse temporaire de test' : 'Contexte temporaire retrouvé';
+    if (JSON.stringify(userMessages.at(-1)).includes('rappel-fichier')) answer = hasImage && hasText ? 'Fichiers toujours présents' : 'Fichiers perdus';
+    else if (JSON.stringify(userMessages.at(-1)).includes('contenu-secret-du-fichier')) answer = hasImage ? 'Fichiers bien reçus' : 'Image absente';
     return new Response([
       `data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { role: 'assistant', content: answer }, finish_reason: null }] })}\n\n`,
       `data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`,
@@ -127,6 +132,24 @@ try {
     await input.fill('Et ensuite ?');
     await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
     await page.getByText('Contexte temporaire retrouvé', { exact: true }).waitFor();
+    // Attachments: an image and a text file, via the "+" button; previews in the bubble, nothing stored anywhere.
+    const storageFiles = async () => (await readdir(dir, { recursive: true })).filter(name => /attachments|artifacts|uploads/i.test(String(name)));
+    const filesBefore = await storageFiles();
+    await page.locator('input[type=file]').setInputFiles([
+      { name: 'rouge.png', mimeType: 'image/png', buffer: await sharp({ create: { width: 32, height: 32, channels: 3, background: '#cc2200' } }).png().toBuffer() },
+      { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('contenu-secret-du-fichier') },
+    ]);
+    await input.fill('Que contiennent ces fichiers ?');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Fichiers bien reçus', { exact: true }).waitFor();
+    assert.equal(await page.locator('[data-chat-image^="blob:"]').count(), 1);
+    await page.getByText('notes.txt').first().waitFor();
+    await input.fill('rappel-fichier ?');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Fichiers toujours présents', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('contenu-secret')), false);
+    assert.deepEqual(await storageFiles(), filesBefore);
+    assert.equal(await toggle.count(), 0);
     // Stop reaches the provider abort signal; the interrupted turn is dropped on both sides.
     await input.fill('slow fixture');
     await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
@@ -170,9 +193,9 @@ try {
     await page.getByText('Réponse temporaire de test', { exact: true }).waitFor({ state: 'detached' });
     assert.deepEqual(errors, []);
     await context.close();
-    console.log(`PASS Chromium ${viewport.width}x${viewport.height}: icon on new chat, toggle on/off, empty normal chat removed/recreated, streaming, context, stop, never listed/saved, leave/reload deletes session`);
+    console.log(`PASS Chromium ${viewport.width}x${viewport.height}: icon on new chat, toggle on/off, empty normal chat removed/recreated, streaming, context, image + text file attachments, stop, never listed/saved, leave/reload deletes session`);
   }
-  assert.equal(inferenceCalls, 10);
+  assert.equal(inferenceCalls, 14);
   assert.equal(abortedCalls, 2);
   await withAccount(account, async () => assert.equal((await loadMessages(conversation)).messages.length, 1));
 } finally {

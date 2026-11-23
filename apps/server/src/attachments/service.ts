@@ -14,19 +14,22 @@ const directory = () => join(config.dataDir, 'attachments');
 const pattern = /^\/api\/attachments\/([a-f0-9]{32})$/;
 export class AttachmentError extends Error {}
 export interface Attachment { id: string; url: string; filename: string; mediaType: 'image/jpeg'; width: number; height: number; size: number }
-function imageMagic(data: Buffer) {
+export function imageMagic(data: Buffer) {
   return data.subarray(0, 3).equals(Buffer.from([255, 216, 255])) || data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) || /^GIF8[79]a/.test(data.subarray(0, 6).toString()) || data.subarray(0, 4).toString() === 'RIFF' && data.subarray(8, 12).toString() === 'WEBP';
+}
+/** The one image pipeline (orientation, 2048 px max, flattened JPEG). Pure: nothing is written. */
+export async function normalizeImage(input: Buffer) {
+  try {
+    const normalized = await sharp(input, { limitInputPixels: 40_000_000, animated: false, failOn: 'error' }).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 90 }).toBuffer({ resolveWithObject: true });
+    return { bytes: normalized.data, width: normalized.info.width, height: normalized.info.height };
+  } catch { throw new AttachmentError('Image invalide ou trop grande. Essaie une image de moins de 40 mégapixels.'); }
 }
 export async function storeImage(source: Uint8Array, originalName: string): Promise<Attachment> {
   if (!source.length || source.length > IMAGE_MAX_BYTES) throw new AttachmentError('Une image doit faire entre 1 octet et 10 Mo.');
   const input = Buffer.from(source);
   if (!imageMagic(input)) throw new AttachmentError('Image non prise en charge. Choisis une image JPEG, PNG, WebP ou GIF.');
   return lock.run(accountKey(), async () => {
-    let bytes: Buffer, width: number, height: number;
-    try {
-      const normalized = await sharp(input, { limitInputPixels: 40_000_000, animated: false, failOn: 'error' }).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 90 }).toBuffer({ resolveWithObject: true });
-      bytes = normalized.data; width = normalized.info.width; height = normalized.info.height;
-    } catch { throw new AttachmentError('Image invalide ou trop grande. Essaie une image de moins de 40 mégapixels.'); }
+    const { bytes, width, height } = await normalizeImage(input);
     const dir = directory(); await mkdir(dir, { recursive: true, mode: 0o700 });
     let used = 0;
     for (const file of await readdir(dir)) if (/^[a-f0-9]{32}\.jpg$/.test(file)) used += (await stat(join(dir, file))).size;

@@ -16,7 +16,7 @@ import { MessageView } from './message-parts';
 import { ModelMenu } from './model-menu';
 import { modelsOf } from './chat-controls';
 import { orbState } from './general-chat-view';
-import { EphemeralSession, ephemeralTransport } from './ephemeral-session';
+import { EphemeralSession, ephemeralTransport, MAX_EPHEMERAL_FILES, MAX_EPHEMERAL_FILE_BYTES, MAX_EPHEMERAL_TURN_BYTES } from './ephemeral-session';
 
 const HEARTBEAT_MS = 30_000;
 const supported = (model: ModelConfig | null | undefined): model is ModelConfig => !!model && model.provider !== 'codex';
@@ -71,21 +71,22 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
 
   // A stopped or failed turn is not kept by the server: it is dropped here too, so both sides keep the same context.
   const uncommitted = useRef(false);
-  const transport = useMemo(() => ephemeralTransport(session, () => modelRef.current, (completed) => { uncommitted.current = !completed; }), [session]);
+  const committed = useRef(0); // messages the server holds, as of the start of the current turn
+  const transport = useMemo(() => ephemeralTransport(session, () => modelRef.current, (completed) => { uncommitted.current = !completed; }, (count) => { committed.current = count; }), [session]);
   const chatId = useMemo(() => `ephemeral-${crypto.randomUUID()}`, []);
   const chat = useChat<ODMessage>({ id: chatId, transport });
   const { messages, status, setMessages, sendMessage, error, clearError } = chat;
   const busy = status === 'submitted' || status === 'streaming';
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const committed = useRef(0);
+  const objectUrls = useRef<string[]>([]);
   useEffect(() => {
     if (status !== 'ready' && status !== 'error') return;
     if (uncommitted.current) {
       uncommitted.current = false;
       setMessages(messagesRef.current.slice(0, committed.current));
       if (messagesRef.current.length > committed.current) toast(t('Réponse interrompue : ce tour n’a pas été conservé.'));
-    } else committed.current = messagesRef.current.length;
+    }
   }, [status, setMessages]);
 
   // Heartbeat while mounted, and the end of the session on leave / tab close.
@@ -106,6 +107,7 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
       window.removeEventListener('pagehide', leave);
       if (messagesRef.current.length) toast(t('Chat éphémère effacé'));
       session.discard();
+      for (const url of objectUrls.current.splice(0)) URL.revokeObjectURL(url);
     };
   }, [session, lost]);
   useEffect(() => { if (error && /expiré/.test(error.message)) lost(); }, [error, lost]);
@@ -159,12 +161,20 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
           <Composer
             busy={busy}
             autoFocus
-            noFiles
             tools={<EphemeralModelControl model={model} onPick={setModel} />}
             placeholder={t('Écrire un message éphémère…')}
-            onSubmit={async (text) => {
+            onSubmit={async (text, attachments) => {
               if (!model) throw new Error(t('Choisis un modèle compatible (OpenRouter ou Ollama).'));
-              void sendMessage({ text });
+              if (attachments.length > MAX_EPHEMERAL_FILES) throw new Error(t('Tu peux joindre jusqu’à {n} fichiers par message.', { n: MAX_EPHEMERAL_FILES }));
+              if (attachments.some((file) => file.size > MAX_EPHEMERAL_FILE_BYTES)) throw new Error(t('Chaque fichier doit faire moins de {n} Mo.', { n: 10 }));
+              if (attachments.reduce((n, file) => n + file.size, 0) > MAX_EPHEMERAL_TURN_BYTES) throw new Error(t('Les pièces jointes d’un message ne peuvent pas dépasser 20 Mo au total.'));
+              // Local object URLs only: the bubble can show previews, the bytes go out base64 in the turn request.
+              const files = attachments.map((file) => {
+                const url = URL.createObjectURL(file);
+                objectUrls.current.push(url);
+                return { type: 'file' as const, url, mediaType: file.type || 'application/octet-stream', filename: file.name };
+              });
+              void sendMessage({ text, files });
             }}
             onStop={() => { uncommitted.current = true; session.stop(); void chat.stop(); }}
           />
