@@ -396,7 +396,7 @@ export function PluginDialog({ onClose }: { onClose: () => void }) {
               </TabsList>
             </Tabs>
             {mode === "url" ? (
-              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/opendots-plugin.json" />
+              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/botcircle-plugin.json" />
             ) : (
               <Textarea
                 rows={10}

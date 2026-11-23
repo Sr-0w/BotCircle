@@ -8,8 +8,8 @@ appels du modèle restent facturés par son fournisseur.
 ## Démarrage sur un serveur
 
 ```sh
-git clone https://github.com/Sr-0w/OpenDots.git
-cd OpenDots
+git clone https://github.com/Sr-0w/BotCircle.git
+cd BotCircle
 cp deploy/compose.env.example .env
 # Adapter OPENDOTS_PUBLIC_URL et OPENDOTS_DOMAIN dans .env.
 docker compose up -d --build --wait

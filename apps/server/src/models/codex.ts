@@ -47,7 +47,7 @@ export class CodexRpc {
       this.pending.set(id, { resolve, reject, timer }); this.send({ id, method, params });
     });
   }
-  async initialize() { await this.call('initialize', { clientInfo: { name: 'opendots', version: '1.0.0' }, capabilities: { experimentalApi: true } }); this.send({ method: 'initialized' }); }
+  async initialize() { await this.call('initialize', { clientInfo: { name: 'opendots', title: 'BotCircle', version: '1.0.0' }, capabilities: { experimentalApi: true } }); this.send({ method: 'initialized' }); }
   close() { running.delete(this); this.child.kill(); }
 }
 export async function codexHome() {

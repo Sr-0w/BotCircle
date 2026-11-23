@@ -78,7 +78,7 @@ export async function fetchPage(rawUrl: string): Promise<FetchedPage> {
     redirect: 'follow',
     signal: AbortSignal.timeout(20_000),
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; BotCircle/0.1; +https://github.com/sr-0w/opendots)',
+      'User-Agent': 'Mozilla/5.0 (compatible; BotCircle/0.1; +https://github.com/Sr-0w/BotCircle)',
       Accept: 'text/html,application/json,text/plain;q=0.9,*/*;q=0.5',
       'Accept-Language': 'fr,en;q=0.8',
     },

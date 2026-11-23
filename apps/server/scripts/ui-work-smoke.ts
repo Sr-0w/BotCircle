@@ -41,8 +41,8 @@ function fakeOpencode(url: URL, init?: RequestInit) {
   const path = url.pathname, method = init?.method ?? 'GET';
   if ((init?.headers as Record<string, string>)?.authorization !== `Basic ${Buffer.from('opencode:smoke-secret').toString('base64')}`) return Response.json({}, { status: 401 });
   if (path === '/global/health') return json({ healthy: true, version: '1.19.5' });
-  if (path === '/session' && method === 'POST') return json({ id: 'ses_smoke', title: 'x', directory: '/home/dev/opendots', time: { created: Date.now(), updated: Date.now() } });
-  if (path === '/session/ses_smoke') return json({ id: 'ses_smoke', title: 'Refactor des réglages', directory: '/home/dev/opendots', time: { created: Date.now(), updated: Date.now() }, summary: { additions: 12, deletions: 4, files: 1 } });
+  if (path === '/session' && method === 'POST') return json({ id: 'ses_smoke', title: 'x', directory: '/home/dev/botcircle', time: { created: Date.now(), updated: Date.now() } });
+  if (path === '/session/ses_smoke') return json({ id: 'ses_smoke', title: 'Refactor des réglages', directory: '/home/dev/botcircle', time: { created: Date.now(), updated: Date.now() }, summary: { additions: 12, deletions: 4, files: 1 } });
   if (path === '/session/status') return json(oc.busy ? { ses_smoke: { type: 'busy' } } : {});
   if (path === '/session/ses_smoke/message') return json(oc.messages);
   if (path === '/session/ses_smoke/diff') return json([{ path: 'apps/web/src/settings-page.tsx', status: 'modified', additions: 12, deletions: 4, patch: '@@ -1,2 +1,2 @@\n-ancien\n+nouveau' }]);
@@ -238,7 +238,7 @@ try {
   await page.getByLabel('Nom', { exact: true }).fill('PC de dev');
   await page.getByLabel('Adresse de l’API').fill('https://code.example.test');
   await page.getByLabel('Mot de passe', { exact: true }).fill('smoke-secret');
-  await page.getByLabel('Dossier du projet par défaut').fill('/home/dev/opendots');
+  await page.getByLabel('Dossier du projet par défaut').fill('/home/dev/botcircle');
   await page.getByRole('button', { name: 'Enregistrer et contrôler' }).click();
   const instanceCard = page.getByRole('region', { name: 'PC de dev', exact: true });
   await instanceCard.getByText('En ligne', { exact: true }).waitFor();

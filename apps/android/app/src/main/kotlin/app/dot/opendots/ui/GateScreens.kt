@@ -103,7 +103,7 @@ fun ServerScreen(app: AppState, ui: AppUiState) {
     var url by rememberSaveable { mutableStateOf(ui.serverUrl) }
     Gate(stringResource(R.string.server_title), stringResource(R.string.server_body)) {
         DotTextField(
-            url, { url = it }, label = stringResource(R.string.server_address), placeholder = "opendots.example.com",
+            url, { url = it }, label = stringResource(R.string.server_address), placeholder = "botcircle.example.com",
             keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onImeAction = { app.chooseServer(url) },
             isError = ui.formError != null, supporting = formError(ui.formError) ?: stringResource(R.string.server_hint),
         )

@@ -38,7 +38,7 @@ import kotlin.coroutines.resumeWithException
 
 class ApiException(message: String, val status: Int, val body: JsonObject? = null) : IOException(message)
 
-/** Normalises what a person types ("opendots.example.com", "localhost:4317") into the server's base URL. */
+/** Normalises what a person types ("botcircle.example.com", "localhost:4317") into the server's base URL. */
 fun normalizeServerUrl(input: String): HttpUrl? {
     val trimmed = input.trim().trimEnd('/')
     if (trimmed.isEmpty()) return null

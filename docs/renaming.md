@@ -6,11 +6,9 @@ The Web and Android display names, onboarding, settings, OAuth result pages, pro
 
 Compatibility is deliberate: npm scopes (`@opendots/*`), environment variables (`OPENDOTS_*`), storage paths, database records, cookies, browser storage, OAuth callbacks/messages, Docker service/container names, Android application ID (`app.dot.opendots`), resource theme and implementation class names remain unchanged. Keep existing deployment configuration, secrets and Android signing keys. Do not rename volumes or create a new application/database for this change.
 
-## Repository rename still to perform
+## Repository and deployment addresses
 
-The connected GitHub tools can publish commits but cannot rename repositories. An administrator must check that `Sr-0w/BotCircle` is available, then rename the existing repository in Settings → General. Do not create a replacement repository. Until that operation succeeds, clone URLs retain the working OpenDots path.
-
-After renaming, update the clone links and local remotes to `https://github.com/Sr-0w/BotCircle.git`, verify old links redirect, and check GitHub Actions/release publishing. Existing deployment URLs and OAuth callback URLs do not change merely because the repository name changes.
+Clone from `https://github.com/Sr-0w/BotCircle.git`. Existing clones can use `git remote set-url origin https://github.com/Sr-0w/BotCircle.git`. Deployment hostnames and registered OAuth callbacks are independent of the repository name.
 
 ## Validation
 

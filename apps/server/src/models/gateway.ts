@@ -35,7 +35,7 @@ export async function resolveModel(cfg: ModelConfig): Promise<ResolvedModel> {
   if (!apiKey) throw new ModelUnavailableError("La clé OpenRouter n'est pas configurée.");
   const openrouter = createOpenRouter({
     apiKey,
-    headers: { 'HTTP-Referer': 'https://github.com/sr-0w/opendots', 'X-Title': 'BotCircle' },
+    headers: { 'HTTP-Referer': 'https://github.com/Sr-0w/BotCircle', 'X-Title': 'BotCircle' },
   });
   const settings: Record<string, unknown> = {};
   if (cfg.providerOrder?.length) settings.provider = { order: cfg.providerOrder, allow_fallbacks: true };
