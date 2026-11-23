@@ -1,4 +1,5 @@
 import { useMessageFocus } from "@/lib/search-focus";
+import { QuietTopBlur } from '@/components/quiet/top-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentModelControl, modelsOf } from './chat-controls';
 import { toast } from 'sonner';
@@ -166,7 +167,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
   return (
     <ChatActionsContext.Provider value={actions}>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
+      <div className="relative flex min-h-0 flex-1 flex-col"><QuietTopBlur />
       <Conversation timelineId={agent.id} className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-[calc(var(--header-h,0px)+1.5rem)] pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
           {empty && <EmptyState agent={agent} />}

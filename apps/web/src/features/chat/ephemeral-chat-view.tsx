@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { QuietTopBlur } from '@/components/quiet/top-blur';
 import { useChat } from '@ai-sdk/react';
 import { AlertCircleIcon, ChevronDownIcon, GhostIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -117,7 +118,7 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-general-chat data-ephemeral-chat>
-      <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
+      <div className="relative flex min-h-0 flex-1 flex-col"><QuietTopBlur />
         <div className="pointer-events-none absolute inset-x-0 top-[calc(var(--header-h,0px)+0.75rem)] z-20 flex items-center justify-between px-4 sm:px-6">
           <span className="pointer-events-auto"><EphemeralBadge /></span>
           {empty && !busy && (

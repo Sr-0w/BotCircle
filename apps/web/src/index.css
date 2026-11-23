@@ -191,15 +191,33 @@
  * and never as a tinted band. The mask fades the blur out, so nothing reappears above it.
  */
 .quiet-top-blur {
+  /* No hard line between strong and weak blur. One masked blur layer only cross-fades a blurred copy
+     with the sharp page (a visible edge, double images). This is a real progressive blur: five stacked layers whose
+     radius halves at each step, each faded in over the previous one, so the blur thins out gradually down the fade. */
+  /* Full strength over the top third of the header, then easing out through the rest of it and just past it: the
+     blur is gone exactly where the first message sits at rest, so nothing is ever blurred until it scrolls up. */
+  --top-h: calc(var(--header-h, 0px) * 0.35);
+  --top-fade: calc(var(--header-h, 0px) * 0.65 + var(--blur-fade, 2.5rem));
   position: absolute;
   inset: 0 0 auto 0;
-  height: calc(var(--header-h, 0px) + 2.5rem);
+  height: calc(var(--header-h, 0px) + var(--blur-fade, 2.5rem));
   pointer-events: none;
   z-index: 5;
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
 }
+main[data-glass-header] { --blur-fade: 1.5rem; }
+.quiet-top-blur > i {
+  position: absolute;
+  inset: 0;
+  --top-mask: linear-gradient(to bottom, black 0, black calc(var(--top-h) + var(--top-fade) * var(--from)), transparent calc(var(--top-h) + var(--top-fade) * var(--to)));
+  mask-image: var(--top-mask);
+  -webkit-mask-image: var(--top-mask);
+  backdrop-filter: blur(var(--radius));
+}
+.quiet-top-blur > i:nth-child(1) { --radius: 20px; --from: 0; --to: 0.22; backdrop-filter: blur(var(--radius)) saturate(var(--glass-saturate)); }
+.quiet-top-blur > i:nth-child(2) { --radius: 10px; --from: 0.06; --to: 0.42; }
+.quiet-top-blur > i:nth-child(3) { --radius: 5px; --from: 0.22; --to: 0.62; }
+.quiet-top-blur > i:nth-child(4) { --radius: 2.5px; --from: 0.42; --to: 0.82; }
+.quiet-top-blur > i:nth-child(5) { --radius: 1.25px; --from: 0.62; --to: 1; }
 @media (prefers-reduced-transparency: reduce) {
   .quiet-top-blur { display: none; }
 }
