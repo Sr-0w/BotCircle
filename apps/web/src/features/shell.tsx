@@ -337,6 +337,8 @@ export function Shell() {
   const chats = useStore((s) => s.chats);
   const archived = useStore((s) => s.archivedChats);
   const currentChat = shown.view === "chat" ? chats.find((chat) => chat.id === shown.id) ?? archived.find((chat) => chat.id === shown.id) ?? null : null;
+  // #68: on a conversation the header floats over the thread (its buttons are frosted glass); elsewhere it stays a bar.
+  const glassHeader = !inCode && route.view !== 'settings' && Boolean(currentChat || current || route.view === 'ephemeral');
   // Chat supprimé (ici ou ailleurs) : retour aux compagnons.
   const chatsLoaded = useStore((s) => s.connected);
   useEffect(() => {
@@ -384,8 +386,8 @@ export function Shell() {
         </SheetContent>
       </Sheet>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
+      <main className="relative flex min-w-0 flex-1 flex-col" data-glass-header={glassHeader || undefined}>
+        <header className={cn("flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4", glassHeader ? "quiet-glass-header" : "border-b")}>
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label={t("Menu")}>
             <MenuIcon />
           </Button>
@@ -461,7 +463,7 @@ export function Shell() {
             currentChat && <>
               <div className="flex min-w-0 flex-1 flex-col">
                 {currentChat.archived && (
-                  <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs" role="status" data-archived-banner>
+                  <div className="mt-[var(--header-h,0px)] flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs" role="status" data-archived-banner>
                     <ArchiveIcon className="size-3.5 text-muted-foreground" /><span className="flex-1">{t("Chat archivé : il n’apparaît plus dans la liste. Écrire ici le restaure.")}</span>
                     <Button size="sm" variant="secondary" className="h-7" onClick={() => void restoreConversation({ kind: "chat", id: currentChat.id, title: currentChat.title })}>{t("Restaurer")}</Button>
                   </div>
@@ -470,7 +472,7 @@ export function Shell() {
                 <GeneralChatView chat={currentChat} onEphemeral={enterEphemeral} />
               </div>
               {panelOpen && !codeTask && (
-                <ResizablePanel panel="chat" className="hidden border-l lg:block">
+                <ResizablePanel panel="chat" className="hidden border-l pt-[var(--header-h,0px)] lg:block">
                   <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
                 </ResizablePanel>
               )}
@@ -482,14 +484,14 @@ export function Shell() {
                 <ChatView agent={current} />
               </div>
               {panelOpen && !codeTask && (
-                <ResizablePanel panel="circle" className="hidden border-l lg:block">
+                <ResizablePanel panel="circle" className="hidden border-l pt-[var(--header-h,0px)] lg:block">
                   <AgentPanel agent={current} />
                 </ResizablePanel>
               )}
             </>
           ) : null}
           {codeTask && wideScreen && !inCode && (
-            <ResizablePanel panel="code" className="border-l">
+            <ResizablePanel panel="code" className="border-l pt-[var(--header-h,0px)]">
               {/* Expand = the Code destination at this exact session (#72); the conversation stays as it was. */}
               <CodeWorkspace taskId={codeTask} onToggleExpand={() => navigate({ view: 'code', id: codeTask })} onClose={() => setCodeTask(null)} />
             </ResizablePanel>

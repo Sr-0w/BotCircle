@@ -118,7 +118,7 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-general-chat data-ephemeral-chat>
       <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex items-center justify-between px-4 sm:px-6">
+        <div className="pointer-events-none absolute inset-x-0 top-[calc(var(--header-h,0px)+0.75rem)] z-20 flex items-center justify-between px-4 sm:px-6">
           <span className="pointer-events-auto"><EphemeralBadge /></span>
           {empty && !busy && (
             <Tooltip>
@@ -130,7 +130,7 @@ export function EphemeralChatView({ initialModel, onNormalChat }: { initialModel
           )}
         </div>
         <Conversation className="min-h-0 flex-1">
-          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-14 pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
+          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-[calc(var(--header-h,0px)+3.5rem)] pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
             {empty && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
                 <ThinkingOrb state="breathing" size={64} label={t('Chat éphémère')} />
