@@ -487,6 +487,24 @@ try {
   const thread = page.locator('[id^="message-"]');
   await thread.first().waitFor();
   const before = await thread.count();
+  // #76 : la réaction s'accroche au coin bas-droit de sa propre bulle, avec un léger chevauchement, sans rien déplacer.
+  const lastMessage = page.locator('[id^="message-"]').filter({ has: page.locator('[data-bubble-anchor]') }).last();
+  await lastMessage.scrollIntoViewIfNeeded();
+  const beforeReact = await lastMessage.boundingBox();
+  await lastMessage.locator('[data-no-press]').getByRole('button', { name: 'Actions du message' }).click();
+  await page.getByRole('button', { name: 'Réagir' }).first().click();
+  const chip = lastMessage.locator('[data-bubble-anchor] [data-reactions] button').first();
+  await chip.waitFor();
+  const anchor = (await lastMessage.locator('[data-bubble-anchor]').first().boundingBox())!, chipBox = (await chip.boundingBox())!;
+  assert(chipBox.x + chipBox.width <= anchor.x + anchor.width + 0.5 && chipBox.x + chipBox.width >= anchor.x + anchor.width - 24, 'reaction at the right edge of its bubble');
+  assert(chipBox.y + chipBox.height > anchor.y + anchor.height && chipBox.y < anchor.y + anchor.height, 'reaction overlaps the bubble bottom edge');
+  assert.equal(await lastMessage.locator('[data-reactions]').count(), 1, 'one reaction group, no detached row');
+  await shot('reaction-anchor');
+  await chip.click(); // toggles it off again
+  await chip.waitFor({ state: 'detached' });
+  const afterReact = await lastMessage.boundingBox();
+  assert.equal(afterReact?.height, beforeReact?.height, 'removing the reaction gives the height back');
+  await page.mouse.move(2, 2);
   const clearBox = page.getByRole('textbox', { name: 'Écrire à Ari…' });
   await clearBox.fill('/clear'); await clearBox.press('Enter');
   const clearDialog = page.getByRole('dialog', { name: 'Réinitialiser Ari ?' });

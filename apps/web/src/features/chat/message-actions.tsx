@@ -29,7 +29,7 @@ export function MessageQuote({ reply }: { reply: MessageReplyRef }) {
   );
 }
 
-export function ReactionPills({ reactions, onToggle }: { reactions: MessageReaction[]; onToggle: (emoji: string) => void }) {
+export function ReactionPills({ reactions, onToggle, overlay }: { reactions: MessageReaction[]; onToggle: (emoji: string) => void; overlay?: boolean }) {
   const grouped = new Map<string, { count: number; mine: boolean }>();
   for (const reaction of reactions) {
     const entry = grouped.get(reaction.emoji) ?? { count: 0, mine: false };
@@ -39,9 +39,9 @@ export function ReactionPills({ reactions, onToggle }: { reactions: MessageReact
   }
   if (!grouped.size) return null;
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className={cn('flex flex-wrap gap-1', overlay && 'absolute right-2 bottom-0 z-10 max-w-full translate-y-1/2 justify-end')} data-reactions>
       {[...grouped].map(([emoji, entry]) => (
-        <button key={emoji} type="button" aria-pressed={entry.mine} onClick={() => onToggle(emoji)} className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors', entry.mine ? 'border-foreground/30 bg-secondary' : 'bg-card/70 hover:bg-accent')}>
+        <button key={emoji} type="button" aria-pressed={entry.mine} onClick={() => onToggle(emoji)} className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors', overlay && 'px-1.5 leading-4', overlay ? 'bg-background/90 shadow-sm backdrop-blur-sm' : 'bg-card/70', entry.mine ? 'border-foreground/30 bg-secondary' : 'hover:bg-accent')}>
           <span>{emoji}</span>
           {entry.count > 1 && <span className="text-muted-foreground">{entry.count}</span>}
         </button>
@@ -50,6 +50,19 @@ export function ReactionPills({ reactions, onToggle }: { reactions: MessageReact
   );
 }
 
+/**
+ * #76: the reactions of a message sit on the bottom-right corner of its own bubble, overlapping the border a little.
+ * The wrapper is the bubble's own box (relative, shrink-wrapped), so the position follows the bubble width, never the
+ * column; the bottom margin reserves the overhang so nothing moves when a reaction is added or the stream reflows.
+ */
+export function BubbleAnchor({ reactions, onToggle, align, children }: { reactions: MessageReaction[]; onToggle: (emoji: string) => void; align?: 'end'; children: ReactNode }) {
+  return (
+    <div className={cn('relative w-fit max-w-full', align === 'end' && 'ml-auto', reactions.length > 0 && 'mb-3.5')} data-bubble-anchor>
+      {children}
+      {reactions.length > 0 && <ReactionPills overlay reactions={reactions} onToggle={onToggle} />}
+    </div>
+  );
+}
 /** Actions d'un message : bouton visible, menu, et appui long sur mobile. */
 export function MessageActions({ text, onReply, onReact, onEdit, onRegenerate, align = 'start', children }: { text: string; onReply: () => void; onReact: (emoji: string) => void; onEdit?: () => void; onRegenerate?: () => void; align?: 'start' | 'end'; children: ReactNode }) {
   const [open, setOpen] = useState(false);

@@ -14,7 +14,7 @@ import { DotAvatar } from "../dot-avatar";
 import { openDialog } from "@/lib/dialogs";
 import { ComputerSetupCard, WelcomeSetupCards } from './setup-cards';
 import { DesktopScreenshot } from './desktop-screenshot';
-import { MessageActions, MessageQuote, ReactionPills } from './message-actions';
+import { BubbleAnchor, MessageActions, MessageQuote, ReactionPills } from './message-actions';
 import { TaskCard } from './attachments';
 import { FileGroup } from '../files/file-row';
 import { SecureLoginCard } from './secure-login-card';
@@ -307,16 +307,15 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
         <UserMessage message={message} text={text} onEdit={onEdit}>
         <MessageActions text={text} align="end" onReply={() => reply(text)} onReact={react} onEdit={onEdit && text ? () => window.dispatchEvent(new CustomEvent('od:edit-message', { detail: message.id })) : undefined}>
           <Message from="user">
-            <MessageContent>
+            <BubbleAnchor reactions={reactions} onToggle={react} align="end"><MessageContent>
               {quote && <MessageQuote reply={quote} />}
               {message.metadata?.answer ? <AnswerBubble text={text} /> : text && <p className="whitespace-pre-wrap">{text}</p>}
               {files.filter((part) => part.mediaType?.startsWith('image/')).map((part, index) => <a key={index} href={part.url} target="_blank" rel="noreferrer" onClick={imageClick(part.url, part.filename)}><img src={part.url} alt={part.filename ?? t('Image jointe')} data-chat-image={part.url} className="max-h-64 max-w-full rounded-xl border" loading="lazy" /></a>)}
               <FileGroup align="end" files={files.filter((part) => !part.mediaType?.startsWith('image/')).map((part) => ({ url: part.url, filename: part.filename ?? t('Fichier'), mediaType: part.mediaType ?? 'application/octet-stream', artifactId: artifactIdFromUrl(part.url) }))} />
-            </MessageContent>
+            </MessageContent></BubbleAnchor>
           </Message>
         </MessageActions>
         </UserMessage>
-        <div className="flex justify-end"><ReactionPills reactions={reactions} onToggle={react} /></div>
       </div>
     );
   }
@@ -338,10 +337,10 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
       ) : 'text' in bubble ? (
         <MessageActions key={bubble.key} text={bubble.text} onReply={() => reply(bubble.text)} onReact={react} onRegenerate={onRegenerate && bubble.key === lastText?.key ? onRegenerate : undefined}>
           <Message from="assistant" data-bubble={bubble.key} className="max-w-[min(100%,36rem)]">
-            <MessageContent className="w-fit rounded-2xl rounded-bl-md bg-muted px-3.5 py-2">
+            <BubbleAnchor reactions={bubble.key === lastText?.key ? reactions : []} onToggle={react}><MessageContent className="w-fit rounded-2xl rounded-bl-md bg-muted px-3.5 py-2">
               {quote && bubble.key === textBubbles[0]?.key && <MessageQuote reply={quote} />}
               <MessageResponse isAnimating={streaming && bubble.key === lastText?.key}>{bubble.text}</MessageResponse>
-            </MessageContent>
+            </MessageContent></BubbleAnchor>
           </Message>
         </MessageActions>
       ) : (
@@ -358,7 +357,7 @@ export function MessageView({ message, streaming, agentId, onReply, onReact, att
         <MessageActions text="" onReply={() => reply(t('Travail'))} onReact={react}><span className="sr-only">{t('Actions du message')}</span></MessageActions>
       )}
       {(message.metadata?.previous?.length ?? 0) > 0 && <PreviousVersions previous={message.metadata!.previous!} />}
-      <ReactionPills reactions={reactions} onToggle={react} />
+      {!lastText && <ReactionPills reactions={reactions} onToggle={react} />}
     </div>
   );
 }
