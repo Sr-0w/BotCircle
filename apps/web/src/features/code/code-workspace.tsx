@@ -1,3 +1,4 @@
+import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowLeftRightIcon, ArrowUpDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FileIcon, ImageIcon, PlusIcon, FolderIcon, GitCompareIcon, LightbulbIcon, LoaderIcon, Maximize2Icon, Minimize2Icon, PencilIcon, SearchIcon, SquareIcon, TerminalIcon, WifiOffIcon, WrenchIcon, XIcon, PauseCircleIcon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
@@ -33,18 +34,15 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
   // Tant que la session travaille, l'état est relu ; au repos, seuls les événements le rafraîchissent.
   useEffect(() => { if (!active) return; const timer = setInterval(reload, 3000); return () => clearInterval(timer); }, [active, reload]);
   useServerEvent((e) => e.type === 'task.changed' && e.task.id === taskId && reload(), [reload, taskId]);
-  const end = useRef<HTMLDivElement>(null), stick = useRef(true);
   const blocks = useMemo(() => codeBlocks(data?.messages ?? []), [data?.messages]);
-  const count = data?.messages.reduce((n, m) => n + m.parts.length, 0) ?? 0;
   const pending = (data?.permissions.length ?? 0) + (data?.questions.length ?? 0);
-  useEffect(() => { if (stick.current && view === 'session') end.current?.scrollIntoView({ block: 'end' }); }, [count, pending, view]);
   const busy = data?.sessionStatus === 'busy' || data?.sessionStatus === 'retry';
 
   async function send() {
     const value = text.trim();
     if ((!value && !files.length) || sending) return;
     setSending(true);
-    try { const result = await api.codePrompt(taskId, value, busy ? delivery : undefined, files); setText(''); setFiles([]); stick.current = true; if (result.queued) toast.success(t(result.delivery === 'steer' ? 'Consigne intégrée au travail en cours' : 'Placée à la suite du travail en cours')); reload(); }
+    try { const result = await api.codePrompt(taskId, value, busy ? delivery : undefined, files); setText(''); setFiles([]); if (result.queued) toast.success(t(result.delivery === 'steer' ? 'Consigne intégrée au travail en cours' : 'Placée à la suite du travail en cours')); reload(); }
     catch (e) { toast.error((e as Error).message); } finally { setSending(false); }
   }
   const task = data?.task;
@@ -86,19 +84,19 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
       {error && !data && <p className="p-4 text-destructive text-sm">{error}</p>}
       {!data && !error && <LoaderIcon className="m-6 animate-spin" />}
       {data && view === 'session' && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-[calc(var(--composer-h,7rem)+1rem)]" onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
-          <div className="mx-auto max-w-3xl space-y-4">
+        <Conversation timelineId={`code:${taskId}`}>
+          <ConversationContent className="mx-auto block max-w-3xl space-y-4 px-4 pt-2 pb-[calc(var(--composer-h,7rem)+1rem)]">
             {!data.reachable && <p role="status" className="flex items-start gap-2 text-muted-foreground text-xs"><WifiOffIcon className="mt-0.5 size-3.5 shrink-0" />{t('Instance injoignable : l’état affiché est le dernier connu, pas un résultat.')} {data.error}</p>}
             {data.messages.length === 0 && <p className="text-muted-foreground text-sm">{data.reachable ? t('La session n’a pas encore de message.') : t('Les messages ne peuvent pas être lus pour l’instant.')}</p>}
             {blocks.map((block, index) => block.kind === 'user' ? (
-              <div key={block.key} className="ml-auto flex w-fit max-w-[85%] flex-col items-end gap-1" data-code-message="user">
+              <div key={block.key} data-scroll-key={block.key} className="ml-auto flex w-fit max-w-[85%] flex-col items-end gap-1" data-code-message="user">
                 {block.files.length > 0 && <div className="flex flex-wrap justify-end gap-1">{block.files.map((name, i) => <span key={i} className="flex items-center gap-1 rounded-lg border px-2 py-0.5 text-muted-foreground text-xs"><FileIcon className="size-3" />{name}</span>)}</div>}
                 {block.text && <div className="whitespace-pre-wrap rounded-2xl bg-secondary px-3.5 py-2 text-sm">{block.text}</div>}
               </div>
             )
-              : block.kind === 'prose' ? <div key={block.key} className="text-sm" data-code-message="assistant"><MessageResponse>{block.text}</MessageResponse></div>
-              : block.kind === 'failure' ? <p key={block.key} className="text-destructive text-sm">{block.text}</p>
-              : <WorkGroup key={block.key} parts={block.parts} live={busy && index === blocks.length - 1} />)}
+              : block.kind === 'prose' ? <div key={block.key} data-scroll-key={block.key} className="text-sm" data-code-message="assistant"><MessageResponse>{block.text}</MessageResponse></div>
+              : block.kind === 'failure' ? <p key={block.key} data-scroll-key={block.key} className="text-destructive text-sm">{block.text}</p>
+              : <WorkGroup key={block.key} scrollKey={block.key} parts={block.parts} live={busy && index === blocks.length - 1} />)}
             {busy && pending === 0 && !(blocks.at(-1)?.kind === 'work' && runningOf((blocks.at(-1) as WorkBlock).parts)) && (
               <p className="flex items-center gap-2 text-muted-foreground text-sm"><LoaderIcon className="size-3.5 animate-spin" /><Shimmer as="span">{t('Travaille…')}</Shimmer></p>
             )}
@@ -110,9 +108,9 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
               </div>
             ))}
             {data.questions.map((request) => <QuestionCard key={request.id} taskId={taskId} request={request} onDone={reload} />)}
-            <div ref={end} />
-          </div>
-        </div>
+          </ConversationContent>
+          <ConversationScrollButton className="bottom-[calc(var(--composer-h,7rem)+0.5rem)]" />
+        </Conversation>
       )}
       {data && view === 'changes' && (
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
@@ -122,15 +120,18 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
       )}
       {data && view === 'files' && <div className="min-h-0 flex-1 overflow-y-auto p-3"><FileBrowser taskId={taskId} /></div>}
       {data && view === 'exchanges' && (
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-          {data.exchanges.map((entry) => (
-            <div key={entry.seq} className="text-sm" data-exchange={entry.author}>
-              <p className="mb-0.5 text-muted-foreground text-xs"><span className="font-medium text-foreground">{who(entry.author, entry.agentId)}</span> → {entry.author === 'opencode' ? t('Circle') : 'OpenCode'} · {formatDateTime(entry.createdAt)}</p>
-              <p className="line-clamp-[12] whitespace-pre-wrap">{entry.text}</p>
-              {entry.original && <details className="mt-1 text-muted-foreground text-xs"><summary className="cursor-pointer">{t('Demande d’origine')}</summary><p className="mt-1 whitespace-pre-wrap">{entry.original}</p></details>}
-            </div>
-          ))}
-        </div>
+        <Conversation timelineId={`exchanges:${taskId}`}>
+          <ConversationContent className="gap-4">
+            {data.exchanges.map((entry) => (
+              <div key={entry.seq} data-scroll-key={entry.seq} className="text-sm" data-exchange={entry.author}>
+                <p className="mb-0.5 text-muted-foreground text-xs"><span className="font-medium text-foreground">{who(entry.author, entry.agentId)}</span> → {entry.author === 'opencode' ? t('Circle') : 'OpenCode'} · {formatDateTime(entry.createdAt)}</p>
+                <p className="line-clamp-[12] whitespace-pre-wrap">{entry.text}</p>
+                {entry.original && <details className="mt-1 text-muted-foreground text-xs"><summary className="cursor-pointer">{t('Demande d’origine')}</summary><p className="mt-1 whitespace-pre-wrap">{entry.original}</p></details>}
+              </div>
+            ))}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
       )}
       {data && view === 'session' && (
         <FloatingComposer><div className="px-3 pb-3">
@@ -285,7 +286,7 @@ const KIND_LABELS: Record<Kind, [string, string]> = {
 const KIND_ICONS: Record<Kind, typeof TerminalIcon> = { command: TerminalIcon, read: FileIcon, edit: PencilIcon, search: SearchIcon, other: WrenchIcon };
 
 /** Une ligne par séquence de travail : l'étape en cours, ou un résumé. Un clic la déplie. */
-function WorkGroup({ parts, live }: { parts: OpencodePartDTO[]; live: boolean }) {
+function WorkGroup({ parts, live, scrollKey }: { scrollKey: string; parts: OpencodePartDTO[]; live: boolean }) {
   const [open, setOpen] = useState(false);
   const tools = parts.filter((p): p is ToolPart => p.type === 'tool');
   const running = live ? runningOf(parts) : undefined;
@@ -295,7 +296,7 @@ function WorkGroup({ parts, live }: { parts: OpencodePartDTO[]; live: boolean })
   const summary = (['command', 'read', 'edit', 'search', 'other'] as Kind[]).flatMap((kind) => { const n = counts.get(kind); return n ? [n === 1 ? t(KIND_LABELS[kind][0]) : t(KIND_LABELS[kind][1], { count: n })] : []; })
     .map((item, i) => i === 0 ? item : item.charAt(0).toLowerCase() + item.slice(1)).join(', ') || t('A réfléchi');
   return (
-    <div data-code-work>
+    <div data-code-work data-scroll-key={scrollKey}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex max-w-full items-center gap-2 text-muted-foreground text-sm hover:text-foreground" {...(running ? { 'data-code-tool': 'running' } : {})}>
         {running ? <><LoaderIcon className="size-3.5 shrink-0 animate-spin" /><Shimmer as="span" className="truncate">{running.title || running.tool}</Shimmer></>
           : <><span className="truncate">{summary}</span>{failures > 0 && <span className="shrink-0 text-destructive">· {failures === 1 ? t('1 erreur') : t('{count} erreurs', { count: failures })}</span>}</>}

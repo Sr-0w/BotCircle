@@ -1,36 +1,149 @@
 
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback, useEffect } from "react";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
+import { type RefObject, createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from "react";
 
-export type ConversationProps = ComponentProps<typeof StickToBottom>;
+type ReadingPosition = { top: number; selector?: string; offset?: number };
+const positions = new Map<string, ReadingPosition>();
 
-export const Conversation = ({ className, ...props }: ConversationProps) => (
-  <StickToBottom
-    className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial="smooth"
-    resize="smooth"
-    role="log"
-    {...props}
-  />
-);
+// Capture once on navigation. The browser handles anchoring during live updates.
+function readingPosition(el: HTMLElement): ReadingPosition {
+  const top = el.getBoundingClientRect().top;
+  for (const row of el.querySelectorAll<HTMLElement>('[id^="message-"], [data-scroll-key]')) {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom <= top || rect.height === 0) continue;
+    const selector = row.id ? "#" + CSS.escape(row.id) : "[data-scroll-key=" + CSS.escape(row.dataset.scrollKey!) + "]";
+    return { top: el.scrollTop, selector, offset: rect.top - top };
+  }
+  return { top: el.scrollTop };
+}
+const ViewportContext = createContext<RefObject<HTMLDivElement | null> | null>(null);
+const ScrollContext = createContext({ following: true, latest: () => {} });
+export type ConversationProps = ComponentProps<"div"> & { timelineId?: string };
 
-export type ConversationContentProps = ComponentProps<
-  typeof StickToBottom.Content
->;
+export function Conversation({ className, children, timelineId, ...props }: ConversationProps) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const intent = useRef(true);
+  const [following, setFollowing] = useState(true);
+  const follow = useCallback((value: boolean) => {
+    if (intent.current !== value) {
+      intent.current = value;
+      setFollowing(value);
+    }
+  }, []);
+  const latest = () => {
+    follow(true);
+    if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
+  };
+  useLayoutEffect(() => {
+    const el = viewport.current!;
+    let saved = timelineId ? positions.get(timelineId) : undefined;
+    follow(saved === undefined);
+    const restore = () => {
+      if (saved === undefined) return;
+      const row = saved.selector ? el.querySelector(saved.selector) : null;
+      const target = row ? el.scrollTop + row.getBoundingClientRect().top - el.getBoundingClientRect().top - (saved.offset ?? 0) : saved.top;
+      el.scrollTop = target;
+      if (row || Math.abs(el.scrollTop - target) < 1) saved = undefined;
+    };
+    if (intent.current) el.scrollTop = el.scrollHeight;
+    else restore();
+    let downward = false;
+    let previousTop = el.scrollTop;
+    let dragging = false;
+    let touchY = 0;
+    const atEnd = () => el.scrollHeight - el.clientHeight - el.scrollTop <= 4;
+    const direction = (delta: number) => {
+      if (!delta) return;
+      saved = undefined;
+      downward = delta > 0;
+      if (!downward && el.scrollTop > 0) follow(false);
+      if (downward && atEnd()) follow(true);
+    };
+    const wheel = (e: WheelEvent) => { if (!e.ctrlKey) direction(e.deltaY); };
+    const start = (e: TouchEvent) => { touchY = e.touches[0].clientY; };
+    const move = (e: TouchEvent) => {
+      direction(touchY - e.touches[0].clientY);
+      touchY = e.touches[0].clientY;
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key !== " ") return;
+      if ((e.target as HTMLElement).closest("input,textarea,button,[contenteditable=true]")) return;
+      if (["ArrowUp", "PageUp", "Home"].includes(e.key)) direction(-1);
+      if (e.key === "End") {
+        e.preventDefault();
+        follow(true);
+        el.scrollTop = el.scrollHeight;
+      }
+      if (["ArrowDown", "PageDown"].includes(e.key)) direction(1);
+      if (e.key === " ") direction(e.shiftKey ? -1 : 1);
+    };
+    const detach = () => { saved = undefined; downward = false; follow(false); };
+    const down = (e: PointerEvent) => {
+      dragging = e.clientX >= el.getBoundingClientRect().left + el.clientWidth;
+      if (dragging) detach();
+    };
+    const up = () => { dragging = false; };
+    const selected = () => {
+      const selection = document.getSelection();
+      if (selection && !selection.isCollapsed && el.contains(selection.anchorNode)) detach();
+    };
+    const scroll = () => {
+      const top = el.scrollTop;
+      if (dragging && top < previousTop) follow(false);
+      if (top > previousTop && (downward || dragging) && atEnd()) {
+        follow(true);
+        downward = false;
+      }
+      previousTop = top;
+    };
+    // Chromium anchors the visible content while detached. Only a following viewport needs a write.
+    const resize = new ResizeObserver(() => {
+      previousTop = el.scrollTop;
+      if (intent.current) el.scrollTop = el.scrollHeight;
+      else restore();
+    });
+    resize.observe(el);
+    resize.observe(el.firstElementChild!);
+    const controller = new AbortController();
+    const options = { signal: controller.signal, passive: true };
+    el.addEventListener("wheel", wheel, options);
+    el.addEventListener("keydown", key, { signal: controller.signal });
+    el.addEventListener("touchstart", start, options);
+    el.addEventListener("touchmove", move, options);
+    el.addEventListener("pointerdown", down, options);
+    window.addEventListener("pointerup", up, options);
+    el.addEventListener("contextmenu", detach, options);
+    document.addEventListener("selectionchange", selected, options);
+    el.addEventListener("od:stop-stick", detach, options);
+    el.addEventListener("scroll", scroll, options);
+    el.addEventListener("scrollend", () => { downward = false; }, options);
+    return () => {
+      if (timelineId) {
+        if (intent.current) positions.delete(timelineId);
+        else positions.set(timelineId, saved ?? readingPosition(el));
+      }
+      controller.abort();
+      resize.disconnect();
+    };
+  }, [timelineId, follow]);
 
-export const ConversationContent = ({
-  className,
-  ...props
-}: ConversationContentProps) => (
-  <StickToBottom.Content
-    className={cn("flex flex-col gap-8 p-4", className)}
-    {...props}
-  />
+  return <ScrollContext.Provider value={{ following, latest }}>
+    <div className={cn("relative min-h-0 flex-1 overflow-hidden", className)} {...props}>
+      <ViewportContext.Provider value={viewport}>{children}</ViewportContext.Provider>
+    </div>
+  </ScrollContext.Provider>;
+}
+
+export type ConversationContentProps = ComponentProps<"div">;
+export const ConversationContent = ({ className, ...props }: ConversationContentProps) => (
+  <div role="log" tabIndex={0} ref={useContext(ViewportContext)} className="absolute inset-0 overflow-y-auto">
+    <div className={cn("flex flex-col gap-8 p-4", className)} {...props} />
+  </div>
 );
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
@@ -74,26 +187,18 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom, stopScroll } = useStickToBottomContext();
-  // #58: opening a conversation at an older message must not be pulled back to the bottom.
-  useEffect(() => {
-    const stop = () => stopScroll();
-    window.addEventListener("od:stop-stick", stop);
-    return () => window.removeEventListener("od:stop-stick", stop);
-  }, [stopScroll]);
+  const { following, latest } = useContext(ScrollContext);
 
-  const handleScrollToBottom = useCallback(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
 
   return (
-    !isAtBottom && (
+    !following && (
       <Button
         className={cn(
           "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
           className
         )}
-        onClick={handleScrollToBottom}
+        aria-label={t("Aller au dernier message")}
+        onClick={latest}
         size="icon"
         type="button"
         variant="outline"

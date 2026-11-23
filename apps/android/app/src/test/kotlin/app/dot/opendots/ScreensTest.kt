@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import coil3.imageDecoderEnabled
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
@@ -74,6 +75,8 @@ class ScreensTest {
     private var temporaryFixture = false
     private val temporaryId = "tmp_" + "b".repeat(48)
     @Volatile private var temporaryMessages = "[]"
+    @Volatile private var codeHistory = ""
+    @Volatile private var codeTail = ""
     private var codeModel = """{"providerID":"openai","id":"gpt-5","variant":null,"name":"GPT-5","input":["text","image"]}"""
 
     private val agents = """[
@@ -179,10 +182,10 @@ class ScreensTest {
                     path == "/chats/ch1/chat" -> MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"start\",\"messageId\":\"g9\"}\n\ndata: {\"type\":\"finish\"}\n\ndata: [DONE]\n\n").build()
                     path == "/tasks" -> json("[$task,$codeTask]")
                     path == "/opencode/tasks/tk2" -> json("""{"task":$codeTask,"reachable":true,"error":null,"sessionStatus":"busy","model":$codeModel,
-                      "messages":[{"id":"cm1","role":"user","createdAt":1,"completedAt":null,"model":null,"error":null,"parts":[{"type":"text","text":"Group OAuth with the providers."}]},
+                      "messages":[${codeHistory}{"id":"cm1","role":"user","createdAt":1,"completedAt":null,"model":null,"error":null,"parts":[{"type":"text","text":"Group OAuth with the providers."}]},
                         {"id":"cm1b","role":"assistant","createdAt":2,"completedAt":3,"model":"opencode/iceman-free","error":null,"parts":[{"type":"reasoning","text":"Look at the settings first."},{"type":"tool","tool":"bash","status":"completed","title":"find . -name '*.tsx' -path '*settings*'","input":"find .","output":"apps/web/src/settings-page.tsx"},{"type":"tool","tool":"read","status":"completed","title":"apps/web/src/settings-page.tsx","input":"","output":"…"}]},
                         {"id":"cm1c","role":"assistant","createdAt":3,"completedAt":4,"model":"opencode/iceman-free","error":null,"parts":[{"type":"tool","tool":"bash","status":"completed","title":"pnpm lint","input":"pnpm lint","output":"ok"},{"type":"tool","tool":"bash","status":"completed","title":"git status","input":"git status","output":"clean"},{"type":"tool","tool":"read","status":"completed","title":"apps/web/src/oauth.tsx","input":"","output":"…"}]},
-                        {"id":"cm2","role":"assistant","createdAt":5,"completedAt":null,"model":"opencode/iceman-free","error":null,"parts":[{"type":"text","text":"Grouping the provider settings."},{"type":"tool","tool":"edit","status":"completed","title":"apps/web/src/settings-page.tsx","input":"","output":null},{"type":"tool","tool":"bash","status":"running","title":"Runs the tests","input":"pnpm test","output":null}]}],
+                        {"id":"cm2","role":"assistant","createdAt":5,"completedAt":null,"model":"opencode/iceman-free","error":null,"parts":[{"type":"text","text":"Grouping the provider settings."},{"type":"tool","tool":"edit","status":"completed","title":"apps/web/src/settings-page.tsx","input":"","output":null},{"type":"tool","tool":"bash","status":"running","title":"Runs the tests","input":"pnpm test","output":null}]}$codeTail],
                       "permissions":[{"id":"per1","permission":"bash","patterns":["rm -rf dist"]}],"questions":[],
                       "diffs":[{"path":"apps/web/src/settings-page.tsx","status":"modified","additions":12,"deletions":4,"patch":"@@ -1 +1 @@\n-old\n+new"}],
                       "exchanges":[{"seq":1,"taskId":"tk2","author":"companion","agentId":"a1","kind":"delegation","text":"Group OAuth with the providers.","original":"tidy the settings","createdAt":"2026-11-13T09:01:00Z"}]}""")
@@ -783,6 +786,33 @@ class ScreensTest {
         assertEquals("""{"outcome":"cancelled"}""", posts.first { it.first == "/secure-logins/sl1/resolve" }.second)
         waitFor("Sign-in cancelled")
         assertTrue(!compose.onAllNodesWithTextCompat("Take control of the browser"))
+    }
+
+    @Test fun readingCodeHistorySurvivesLiveRefresh() {
+        codeHistory = (1..80).joinToString(",", postfix = ",") { i ->
+            """{"id":"history-$i","role":"user","createdAt":1,"parts":[{"type":"text","text":"History row $i"}]}"""
+        }
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.onNodeWithContentDescription("Circles").performClick()
+        openActivity()
+        waitFor("Refactor the settings")
+        compose.onNodeWithText("Refactor the settings").performClick()
+        waitFor("Grouping the provider settings.")
+        val list = compose.onNodeWithTag("code-timeline")
+        list.performScrollToIndex(40)
+        val history = hasText("History row", substring = true)
+        val anchor = compose.onAllNodes(history).fetchSemanticsNodes().first()
+        val offset = anchor.boundsInRoot.top
+        val reply = "Live refresh with a longer answer"
+        codeTail = """,{"id":"live-prose","role":"assistant","createdAt":6,"parts":[{"type":"text","text":"$reply"}]}"""
+        val requests = gets.count { it.first == "/opencode/tasks/tk2" }
+        compose.waitUntil(15_000) { gets.count { it.first == "/opencode/tasks/tk2" } >= requests + 2 }
+        val current = compose.onAllNodes(history).fetchSemanticsNodes().first()
+        assertEquals(anchor.id, current.id)
+        assertEquals(offset, current.boundsInRoot.top, 1f)
+        compose.onNodeWithContentDescription("Scroll to latest message").performClick()
+        waitFor(reply)
     }
 
     @Test fun anOpenCodeTaskOpensItsOwnLiveSession() {

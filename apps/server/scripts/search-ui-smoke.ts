@@ -1,3 +1,4 @@
+import { assertTimelineScroll } from './assert-timeline-scroll.ts';
 /** #58: search across conversations and inside a thread, in the real web app (real server, real browser). */
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
@@ -56,7 +57,8 @@ try {
   await context.addCookies([{ name: 'opendots_session', value: token, url: origin }]);
   const page = await context.newPage(), errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${origin}/#agent/${agent.id}`);
-  await page.getByText('Album « Évora 2026 » créé avec 42 photos').waitFor();
+  await page.getByRole('log').getByText('Album « Évora 2026 » créé avec 42 photos').waitFor();
+  await assertTimelineScroll(page.getByRole('log'));
   // Global search (button in the Chats header), accent-insensitive, both chats and Circles, snippet highlighted.
   await page.locator('[data-open-search]').click();
   const dialog = page.locator('[data-search-dialog]');
@@ -92,6 +94,43 @@ try {
   await page.screenshot({ path: '/tmp/opendots-thread-search.png' });
   await page.keyboard.press('Escape');
   await bar.waitFor({ state: 'detached' });
+  await page.setViewportSize({ width: 390, height: 720 });
+  await assertTimelineScroll(page.getByRole('log'));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.route("**/api/team/threads", route => route.fulfill({ json: [{ conversationId: "test-team", agentIds: [agent.id, agent.id], lastMessageAt: Date.now(), lastMessagePreview: "Team scroll test" }] }));
+  const teamRow = (id: string) => ({ id, role: 'assistant', parts: [{ type: 'text', text: id }] });
+  const teamMessages = Array.from({ length: 50 }, (_, i) => teamRow('Team message ' + i));
+  await page.route('**/api/conversations/test-team/messages', route => route.fulfill({ json: { messages: teamMessages } }));
+  await page.goto(origin + '/#/settings/team');
+  const log = page.getByRole('log');
+  await log.getByText('Team message 49', { exact: true }).waitFor();
+  await assertTimelineScroll(log);
+  await log.evaluate(el => { el.style.zoom = '1.1'; });
+  await log.focus();
+  await page.keyboard.press('PageUp');
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="log"]')!;
+    return el.scrollHeight - el.scrollTop - el.clientHeight > 120;
+  });
+  await page.keyboard.press('End');
+  await page.getByRole('button', { name: 'Aller au dernier message' }).waitFor({ state: 'hidden' });
+  await log.evaluate(el => { el.style.zoom = ''; });
+  await log.hover();
+  await page.mouse.wheel(0, -900);
+  await page.getByRole('button', { name: 'Aller au dernier message' }).waitFor();
+  const anchor = await log.evaluate(el => {
+    const top = el.getBoundingClientRect().top;
+    const row = Array.from(el.querySelectorAll<HTMLElement>('[data-scroll-key]')).find(r => r.getBoundingClientRect().bottom > top)!;
+    return { key: row.dataset.scrollKey!, offset: row.getBoundingClientRect().top - top };
+  });
+  await page.goto(origin + '/#/settings/opencode');
+  await log.waitFor({ state: 'detached' });
+  teamMessages.unshift(teamRow('Older history'));
+  await page.goBack();
+  const restored = log.getByText(anchor.key, { exact: true });
+  await restored.waitFor();
+  const offset = await restored.locator('xpath=ancestor::*[@data-scroll-key][1]').evaluate(el => el.getBoundingClientRect().top - el.closest('[role="log"]')!.getBoundingClientRect().top);
+  assert.ok(Math.abs(offset - anchor.offset) <= 2, 'Restored the same row and offset after history replay');
   assert.deepEqual(errors, []);
   console.log('PASS Chromium : recherche globale (accents, chats/Circles, extrait surligné), ouverture au message exact dans un long fil, recherche dans le fil précédent/suivant.');
 } catch (error) {

@@ -177,7 +177,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val backdrop = rememberQuietBackdrop()
-    val listState = remember(agent.id) { androidx.compose.foundation.lazy.LazyListState() }
+    val listState = androidx.compose.runtime.key(general?.id ?: agent.id) { androidx.compose.foundation.lazy.rememberLazyListState() }
     var draft by rememberSaveable(agent.id) { mutableStateOf("") }
     var reply by remember(agent.id) { mutableStateOf<ReplyRef?>(null) }
     val images = remember(agent.id) { mutableStateListOf<PendingImage>() }
@@ -281,15 +281,12 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         val id = chat.focusId ?: return@LaunchedEffect
         val index = rows.indexOfFirst { it.id == id }
         if (index < 0) return@LaunchedEffect
-        val before = (if (chat.error != null) 1 else 0) + (if (chat.busy) 1 else 0)
+        val before = 1 + (if (chat.error != null) 1 else 0) + (if (chat.busy) 1 else 0)
         listState.animateScrollToItem(before + index)
         flashId = id; kotlinx.coroutines.delay(1800); if (flashId == id) flashId = null
     }
-    val atLatest by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 200 } }
+    val atLatest by remember(listState) { derivedStateOf { !listState.canScrollBackward } }
 
-    // Sending always brings the conversation back to the latest message.
-    val newestUserId = chat.messages.lastOrNull { it.isUser }?.id
-    LaunchedEffect(newestUserId) { if (newestUserId != null) listState.scrollToItem(0) }
     // Older history loads when the user nears the top.
     LaunchedEffect(listState, chat.cursor) {
         if (chat.cursor == null) return@LaunchedEffect
@@ -326,6 +323,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                     ),
                     modifier = Modifier.fillMaxSize().backdropSource(backdrop),
                 ) {
+                    // A stable first item keeps the live edge fixed as new message keys arrive.
+                    item(key = "latest") { Spacer(Modifier.size(1.dp)) }
                     chat.error?.let { message ->
                         item(key = "error") { TurnError(if (chat.notSent) stringResource(R.string.not_sent) else if (general != null) stringResource(R.string.assistant_failed) else stringResource(R.string.turn_failed, agentDisplayName(agent)), message, session::dismissError, Modifier.padding(top = DotSpacing.xl)) }
                     }

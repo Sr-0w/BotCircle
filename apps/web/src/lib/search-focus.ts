@@ -55,14 +55,9 @@ export function useMessageFocus(conversationId: string | null | undefined, messa
       pending = null;
       if (!ids.current.includes(focus.messageId)) await load.current(focus.messageId).catch(() => {});
       for (let i = 0; i < 20 && !document.getElementById(`message-${focus.messageId}`); i++) await new Promise((r) => setTimeout(r, 100));
-      // The conversation sticks to its bottom while it lays out: scroll again once it has settled.
-      for (const delay of [0, 250, 700, 1400]) {
-        await new Promise((r) => setTimeout(r, delay));
-        const el = document.getElementById(`message-${focus.messageId}`);
-        if (!el) continue;
-        const box = el.getBoundingClientRect();
-        window.dispatchEvent(new Event('od:stop-stick'));
-        if (delay === 0 || box.top < 0 || box.bottom > window.innerHeight) scrollToMessage(focus.messageId);
+      const el = document.getElementById(`message-${focus.messageId}`);
+      if (el) {
+        scrollToMessage(focus.messageId);
         highlightTerms(el, focus.terms);
       }
     };

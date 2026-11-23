@@ -99,7 +99,7 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
           <ArrowLeftIcon />
         </Button>
       </div>
-      <Conversation className="min-h-0 flex-1">
+      <Conversation timelineId={conversationId} className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl gap-5 px-4 py-6">
           {messages.map((m) => {
             const author = agents.find((a) => a.id === m.metadata?.agentId);
@@ -108,7 +108,7 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
             const tools = m.parts.filter((p) => p.type.startsWith("tool-")).length;
             if (!text && !tools) return null;
             return (
-              <div key={m.id} className={cn("flex gap-3", right && "flex-row-reverse")}>
+              <div key={m.id} data-scroll-key={m.id} className={cn("flex gap-3", right && "flex-row-reverse")}>
                 <DotAvatar color={author?.color ?? "#999"} shape={author?.avatar} size={28} />
                 <div className={cn("min-w-0 max-w-[80%] space-y-1", right && "items-end text-right")}>
                   <p className="text-muted-foreground text-xs">

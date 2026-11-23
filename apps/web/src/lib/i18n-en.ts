@@ -1,5 +1,6 @@
 /** Dictionnaire anglais : clé = texte français. */
 export const EN: Record<string, string> = {
+  "Aller au dernier message": "Jump to latest message",
   "Modèle et recherche web conservés": "Model and web search kept",
   "Interventions en cours non interrompues": "Running contributions not interrupted",
   "Ancien chat conservé dans la liste": "The old chat stays in the list",

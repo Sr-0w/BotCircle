@@ -1,3 +1,4 @@
+import { assertTimelineScroll } from './assert-timeline-scroll.ts';
 import { closeCodexClients } from '../src/models/codex.ts';
 /** Navigateur + HTTP réel : fichiers, cartes de tâche et chats généraux. Aucun appel de modèle payant. */
 import { chromium } from 'playwright';
@@ -269,6 +270,7 @@ try {
   await space.locator('[data-code-tool="running"]').getByText('Lance les tests').waitFor();
   // La conversation reste utilisable à côté de l'espace de code.
   await page.getByRole('textbox', { name: 'Écrire à Ari…' }).waitFor();
+  await assertTimelineScroll(space.getByRole('log'));
   await shot('10-code-workspace');
   // Le travail entre deux paragraphes tient sur une ligne ; le nom du modèle n'est plus répété.
   assert.equal(await space.getByText('openai/gpt-5').count(), 0);
@@ -300,6 +302,7 @@ try {
   await space.getByRole('button', { name: 'Échanges' }).click();
   await space.locator('[data-exchange="user"]').getByText('Garde les animations.').waitFor(); // attribuée à l'utilisateur
   await space.locator('[data-exchange="companion"]').getByText('Demande d’origine').waitFor();
+  await assertTimelineScroll(space.getByRole("log"));
   await space.getByRole('button', { name: 'Retour à la session' }).click();
   await space.getByRole('button', { name: 'Arrêter' }).click();
   await page.locator(`[data-code-workspace="${codeTaskId}"][data-code-status="cancelled"]`).waitFor();
@@ -418,8 +421,9 @@ try {
   // Épingler : le chat reste en tête de liste.
   const row = page.getByRole('navigation', { name: 'Chats' }).locator('.group\\/chat').first();
   await row.hover();
-  await row.getByRole('button', { name: /^Épingler/ }).click();
-  await row.getByRole('button', { name: /^Désépingler/ }).waitFor();
+  await row.getByRole("button", { name: /^Actions pour/ }).click();
+  await page.getByRole("menuitem", { name: "Épingler", exact: true }).click();
+  await row.getByLabel("Épinglé", { exact: true }).waitFor();
   // Quiet UI : trois thèmes complets, valeurs exactes du design language.
   for (const [theme, background] of [['light', 'rgb(255, 255, 255)'], ['dark', 'rgb(13, 13, 14)'], ['oled', 'rgb(0, 0, 0)']] as const) {
     await page.evaluate((value) => localStorage.setItem('od-theme', value), theme);
@@ -431,7 +435,11 @@ try {
   }
   await page.goto(`${origin}/#/settings/providers`); await page.getByRole('region', { name: 'Ollama', exact: true }).waitFor(); await shot('settings-providers');
   await page.goBack(); await page.getByRole('tab', { name: 'Réglages' }).click();
-  await page.getByRole('button', { name: 'Supprimer ce chat' }).click();
+  await page.getByRole('button', { name: 'Supprimer\u2026', exact: true }).click();
+  await page.locator('[data-confirm-ok]').click();
+  const confirmTasks = page.getByRole('button', { name: 'Supprimer quand m\u00eame' });
+  await Promise.race([page.waitForURL(/#\/agent\//), confirmTasks.waitFor()]);
+  if (await confirmTasks.isVisible()) await confirmTasks.click();
   await page.waitForURL(/#\/agent\//);
   assert.equal(await page.getByRole('navigation', { name: 'Chats' }).getByText('Réunion de vendredi', { exact: true }).count(), 0);
   // #63 : la demande faite depuis le chat général est visible dans le fil de Dev, avec un lien vers ce chat.
@@ -483,9 +491,12 @@ try {
   // #31/#47 : Code direct sur le web — une vraie session, sans Circle, ouverte aussitôt.
   await page.goto(`${origin}/#/settings/opencode`);
   const fresh = page.locator('[data-new-code-session]');
-  await fresh.getByRole('textbox', { name: 'Consigne' }).fill('Ajoute un test pour le parseur.');
-  await fresh.getByRole('button', { name: 'Créer et lancer' }).click();
-  await page.locator('[data-code-workspace]').first().waitFor();
+  await fresh.getByRole('button', { name: 'Nouvelle session' }).click();
+  const direct = page.locator('[data-code-workspace]').first();
+  await direct.getByRole('textbox').fill('Ajoute un test pour le parseur.');
+  await direct.getByRole('button', { name: 'Envoyer' }).click();
+  await direct.locator('[data-code-message="user"]').getByText('Ajoute un test pour le parseur.').waitFor();
+  await assertTimelineScroll(direct.getByRole('log'));
   await page.locator('[data-code-sessions]').getByText('Par toi').first().waitFor();
   await shot('code-direct');
   assert.deepEqual(errors, []);

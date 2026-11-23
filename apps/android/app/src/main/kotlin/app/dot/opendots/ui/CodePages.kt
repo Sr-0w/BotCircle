@@ -65,6 +65,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.runtime.derivedStateOf
+import app.dot.design.components.DotFrostedPill
+import app.dot.design.R as DesignR
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -320,13 +324,11 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
     val busy = space?.sessionStatus == "busy" || space?.sessionStatus == "retry"
     val stop: () -> Unit = { app.taskAction(taskId, "cancel"); revision++ }
     val backdrop = rememberQuietBackdrop()
-    val listState = rememberLazyListState()
+    val listState = androidx.compose.runtime.key(taskId) { rememberLazyListState() }
     val blocks = remember(space?.messages) { codeBlocks(space?.messages.orEmpty()) }
     val pending = (space?.permissions?.size ?: 0) + (space?.questions?.size ?: 0)
-    // The newest content is at the bottom, like a conversation: follow it while the user is there.
-    LaunchedEffect(blocks.size, blocks.lastOrNull()?.size, pending, tab) {
-        if (tab == CodeTab.Session && blocks.isNotEmpty()) listState.scrollToItem(Int.MAX_VALUE / 2)
-    }
+    val exchangeState = androidx.compose.runtime.key(taskId) { rememberLazyListState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     // The session scrolls under the floating glass composer, which leaves it room at the end.
     var composerHeight by remember { mutableStateOf(0.dp) }
@@ -365,11 +367,49 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                     space == null && error != null -> Text(error.orEmpty(), style = Dot.type.callout, color = c.danger, modifier = Modifier.padding(top = top).padding(DotSpacing.gutter))
                     space == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { DotSpinner(size = 24.dp) }
                     tab == CodeTab.Session -> LazyColumn(
-                        state = listState,
+                        state = listState, reverseLayout = true,
                         contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + composerHeight),
-                        verticalArrangement = Arrangement.spacedBy(DotSpacing.l),
-                        modifier = Modifier.fillMaxSize().backdropSource(backdrop),
+                        verticalArrangement = Arrangement.spacedBy(DotSpacing.l, Alignment.Top),
+                        modifier = Modifier.fillMaxSize().backdropSource(backdrop).testTag("code-timeline"),
                     ) {
+                        item(key = "latest") { Spacer(Modifier.size(1.dp)) }
+                        items(space.questions.asReversed(), key = { "q-" + it.id }) { request -> CodeQuestionCard(request) { answers -> app.run { app.client.codeQuestion(taskId, request.id, answers); revision++ } } }
+                        items(space.permissions.asReversed(), key = { "p-" + it.id }) { request ->
+                            DotCard(Modifier.fillMaxWidth().testTag("code-permission"), emphasized = true) {
+                                Text(stringResource(R.string.code_permission), style = Dot.type.bodyStrong, color = c.textPrimary)
+                                Text(listOf(request.permission, request.patterns.joinToString(", ")).filter { it.isNotBlank() }.joinToString(" · "), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textSecondary, maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = DotSpacing.s))
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
+                                    DotButton(stringResource(R.string.code_allow_once), { app.run { app.client.codePermission(taskId, request.id, "once"); revision++ } }, compact = true)
+                                    DotButton(stringResource(R.string.code_allow_always), { app.run { app.client.codePermission(taskId, request.id, "always"); revision++ } }, style = ButtonStyle.Secondary, compact = true)
+                                    DotButton(stringResource(R.string.code_deny), { app.run { app.client.codePermission(taskId, request.id, "reject"); revision++ } }, style = ButtonStyle.Ghost, compact = true)
+                                }
+                            }
+                        }
+                        // Working, between two visible steps: one quiet line, like the conversation's.
+                        if (busy && pending == 0 && (blocks.lastOrNull() as? CodeBlock.Work)?.running == null) item(key = "live") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                DotSpinner(size = 14.dp)
+                                Spacer(Modifier.width(DotSpacing.s + 2.dp))
+                                Text(stringResource(R.string.code_working), style = Dot.type.callout, color = c.textSecondary, modifier = Modifier.dotShimmer())
+                            }
+                        }
+                        items(blocks.asReversed(), key = { it.key }) { block ->
+                            when (block) {
+                                is CodeBlock.User -> CodeUserBubble(block.text, block.files)
+                                is CodeBlock.Prose -> DotMarkdown(block.text)
+                                is CodeBlock.Failure -> Text(block.text, style = Dot.type.callout, color = c.danger)
+                                is CodeBlock.Work -> CodeWorkGroup(block, live = busy && block === blocks.last())
+                            }
+                        }
+                        if (space.messages.isEmpty()) item(key = "empty") { Text(stringResource(if (space.reachable) R.string.code_no_message else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
+                        if (!space.reachable) item(key = "offline") {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Icon(Icons.Outlined.CloudOff, null, Modifier.padding(top = 2.dp).size(14.dp), tint = c.textTertiary)
+                                Spacer(Modifier.width(DotSpacing.s))
+                                Text(stringResource(R.string.code_unreachable) + " " + space.error.orEmpty(), style = Dot.type.caption, color = c.textTertiary)
+                            }
+                        }
                         // #49: paused on a usage limit; the same session resumes by itself, or now.
                         val quota = space.task.external?.quota?.takeIf { space.task.status == "paused" }
                         if (quota != null) item(key = "quota") {
@@ -382,51 +422,15 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                                 }
                             }
                         }
-                        if (!space.reachable) item(key = "offline") {
-                            Row(verticalAlignment = Alignment.Top) {
-                                Icon(Icons.Outlined.CloudOff, null, Modifier.padding(top = 2.dp).size(14.dp), tint = c.textTertiary)
-                                Spacer(Modifier.width(DotSpacing.s))
-                                Text(stringResource(R.string.code_unreachable) + " " + space.error.orEmpty(), style = Dot.type.caption, color = c.textTertiary)
-                            }
-                        }
-                        if (space.messages.isEmpty()) item(key = "empty") { Text(stringResource(if (space.reachable) R.string.code_no_message else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
-                        items(blocks, key = { it.key }) { block ->
-                            when (block) {
-                                is CodeBlock.User -> CodeUserBubble(block.text, block.files)
-                                is CodeBlock.Prose -> DotMarkdown(block.text)
-                                is CodeBlock.Failure -> Text(block.text, style = Dot.type.callout, color = c.danger)
-                                is CodeBlock.Work -> CodeWorkGroup(block, live = busy && block === blocks.last())
-                            }
-                        }
-                        // Working, between two visible steps: one quiet line, like the conversation's.
-                        if (busy && pending == 0 && (blocks.lastOrNull() as? CodeBlock.Work)?.running == null) item(key = "live") {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                DotSpinner(size = 14.dp)
-                                Spacer(Modifier.width(DotSpacing.s + 2.dp))
-                                Text(stringResource(R.string.code_working), style = Dot.type.callout, color = c.textSecondary, modifier = Modifier.dotShimmer())
-                            }
-                        }
-                        items(space.permissions, key = { "p-" + it.id }) { request ->
-                            DotCard(Modifier.fillMaxWidth().testTag("code-permission"), emphasized = true) {
-                                Text(stringResource(R.string.code_permission), style = Dot.type.bodyStrong, color = c.textPrimary)
-                                Text(listOf(request.permission, request.patterns.joinToString(", ")).filter { it.isNotBlank() }.joinToString(" · "), style = Dot.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.textSecondary, maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = DotSpacing.s))
-                                @OptIn(ExperimentalLayoutApi::class)
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(DotSpacing.s), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
-                                    DotButton(stringResource(R.string.code_allow_once), { app.run { app.client.codePermission(taskId, request.id, "once"); revision++ } }, compact = true)
-                                    DotButton(stringResource(R.string.code_allow_always), { app.run { app.client.codePermission(taskId, request.id, "always"); revision++ } }, style = ButtonStyle.Secondary, compact = true)
-                                    DotButton(stringResource(R.string.code_deny), { app.run { app.client.codePermission(taskId, request.id, "reject"); revision++ } }, style = ButtonStyle.Ghost, compact = true)
-                                }
-                            }
-                        }
-                        items(space.questions, key = { "q-" + it.id }) { request -> CodeQuestionCard(request) { answers -> app.run { app.client.codeQuestion(taskId, request.id, answers); revision++ } } }
                     }
                     tab == CodeTab.Changes -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(DotSpacing.s), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
                         if (space.diffs.isEmpty()) item { Text(stringResource(if (space.reachable) R.string.code_no_change else R.string.code_cannot_read), style = Dot.type.callout, color = c.textSecondary) }
                         items(space.diffs, key = { it.path }) { diff -> CodeDiffView(diff) }
                     }
                     tab == CodeTab.Files -> Box(Modifier.fillMaxSize().backdropSource(backdrop)) { CodeFiles(app, taskId, top) }
-                    else -> LazyColumn(contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(DotSpacing.l), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
-                        items(space.exchanges, key = { it.seq }) { entry ->
+                    else -> LazyColumn(state = exchangeState, reverseLayout = true, contentPadding = PaddingValues(start = DotSpacing.gutter, end = DotSpacing.gutter, top = top, bottom = DotSpacing.l + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(DotSpacing.l), modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
+                        item(key = "latest") { Spacer(Modifier.size(1.dp)) }
+                        items(space.exchanges.asReversed(), key = { it.seq }) { entry ->
                             val author = when (entry.author) { "user" -> stringResource(R.string.you); "opencode" -> "OpenCode"; else -> ui.agents.firstOrNull { it.id == entry.agentId }?.name ?: stringResource(R.string.a_companion) }
                             Column(Modifier.fillMaxWidth().testTag("exchange-${entry.author}")) {
                                 Text(author + " → " + (if (entry.author == "opencode") stringResource(R.string.code_to_companion) else "OpenCode") + " · " + formatWhen(entry.createdAt), style = Dot.type.caption, color = c.textTertiary)
@@ -439,6 +443,13 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                         }
                     }
                 }
+            }
+        }
+        val timeline = if (tab == CodeTab.Exchanges) exchangeState else listState
+        val detached by remember(timeline) { derivedStateOf { timeline.canScrollBackward } }
+        if ((tab == CodeTab.Session || tab == CodeTab.Exchanges) && detached) {
+            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = (if (tab == CodeTab.Session) composerHeight else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()) + DotSpacing.s)) {
+                DotFrostedPill(Icons.Outlined.ArrowDownward, onClick = { scope.launch { timeline.scrollToItem(0) } }, contentDescription = stringResource(DesignR.string.ds_scroll_to_latest), backdrop = backdrop)
             }
         }
         if (tab == CodeTab.Session) Column(
@@ -521,12 +532,10 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
 /** What the session shows, in order: requests, OpenCode's prose, and the stretches of work between them. */
 private sealed interface CodeBlock {
     val key: String
-    val size: Int get() = 1
     data class User(override val key: String, val text: String, val files: List<String> = emptyList()) : CodeBlock
     data class Prose(override val key: String, val text: String) : CodeBlock
     data class Failure(override val key: String, val text: String) : CodeBlock
     data class Work(override val key: String, val parts: List<CodePart>) : CodeBlock {
-        override val size: Int get() = parts.size
         val running: CodePart? get() = parts.lastOrNull { it.type == "tool" && (it.status == "running" || it.status == "pending") }
     }
 }
