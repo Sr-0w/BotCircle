@@ -297,6 +297,7 @@
     <string name="ephemeral_expired">Ce chat éphémère a expiré et a été effacé.</string>
     <string name="ephemeral_interrupted">Réponse interrompue. Vérifie la conversation avant de renvoyer.</string>
     <string name="ephemeral_model_off">Indisponible</string>
+    <string name="ephemeral_rejected">Le serveur a refusé ce message ou ses fichiers.</string>
     <string name="ephemeral_unavailable">Chat éphémère ou modèle indisponible, ou limite atteinte.</string>
     <string name="ephemeral_write">Message</string>
     <string name="event">Événement</string>

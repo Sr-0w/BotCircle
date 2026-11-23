@@ -76,9 +76,13 @@ is gone: there is no conversion in either direction.
   "Ephemeral · not saved" and the empty state has one line: not saved, gone when
   you leave, the provider still processes the messages, not anonymous. The model
   is the new chat's default when it is OpenRouter/Ollama; the model sheet is the
-  normal one, with Codex shown as unavailable. Attachments, @mentions, `/`
-  commands, web search, replies and reactions are not offered, and replies show
-  image links as text (no automatic remote request).
+  normal one, with Codex shown as unavailable. The "+" attaches images and files
+  (up to 5 per turn, 10 MB each, 20 MB per turn; the server also caps a session):
+  they are read into memory, sent base64 in the turn (`attachments`), never written
+  to app storage, and drawn under the message (thumbnails from the in-memory bytes,
+  file chips); the server answers limit errors with its own message, shown as is.
+  @mentions, `/` commands, web search, replies and reactions are not offered, and
+  replies show image links as text (no automatic remote request).
 - Switching on deletes the empty normal chat that "New chat" had just created
   (`DELETE /api/chats/:id`) and removes it from the list at once; switching back
   creates a fresh one. The ephemeral chat itself is never in the Chats list, the
@@ -99,7 +103,7 @@ is gone: there is no conversion in either direction.
   reads `GET /:id` every 30 s as a heartbeat: the server renews its 30-minute
   idle timeout on any authenticated access. Process death or a long absence
   relies on that expiry (the heartbeat stops), checked again on return.
-- The screen sets Android `FLAG_SECURE` (screenshots/recents) and restores the
+- Release builds set Android `FLAG_SECURE` on this screen (not debug builds) (screenshots/recents) and restores the
   prior flag on leaving. Logical deletion, not forensic erasure from runtime/OS
   memory. Providers, proxies and remote Ollama operators can retain data under
   their own policies; the mode is not anonymous. Errors use fixed localized

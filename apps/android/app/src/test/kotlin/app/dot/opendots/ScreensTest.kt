@@ -24,6 +24,7 @@ import app.dot.design.catalog.QuietCatalogScreen
 import app.dot.opendots.data.MemorySessionStore
 import app.dot.opendots.data.OpenDotsClient
 import app.dot.opendots.data.ChatTarget
+import app.dot.opendots.data.TemporaryAttachment
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -139,9 +140,13 @@ class ScreensTest {
                         json("""{"id":"$temporaryId","expiresAt":${System.currentTimeMillis() + 600_000},"messages":[],"busy":false}""")
                     }
                     path == "/temporary-chats/$temporaryId/turn" -> {
-                        temporaryMessages = """[{"role":"user","content":"temporary test question"},{"role":"assistant","content":"Temporary answer","model":{"provider":"ollama","model":"llama4"}}]"""
-                        MockResponse.Builder().addHeader("Content-Type", "text/event-stream")
-                            .body("event: delta\ndata: \"Temporary answer\"\n\nevent: done\ndata: {}\n\n").build()
+                        val sent = request.body?.utf8().orEmpty()
+                        if ("\"text\":\"too big\"" in sent) json("""{"error":"Attachments exceed 20 MB per turn"}""", 413) else {
+                            val files = if ("\"attachments\"" in sent) ""","attachments":[{"name":"notes.txt","mediaType":"text/plain","size":11},{"name":"pic.png","mediaType":"image/png","size":${desktopPng.size}}]""" else ""
+                            temporaryMessages = """[{"role":"user","content":"temporary test question"$files},{"role":"assistant","content":"Temporary answer","model":{"provider":"ollama","model":"llama4"}}]"""
+                            MockResponse.Builder().addHeader("Content-Type", "text/event-stream")
+                                .body("event: delta\ndata: \"Temporary answer\"\n\nevent: done\ndata: {}\n\n").build()
+                        }
                     }
                     path == "/temporary-chats/$temporaryId" && request.method == "DELETE" -> {
                         temporaryMessages = "[]"; json("""{"ok":true}""")
@@ -759,7 +764,7 @@ class ScreensTest {
         compose.waitUntil(10_000) { pump(); posts.any { it.first == "/chats/chn1" } && app.temporaryChat.state.value.snapshot != null }
         // The new chat's model (Ollama) is already chosen; no attachment, mention or web control is offered.
         waitFor("llama4")
-        assertTrue(compose.onAllNodesWithContentDescription("Attach files").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithContentDescription("Attach files").fetchSemanticsNodes().isNotEmpty()) // "+": images and files
         assertTrue(compose.onAllNodesWithTag("chat-web").fetchSemanticsNodes().isEmpty())
         compose.onNodeWithContentDescription("Message").performTextInput("temporary test question")
         compose.onNodeWithContentDescription("Send").performClick()
@@ -778,6 +783,49 @@ class ScreensTest {
         assertEquals(listOf("ch1"), app.state.value.chats.map { it.id })
         assertTrue(compose.onAllNodesWithText("Temporary answer").fetchSemanticsNodes().isEmpty())
         assertTrue(posts.none { it.first.endsWith("/chat") })
+    }
+
+    private fun ephemeralWithAttachments(app: AppState) {
+        openNewChat(app)
+        compose.onNodeWithContentDescription("Ephemeral chat").performClick()
+        waitFor("Ephemeral · not saved")
+        compose.waitUntil(10_000) { pump(); app.temporaryChat.state.value.snapshot != null && app.temporaryChat.state.value.model != null }
+        assertEquals(1, compose.onAllNodesWithText("Ephemeral chat").fetchSemanticsNodes().size) // the title, not "New chat"
+        assertEquals(2, app.temporaryChat.attach(listOf(
+            TemporaryAttachment("notes.txt", "text/plain", "hello world".toByteArray()),
+            TemporaryAttachment("pic.png", "image/png", desktopPng),
+        )))
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("ephemeral-attachment").fetchSemanticsNodes().size == 2 }
+    }
+
+    @Test fun ephemeralAttachmentsAreSentFromMemoryAndDrawnInTheBubble() {
+        temporaryFixture = true
+        val app = launch(ThemeMode.DARK)
+        ephemeralWithAttachments(app)
+        compose.onNodeWithContentDescription("Message").performTextInput("temporary test question")
+        compose.onNodeWithContentDescription("Send").performClick()
+        waitFor("Temporary answer")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("ephemeral-image").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodesWithTag("ephemeral-file").fetchSemanticsNodes().isNotEmpty()) // the text file as a chip
+        assertTrue(compose.onAllNodesWithTag("ephemeral-attachment").fetchSemanticsNodes().isEmpty()) // left the composer
+        shoot("ephemeral-attachments-dark")
+        val body = posts.first { it.first.endsWith("/turn") }.second
+        assertTrue(body, "\"name\":\"notes.txt\"" in body && "\"data\":\"aGVsbG8gd29ybGQ=\"" in body && "\"mediaType\":\"image/png\"" in body)
+        assertTrue(app.temporaryChat.state.value.attachments.isEmpty())
+        // The bytes only live in the session: leaving drops them with the chat.
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Friday meeting")
+        compose.waitUntil(10_000) { pump(); app.temporaryChat.state.value.sentAttachments.isEmpty() && app.temporaryChat.state.value.snapshot == null }
+    }
+
+    @Test fun aRejectedAttachmentTurnShowsTheServersMessageAndKeepsTheFiles() {
+        temporaryFixture = true
+        val app = launch(ThemeMode.DARK)
+        ephemeralWithAttachments(app)
+        compose.onNodeWithContentDescription("Message").performTextInput("too big")
+        compose.onNodeWithContentDescription("Send").performClick()
+        waitFor("Attachments exceed 20 MB per turn")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("ephemeral-attachment").fetchSemanticsNodes().size == 2 }
     }
 
     @Test fun aNormalNewChatLosesTheIconAfterItsFirstMessage() {

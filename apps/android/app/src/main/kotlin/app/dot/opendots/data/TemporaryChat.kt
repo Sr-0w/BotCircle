@@ -8,7 +8,22 @@ import java.io.IOException
 
 /** Separate wire types: never converted to GeneralChat, ChatTarget or persisted messages. */
 @Serializable
-data class TemporaryMessage(val role: String, val content: String, val model: ModelConfig? = null)
+data class TemporaryMessage(val role: String, val content: String, val model: ModelConfig? = null, val attachments: List<TemporaryAttachmentMeta> = emptyList())
+
+/** What the server keeps about an attachment of a user message: metadata only, never the bytes. */
+@Serializable
+data class TemporaryAttachmentMeta(val name: String, val mediaType: String, val size: Long = 0)
+
+/** A picked image or file, held in memory only until the turn is sent (and for thumbnails while the chat is open). */
+class TemporaryAttachment(val name: String, val mediaType: String, val data: ByteArray) {
+    val size: Long get() = data.size.toLong()
+    val isImage: Boolean get() = mediaType.startsWith("image/")
+}
+
+/** Limits of the server contract: per turn and per file (the session total is checked by the server). */
+const val TEMPORARY_MAX_ATTACHMENTS = 5
+const val TEMPORARY_MAX_FILE_BYTES = 10L * 1024 * 1024
+const val TEMPORARY_MAX_TURN_BYTES = 20L * 1024 * 1024
 
 @Serializable
 data class TemporarySnapshot(
@@ -30,7 +45,7 @@ interface TemporaryChatApi {
     suspend fun temporaryChat(id: String): TemporarySnapshot
     suspend fun deleteTemporaryChat(id: String)
     suspend fun stopTemporaryChat(id: String)
-    fun temporaryTurn(id: String, text: String, model: ModelConfig): Flow<TemporaryEvent>
+    fun temporaryTurn(id: String, text: String, model: ModelConfig, attachments: List<TemporaryAttachment> = emptyList()): Flow<TemporaryEvent>
 }
 
 /** Named SSE events (not the normal AI SDK UI-message protocol). No diagnostic payload is exposed. */

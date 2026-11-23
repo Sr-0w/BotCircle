@@ -2,6 +2,10 @@ package app.dot.opendots.chat
 
 import app.dot.opendots.data.ApiException
 import app.dot.opendots.data.ModelConfig
+import app.dot.opendots.data.TEMPORARY_MAX_ATTACHMENTS
+import app.dot.opendots.data.TEMPORARY_MAX_FILE_BYTES
+import app.dot.opendots.data.TEMPORARY_MAX_TURN_BYTES
+import app.dot.opendots.data.TemporaryAttachment
 import app.dot.opendots.data.TemporaryChatApi
 import app.dot.opendots.data.TemporaryEvent
 import app.dot.opendots.data.TemporarySnapshot
@@ -20,7 +24,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.cancellation.CancellationException
 
-enum class TemporaryProblem { Connection, Interrupted, Expired, Unavailable }
+enum class TemporaryProblem { Connection, Interrupted, Expired, Unavailable, Rejected }
 
 data class TemporaryChatState(
     val snapshot: TemporarySnapshot? = null,
@@ -32,6 +36,12 @@ data class TemporaryChatState(
     /** The message being sent, shown as sent while the snapshot does not hold it yet (until it has more than [pendingBase] messages). */
     val pending: String? = null,
     val pendingBase: Int = 0,
+    /** Picked images and files for the next turn, in memory only. While a turn runs they are the ones being sent. */
+    val attachments: List<TemporaryAttachment> = emptyList(),
+    /** Attachments of sent messages by message index, kept in memory for the thumbnails (the server keeps metadata only). */
+    val sentAttachments: Map<Int, List<TemporaryAttachment>> = emptyMap(),
+    /** The server's own words for a [TemporaryProblem.Rejected] turn (attachment limits). */
+    val problemMessage: String? = null,
 ) {
     val busy get() = sending || snapshot?.busy == true
 }
@@ -68,7 +78,27 @@ class TemporaryChatSession(
     val hasContent: Boolean
         get() = _state.value.let { it.snapshot?.messages?.isNotEmpty() == true || it.partial.isNotEmpty() || (it.snapshot != null && it.sending) }
 
-    fun dismissProblem() { _state.update { it.copy(problem = null) } }
+    fun dismissProblem() { _state.update { it.copy(problem = null, problemMessage = null) } }
+
+    /** Adds picked files up to the per-turn limits (count, size per file, size per turn); returns how many were kept. */
+    fun attach(files: List<TemporaryAttachment>): Int {
+        if (_state.value.busy) return 0
+        var kept = 0
+        _state.update { s ->
+            var total = s.attachments.sumOf { it.size }
+            val next = s.attachments.toMutableList()
+            for (f in files) {
+                if (next.size >= TEMPORARY_MAX_ATTACHMENTS || f.size > TEMPORARY_MAX_FILE_BYTES || total + f.size > TEMPORARY_MAX_TURN_BYTES) continue
+                next += f; total += f.size; kept++
+            }
+            s.copy(attachments = next)
+        }
+        return kept
+    }
+
+    fun removeAttachment(index: Int) {
+        if (!_state.value.busy) _state.update { s -> s.copy(attachments = s.attachments.filterIndexed { i, _ -> i != index }) }
+    }
 
     fun draft(text: String) { if (!_state.value.busy) _state.update { it.copy(draft = text.take(16_000)) } }
     fun model(config: ModelConfig) {
@@ -105,13 +135,13 @@ class TemporaryChatSession(
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val model = current.model ?: return
-        if (current.busy || current.draft.isBlank() || !foreground) return
+        if (current.busy || (current.draft.isBlank() && current.attachments.isEmpty()) || !foreground) return
         val version = generation
         _state.update { it.copy(sending = true, partial = "", problem = null, pending = current.draft, pendingBase = snapshot.messages.size) }
         work = scope.launch {
             var completed = false
             try {
-                api.temporaryTurn(snapshot.id, current.draft, model).collect { event ->
+                api.temporaryTurn(snapshot.id, current.draft, model, current.attachments).collect { event ->
                     if (version != generation) return@collect
                     when (event) {
                         is TemporaryEvent.Delta -> _state.update {
@@ -131,7 +161,12 @@ class TemporaryChatSession(
                 if (version == generation) {
                     withContext(NonCancellable) { withTimeoutOrNull(5_000) { refresh() } }
                     if (version == generation) _state.update {
-                        it.copy(sending = false, partial = "", pending = null, draft = if (completed) "" else it.draft)
+                        it.copy(
+                            sending = false, partial = "", pending = null, draft = if (completed) "" else it.draft,
+                            // Sent: the bytes stay only to draw the message's thumbnails; unsent: they return to the composer.
+                            attachments = if (completed) emptyList() else it.attachments,
+                            sentAttachments = if (completed && current.attachments.isNotEmpty()) it.sentAttachments + (snapshot.messages.size to current.attachments) else it.sentAttachments,
+                        )
                     }
                 }
             }
@@ -210,6 +245,8 @@ class TemporaryChatSession(
         if (error is CancellationException) throw error
         if (version != generation) return
         when {
+            error is ApiException && (error.status == 400 || error.status == 413) ->
+                _state.update { it.copy(problem = TemporaryProblem.Rejected, problemMessage = error.message?.takeIf { m -> m.isNotBlank() }) }
             error is ApiException && error.status == 401 -> { discard(); onUnauthorized() }
             (error is ApiException && error.status == 404) || _state.value.snapshot?.let { now() >= it.expiresAt } == true -> expire()
             else -> _state.update {

@@ -12,6 +12,7 @@ S = {
  "ephemeral_expired": ("This ephemeral chat expired and was erased.", "Ce chat éphémère a expiré et a été effacé."),
  "ephemeral_interrupted": ("Reply stopped. Check the conversation before sending again.", "Réponse interrompue. Vérifie la conversation avant de renvoyer."),
  "ephemeral_model_off": ("Not available", "Indisponible"),
+ "ephemeral_rejected": ("The server refused this message or its files.", "Le serveur a refusé ce message ou ses fichiers."),
  "ephemeral_unavailable": ("Ephemeral chat or model unavailable, or limit reached.", "Chat éphémère ou modèle indisponible, ou limite atteinte."),
  "ephemeral_write": ("Message", "Message"),
  "notifications": ("Notifications", "Notifications"), "settings_notifications_note": ("Replies, tasks, approvals; quiet hours", "Réponses, tâches, validations ; heures calmes"),

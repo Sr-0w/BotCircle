@@ -297,6 +297,7 @@
     <string name="ephemeral_expired">This ephemeral chat expired and was erased.</string>
     <string name="ephemeral_interrupted">Reply stopped. Check the conversation before sending again.</string>
     <string name="ephemeral_model_off">Not available</string>
+    <string name="ephemeral_rejected">The server refused this message or its files.</string>
     <string name="ephemeral_unavailable">Ephemeral chat or model unavailable, or limit reached.</string>
     <string name="ephemeral_write">Message</string>
     <string name="event">Event</string>

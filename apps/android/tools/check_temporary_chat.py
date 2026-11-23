@@ -26,7 +26,7 @@ for path in files:
     used.update(re.findall(r"\bR\.string\.(\w+)", path.read_text()))
 assert not used - resources[0], f"Missing resources: {used - resources[0]}"
 assert not [r for r in resources[0] if r.startswith("temporary_")], "old temporary_* strings must be gone"
-assert len([r for r in resources[0] if r.startswith("ephemeral_")]) == 12
+assert len([r for r in resources[0] if r.startswith("ephemeral_")]) == 13
 print("PASS static: English/French resource parity and referenced strings")
 
 for path in [src / "chat/TemporaryChatSession.kt", src / "ui/EphemeralChatScreen.kt"]:

@@ -567,7 +567,7 @@ internal fun ChatHeader(
             // The Circle's computer is one tap away; its work lives in Data & connections (and the live status line).
             // A general chat has no computer: its work stays here.
             if (onEphemeral != null) DotCapsuleButton(Icons.Outlined.VisibilityOff, stringResource(R.string.ephemeral_chat), onEphemeral, tint = if (ephemeral) c.accent else c.textPrimary, modifier = Modifier.testTag("ephemeral-toggle"))
-            if (general && !ephemeral) DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
+            if (general && !ephemeral && onEphemeral == null) DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
             else if (!general) DotCapsuleButton(Icons.Outlined.DesktopWindows, stringResource(R.string.computer_row), onOpenComputer)
             // #56: details, archive, previous threads and delete sit behind one discreet menu.
             if (!ephemeral) Box {
@@ -803,7 +803,7 @@ private fun EditMessageSheet(original: String, onDismiss: () -> Unit, onSend: (S
 
 /** "+" holds the less frequent actions: attach files, and in a general chat, ask a companion (no separate @ button). */
 @Composable
-private fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?, askLabel: Int = R.string.ask_companion) {
+internal fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?, askLabel: Int = R.string.ask_companion) {
     var open by remember { mutableStateOf(false) }
     if (onAsk == null) { DotIconButton(Icons.Outlined.Add, stringResource(R.string.attach_files), onClick = onAttach, tint = Dot.colors.textSecondary, enabled = canAttach); return }
     Box {
