@@ -95,7 +95,7 @@ export function TaskCard({ taskId, showAgent, compact }: { taskId: string; showA
   );
 }
 
-const CODE_STATUS: Record<TaskStatus, string> = {
+export const CODE_STATUS: Record<TaskStatus, string> = {
   queued: 'En attente', running: 'En cours', waiting_for_user: 'Autorisation nécessaire', paused: 'En pause', completed: 'Terminé', failed: 'Échec', cancelled: 'Arrêté',
 };
 

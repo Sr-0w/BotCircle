@@ -2,8 +2,7 @@
 
 ## Delivery status
 
-This is a restricted **Web + backend first increment**, not completion of #57.
-<<<<<<< HEAD
+Web, backend and native Android: the ephemeral mode of a new chat (#57).
 
 ### Web UX (ephemeral mode of a new chat)
 

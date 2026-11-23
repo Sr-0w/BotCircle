@@ -11,7 +11,7 @@ import { onCodeWorkspaceRequested, onWorkPanelRequested, openCodeWorkspace } fro
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-import { GhostIcon, ArchiveIcon,ArchiveRestoreIcon, TextSearchIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
+import { CodeXmlIcon, GhostIcon, ArchiveIcon, ArchiveRestoreIcon, TextSearchIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
 import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO, type ModelConfig } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -34,14 +34,21 @@ import { t } from "@/lib/i18n";
 import { useAccount } from '@/lib/account';
 // Pages et modales secondaires chargées à la demande.
 const CodeWorkspace = lazy(() => import("./code/code-workspace").then((m) => ({ default: m.CodeWorkspace })));
+const CodePage = lazy(() => import("./code/code-page").then((m) => ({ default: m.CodePage })));
+import { useLiveCodeSessions, type CodeFilter } from "./code/code-live";
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
-type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean } | { view: "ephemeral" };
+type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean } | { view: "ephemeral" }
+  /** #72: Code, a first-class destination; `id` = the exact coding session (task id), stable and linkable. */
+  | { view: "code"; id: string | null };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
 function parseHash(): Route {
   // #64: a notification can add "?m=<message>" (open at that message); the route itself ignores it.
   const h = window.location.hash.replace(/^#\/?/, "").replace(/\?.*$/, "");
   if (h === 'chat/ephemeral') return { view: 'ephemeral' };
+  if (h === 'code') return { view: 'code', id: null };
+  const code = /^code\/(.+)$/.exec(h);
+  if (code) return { view: 'code', id: decodeURIComponent(code[1]) };
   if (LEGACY_PAGES.includes(h)) return { view: 'settings', section: h as SettingsSection };
   if (h === 'settings' || h.startsWith('settings/')) {
     const section = h.split('/')[1];
@@ -55,7 +62,7 @@ function parseHash(): Route {
 function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => { const on = () => setRoute(parseHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
-  return [route, next => { window.location.hash = next.view === 'ephemeral' ? '/chat/ephemeral' : next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`; }];
+  return [route, next => { window.location.hash = next.view === 'code' ? (next.id ? `/code/${encodeURIComponent(next.id)}` : '/code') : next.view === 'ephemeral' ? '/chat/ephemeral' : next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`; }];
 }
 
 const BUSY = ["thinking", "working", "collaborating", "awake"];
@@ -98,6 +105,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const connected = useStore((s) => s.connected);
   const chats = useStore((s) => s.chats);
   const archivedChats = useStore((s) => s.archivedChats);
+  const liveCode = useLiveCodeSessions();
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<ChatDTO[] | null>(null);
@@ -211,6 +219,8 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
             <PauseCircleIcon className="size-3.5" /> {t("Activités autonomes suspendues")}
           </div>
         )}
+        {/* #72: Code is fixed right above Settings, never pushed down by a long Circles/Chats list. */}
+        <SideButton active={route.view === 'code'} onClick={() => go({ view: 'code', id: null })} icon={<CodeXmlIcon />} count={liveCode} countLabel={t('{count} sessions de code actives', { count: liveCode })} data-nav-code>{t('Code')}</SideButton>
         <SideButton active={route.view === 'settings'} onClick={() => go({ view: 'settings', section: 'general', index: true })} icon={<SettingsIcon />} badge={pending}>{t('Paramètres')}</SideButton>
         <AccountFooter onClick={() => go({ view: 'settings', section: 'general', index: true })} />
       </div>
@@ -229,18 +239,27 @@ function SideButton({
   onClick,
   active,
   badge,
+  count,
+  countLabel,
   className,
+  ...rest
 }: {
   children: React.ReactNode;
   icon: React.ReactNode;
   onClick: () => void;
   active?: boolean;
   badge?: number;
+  /** A quiet, real count (not an alert): live coding sessions. */
+  count?: number;
+  countLabel?: string;
   className?: string;
+  'data-nav-code'?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      {...rest}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-4",
         active && "bg-accent text-foreground",
@@ -250,6 +269,7 @@ function SideButton({
       {icon}
       <span className="flex-1 text-left">{children}</span>
       {!!badge && <span className="rounded-full bg-foreground px-1.5 font-semibold text-[10px] text-background">{badge}</span>}
+      {!!count && <span className="text-[11px] text-muted-foreground tabular-nums" aria-label={countLabel} data-nav-count>{count}</span>}
     </button>
   );
 }
@@ -263,9 +283,9 @@ export function Shell() {
   useEffect(() => {
     const open = () => {
       const [path, query] = window.location.hash.replace(/^#\/?/, '').split('?');
-      const task = /^task\/(.+)$/.exec(path), code = /^code\/(.+)$/.exec(path);
+      // #72: `#/code/<taskId>` is now a real route (the Code destination at that exact session), not a redirect.
+      const task = /^task\/(.+)$/.exec(path);
       if (task) { openDialog({ kind: 'task', taskId: task[1] }); window.history.replaceState(null, '', '#/'); window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
-      if (code) { openCodeWorkspace(code[1]); window.history.replaceState(null, '', '#/'); window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
       const m = new URLSearchParams(query ?? '').get('m');
       if (!m) return;
       const chat = /^chat\/(.+)$/.exec(path), agent = /^agent\/(.+)$/.exec(path);
@@ -280,29 +300,42 @@ export function Shell() {
   useEffect(() => setThreadSearch(false), [route.view, route.view === "settings" ? "" : (route as { id?: string | null }).id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Ctrl/⌘+F inside a conversation: find in this thread.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f' && route.view !== 'settings') { e.preventDefault(); setThreadSearch(true); } };
+    const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f' && route.view !== 'settings' && route.view !== 'code') { e.preventDefault(); setThreadSearch(true); } };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, [route.view]);
   const [panelOpen, setPanelOpen] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
   const [mobilePanel, setMobilePanel] = useState(false);
-  // L'espace de code s'ouvre à côté de la conversation (grand écran) ou en plein écran (petit écran).
+  // A session card in a conversation opens the code workspace beside it (wide screen); everywhere else — and its
+  // "expand" — it is the Code destination at that exact session (#72), so there is one canonical place and URL.
   const [codeTask, setCodeTask] = useState<string | null>(null);
-  const [codeExpanded, setCodeExpanded] = useState(false);
+  const [codeFilter, setCodeFilter] = useState<CodeFilter>('all');
   const [wideScreen, setWideScreen] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => { const query = window.matchMedia("(min-width: 1024px)"); const on = () => setWideScreen(query.matches); query.addEventListener("change", on); return () => query.removeEventListener("change", on); }, []);
-  useEffect(() => onCodeWorkspaceRequested(setCodeTask), []);
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  useEffect(() => onCodeWorkspaceRequested((taskId) => {
+    const inConversation = routeRef.current.view === 'agent' || routeRef.current.view === 'chat';
+    if (inConversation && window.matchMedia("(min-width: 1024px)").matches) setCodeTask(taskId);
+    else { setCodeTask(null); go({ view: 'code', id: taskId }); setNavOpen(false); }
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // #72: going to Code keeps the last conversation mounted (hidden), so its draft and scroll position survive.
+  const [lastConversation, setLastConversation] = useState<Route | null>(route.view === 'agent' || route.view === 'chat' ? route : null);
+  useEffect(() => { if (route.view === 'agent' || route.view === 'chat') setLastConversation(route); else if (route.view !== 'code') setLastConversation(null); }, [route]);
+  useEffect(() => { if (route.view === 'code') setCodeTask(null); }, [route.view]);
+  const inCode = route.view === 'code';
+  const shown: Route = inCode ? lastConversation ?? route : route;
 
   // Le fil ne montre que l'état en direct : un clic dessus ouvre le travail dans le panneau.
   useEffect(() => onWorkPanelRequested(() => (window.matchMedia("(min-width: 1024px)").matches ? setPanelOpen(true) : setMobilePanel(true))), []);
 
   const current = useMemo(() => {
-    if (route.view !== "agent") return null;
-    return agents.find((a) => a.id === route.id) ?? agents[0] ?? null;
-  }, [agents, route]);
+    if (shown.view !== "agent") return null;
+    return agents.find((a) => a.id === shown.id) ?? agents[0] ?? null;
+  }, [agents, shown]);
 
   const chats = useStore((s) => s.chats);
   const archived = useStore((s) => s.archivedChats);
-  const currentChat = route.view === "chat" ? chats.find((chat) => chat.id === route.id) ?? archived.find((chat) => chat.id === route.id) ?? null : null;
+  const currentChat = shown.view === "chat" ? chats.find((chat) => chat.id === shown.id) ?? archived.find((chat) => chat.id === shown.id) ?? null : null;
   // Chat supprimé (ici ou ailleurs) : retour aux compagnons.
   const chatsLoaded = useStore((s) => s.connected);
   useEffect(() => {
@@ -355,7 +388,9 @@ export function Shell() {
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label={t("Menu")}>
             <MenuIcon />
           </Button>
-          {route.view === 'ephemeral' ? (
+          {inCode ? (
+            <span className="flex items-center gap-2 font-medium"><CodeXmlIcon className="size-4 text-muted-foreground" />{t("Code")}</span>
+          ) : route.view === 'ephemeral' ? (
             <>
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"><GhostIcon className="size-3.5 text-muted-foreground" /></span>
               <p className="truncate font-medium text-sm">{t("Chat éphémère")}</p>
@@ -412,10 +447,16 @@ export function Shell() {
 
         <div className="flex min-h-0 flex-1">
           <Suspense fallback={<div className="flex-1" />}>
-          {route.view === 'ephemeral' ? (
+          {inCode && (route.id
+            ? <div className="flex min-w-0 flex-1 flex-col" data-code-route-session={route.id}>
+                <CodeWorkspace key={route.id} taskId={route.id} expanded onClose={() => navigate({ view: 'code', id: null })} />
+              </div>
+            : <CodePage filter={codeFilter} onFilter={setCodeFilter} onOpen={(id) => navigate({ view: 'code', id })} />)}
+          <div className={inCode ? 'hidden' : 'contents'} aria-hidden={inCode || undefined}>
+          {shown.view === 'code' ? null : shown.view === 'ephemeral' ? (
             <EphemeralChatView initialModel={ephemeralModel} onNormalChat={leaveEphemeral} />
-          ) : route.view === 'settings' ? (
-            <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : route.view === 'chat' ? (
+          ) : shown.view === 'settings' ? (
+            <SettingsPage section={shown.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : shown.view === 'chat' ? (
             currentChat && <>
               <div className="flex min-w-0 flex-1 flex-col">
                 {currentChat.archived && (
@@ -446,19 +487,16 @@ export function Shell() {
               )}
             </>
           ) : null}
-          {codeTask && wideScreen && !codeExpanded && (
+          {codeTask && wideScreen && !inCode && (
             <aside className="w-[min(46vw,640px)] shrink-0 border-l">
-              <CodeWorkspace taskId={codeTask} onToggleExpand={() => setCodeExpanded(true)} onClose={() => setCodeTask(null)} />
+              {/* Expand = the Code destination at this exact session (#72); the conversation stays as it was. */}
+              <CodeWorkspace taskId={codeTask} onToggleExpand={() => navigate({ view: 'code', id: codeTask })} onClose={() => setCodeTask(null)} />
             </aside>
           )}
+          </div>
           </Suspense>
         </div>
       </main>
-      {codeTask && (!wideScreen || codeExpanded) && (
-        <div className="fixed inset-0 z-40 bg-background" role="dialog" aria-label={t("Espace de code")}>
-          <Suspense fallback={null}><CodeWorkspace taskId={codeTask} expanded={wideScreen} onToggleExpand={wideScreen ? () => setCodeExpanded(false) : undefined} onClose={() => { setCodeTask(null); setCodeExpanded(false); }} /></Suspense>
-        </div>
-      )}
 
       {current && (
         <Sheet open={mobilePanel} onOpenChange={setMobilePanel}>
