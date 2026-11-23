@@ -3,9 +3,9 @@ import type { ActivityDTO, ConnectorDTO, IntegrationProvider, PresentedFile, Ski
 
 /** Modales globales, ouvrables depuis n'importe où (cartes de conversation, pages…). */
 export type DialogState =
-  | { kind: "mail"; initialPreset?: "custom"; requestedBy?: string; connector?: ConnectorDTO }
-  | { kind: "mcp"; requestedBy?: string; connector?: ConnectorDTO }
-  | { kind: 'integration'; requestedBy?: string; provider?: IntegrationProvider; connector?: ConnectorDTO; initialPermissions?: string[] }
+  | { kind: "mail"; initialPreset?: "custom"; requestedBy?: string; handoffId?: string; connector?: ConnectorDTO }
+  | { kind: "mcp"; requestedBy?: string; handoffId?: string; connector?: ConnectorDTO }
+  | { kind: 'integration'; requestedBy?: string; handoffId?: string; provider?: IntegrationProvider; connector?: ConnectorDTO; initialPermissions?: string[] }
   | { kind: "plugin" }
   | { kind: "skill"; skill?: SkillDTO }
   | { kind: "activity"; activity?: ActivityDTO; agentId?: string }

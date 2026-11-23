@@ -200,7 +200,7 @@ export function AnswerBubble({ text }: { text: string }) {
 
 // --- Demande de connexion ------------------------------------------------------------
 
-export function ConnectionRequestCard({ kind, reason, agentId, provider, permissions }: { kind: "mail" | "mcp" | 'integration'; reason: string; agentId?: string; provider?: import('@opendots/shared').IntegrationProvider; permissions?: string[] }) {
+export function ConnectionRequestCard({ kind, reason, agentId, provider, permissions, handoffId }: { kind: "mail" | "mcp" | 'integration'; reason: string; agentId?: string; provider?: import('@opendots/shared').IntegrationProvider; permissions?: string[]; handoffId?: string }) {
   const Icon = kind === "mail" ? MailIcon : PlugIcon;
   const [connected, setConnected] = useState<string[]>([]);
   const [existing, setExisting] = useState<import('@opendots/shared').ConnectorDTO>();
@@ -238,7 +238,7 @@ export function ConnectionRequestCard({ kind, reason, agentId, provider, permiss
             <CheckIcon className="size-3.5 shrink-0" /> <span className="truncate">{t("Connecté :")} {connected.join(", ")}</span>
           </span>
         )}
-        <Button size="sm" disabled={loading || Boolean(lookupError)} variant={connected.length ? "outline" : "default"} onClick={() => kind === 'integration' ? openDialog({ kind, provider, requestedBy: agentId, connector: permissions?.length && !connected.length ? existing : undefined, initialPermissions: permissions }) : openDialog({ kind, requestedBy: agentId })}>
+        <Button size="sm" disabled={loading || Boolean(lookupError)} variant={connected.length ? "outline" : "default"} onClick={() => kind === 'integration' ? openDialog({ kind, provider, requestedBy: agentId, handoffId, connector: permissions?.length && !connected.length ? existing : undefined, initialPermissions: permissions }) : openDialog({ kind, requestedBy: agentId, handoffId })}>
           {connected.length ? t("Ajouter un autre") : existing && permissions?.length ? t('Autoriser les accès') : kind === "mail" ? t("Connecter") : t("Configurer")}
         </Button>
       </div>

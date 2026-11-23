@@ -324,17 +324,24 @@ function collect(child: ReturnType<typeof spawn>, timeoutMs: number, onTimeout: 
   });
 }
 
-export async function execShell(agentId: string, command: string, opts: { timeoutSeconds?: number } = {}): Promise<ShellResult> {
+type ShellOptions = { timeoutSeconds?: number; deadline?: number };
+
+export async function execShell(agentId: string, command: string, opts: ShellOptions = {}): Promise<ShellResult> {
   return withDesktopAgent(agentId, async () => {
   const release = leaseComputer();
   try { return await executeShell(agentId, command, opts); } finally { release(); }
   });
 }
-async function executeShell(agentId: string, command: string, opts: { timeoutSeconds?: number }): Promise<ShellResult> {
+async function executeShell(agentId: string, command: string, opts: ShellOptions): Promise<ShellResult> {
   const settings = await getShellSettings();
   const backend = await resolveBackend(settings);
   if (!backend) throw new Error('Le shell est désactivé dans les paramètres.');
-  const timeoutMs = Math.min(Math.max(opts.timeoutSeconds ?? 120, 1), 1800) * 1000;
+  const commandTimeoutMs = Math.min(Math.max(opts.timeoutSeconds ?? 120, 1), 1800) * 1000;
+  function remainingTimeoutMs() {
+    const remaining = opts.deadline === undefined ? commandTimeoutMs : opts.deadline - Date.now();
+    if (remaining <= 0) throw new Error('Délai du tour entre compagnons dépassé.');
+    return Math.min(commandTimeoutMs, remaining);
+  }
   const started = Date.now();
   const hostHome = ensureHostDirs(agentId);
 
@@ -342,6 +349,7 @@ async function executeShell(agentId: string, command: string, opts: { timeoutSec
     if (!(await dockerAvailable())) throw new Error('Docker n’est pas disponible : choisis le mode « machine hôte » dans les paramètres.');
     await ensureContainer(settings);
     const { user, home, slot } = await ensureComputerUser(agentId, settings.sudo);
+    const timeoutMs = remainingTimeoutMs();
     const runner = ['sh', '-c', 'if command -v opendots-shell-run >/dev/null 2>&1; then exec opendots-shell-run "$1" "$2"; else printf "[BotCircle] Image personnalisée ancienne : mets-la à jour pour les processus graphiques en arrière-plan.\\n" >&2; exec timeout -k 1 "$1" bash -lc "$2"; fi', 'opendots-shell', String(timeoutMs / 1000), command];
     const child = spawn('docker', ['exec', '-i', '-u', user, '-w', home, '-e', `HOME=${home}`, '-e', `DISPLAY=:${slot}`, '-e', `XAUTHORITY=${home}/.Xauthority`, '-e', `XDG_RUNTIME_DIR=/tmp/runtime-${user}`, '-e', 'TERM=dumb', computerName(), ...runner], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -355,6 +363,7 @@ async function executeShell(agentId: string, command: string, opts: { timeoutSec
     return { backend, exitCode: r.code, stdout: r.stdout, stderr: r.stderr, durationMs: Date.now() - started, timedOut, cwd: home };
   }
 
+  const timeoutMs = remainingTimeoutMs();
   const child = spawn('bash', ['-lc', command], {
     cwd: hostHome,
     detached: true,

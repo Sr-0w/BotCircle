@@ -113,6 +113,13 @@
       "when": 1795564800000,
       "tag": "0015_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795651200000,
+      "tag": "0016_team_handoffs",
+      "breakpoints": true
     }
   ]
 }

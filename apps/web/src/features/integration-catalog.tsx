@@ -72,7 +72,7 @@ function OAuthAppDialog({ app, onClose, onSaved }: { app: OAuthAppDTO; onClose: 
   return <Dialog open onOpenChange={(v) => !v && onClose()}><DialogContent><DialogHeader><DialogTitle>{t('Application OAuth')} — {app.provider}</DialogTitle><DialogDescription>{t('Seul l’administrateur du déploiement effectue ce réglage. Le secret reste chiffré sur le serveur.')}</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4"><a className="text-sm underline" href={docs[app.provider]} target="_blank" rel="noreferrer">{t('Ouvrir la console du fournisseur')}</a><div className="space-y-1"><Label htmlFor="oauth-return">{t('URL de retour à enregistrer')}</Label><Input id="oauth-return" readOnly value={app.callbackUrl} onFocus={(e) => e.target.select()} /></div><div className="space-y-1"><Label htmlFor="oauth-client">Client ID</Label><Input id="oauth-client" value={clientId} onChange={(e) => setClientId(e.target.value)} required autoComplete="off" /></div><div className="space-y-1"><Label htmlFor="oauth-secret">Client secret</Label><Input id="oauth-secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={app.hasSecret && app.clientId === clientId ? t('Laisser vide pour conserver le secret') : ''} required={!app.hasSecret || app.clientId !== clientId} autoComplete="new-password" /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button disabled={busy} type="submit">{busy && <LoaderIcon className="animate-spin" />}{t('Enregistrer')}</Button></form></DialogContent></Dialog>;
 }
 
-export function IntegrationConnectDialog({ provider, connector, requestedBy, initialPermissions, onClose }: { requestedBy?: string; provider?: IntegrationProvider; connector?: ConnectorDTO; initialPermissions?: string[]; onClose: () => void }) {
+export function IntegrationConnectDialog({ provider, connector, requestedBy, handoffId, initialPermissions, onClose }: { requestedBy?: string; handoffId?: string; provider?: IntegrationProvider; connector?: ConnectorDTO; initialPermissions?: string[]; onClose: () => void }) {
   const [catalog, setCatalog] = useState<Awaited<ReturnType<typeof api.integrationCatalog>> | null>(null), [selectedProvider, setProvider] = useState(provider), [permissions, setPermissions] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const popup = useRef<Window | null>(null), timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const entry = catalog?.entries.find((s) => s.id === selectedProvider);
@@ -90,7 +90,7 @@ export function IntegrationConnectDialog({ provider, connector, requestedBy, ini
     if (!popup.current) { setError(t('Autorise les fenêtres de connexion pour ce site.')); return; }
     setBusy(true);
     try {
-      const res = await api.startOAuth(selectedProvider, permissions, connector?.id, requestedBy);
+      const res = await api.startOAuth(selectedProvider, permissions, connector?.id, requestedBy, handoffId);
       popup.current.location.href = res.url;
       if (timer.current) clearInterval(timer.current);
       timer.current = setInterval(() => { if (!popup.current || popup.current.closed) { setBusy(false); if (timer.current) clearInterval(timer.current); } }, 700);
