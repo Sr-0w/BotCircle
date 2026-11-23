@@ -11,8 +11,8 @@ import { onCodeWorkspaceRequested, onWorkPanelRequested, openCodeWorkspace } fro
 import { useEffect, useMemo, useRef, useState } from "react";
 /** Shown in shortcut hints. */
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-import { ArchiveIcon, ArchiveRestoreIcon, TextSearchIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
-import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO } from "@opendots/shared";
+import { GhostIcon, ArchiveIcon,ArchiveRestoreIcon, TextSearchIcon, MenuIcon, MessagesSquareIcon, Trash2Icon, MonitorIcon, PanelRightIcon, PauseCircleIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, WifiOffIcon } from "lucide-react";
+import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO, type ModelConfig } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { GeneralChatView } from "./chat/general-chat-view";
@@ -20,10 +20,10 @@ import { ChatPanel } from "./panels/chat-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { setStoreChats, useStore } from "@/lib/store";
+import { getState, setStoreChats, useStore } from "@/lib/store";
 import { cn, plainPreview, relativeTime } from "@/lib/utils";
 import { ChatView } from "./chat/chat-view";
-import { TemporaryChat } from "./chat/temporary-chat";
+import { EphemeralChatView } from "./chat/ephemeral-chat-view";
 import { AgentPanel } from "./panels/agent-panel";
 import { DotAvatar } from "./dot-avatar";
 import { SettingsPage, SETTINGS_ALIASES, SETTINGS_SECTIONS, type SettingsSection } from "./pages/settings-page";
@@ -36,12 +36,12 @@ import { useAccount } from '@/lib/account';
 const CodeWorkspace = lazy(() => import("./code/code-workspace").then((m) => ({ default: m.CodeWorkspace })));
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
-type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean } | { view: "temporary" };
+type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean } | { view: "ephemeral" };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
 function parseHash(): Route {
   // #64: a notification can add "?m=<message>" (open at that message); the route itself ignores it.
   const h = window.location.hash.replace(/^#\/?/, "").replace(/\?.*$/, "");
-  if (h === 'chats/temporary') return { view: 'temporary' };
+  if (h === 'chat/ephemeral') return { view: 'ephemeral' };
   if (LEGACY_PAGES.includes(h)) return { view: 'settings', section: h as SettingsSection };
   if (h === 'settings' || h.startsWith('settings/')) {
     const section = h.split('/')[1];
@@ -55,7 +55,7 @@ function parseHash(): Route {
 function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => { const on = () => setRoute(parseHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
-  return [route, next => { window.location.hash = next.view === 'temporary' ? '/chats/temporary' : next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`; }];
+  return [route, next => { window.location.hash = next.view === 'ephemeral' ? '/chat/ephemeral' : next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`; }];
 }
 
 const BUSY = ["thinking", "working", "collaborating", "awake"];
@@ -155,9 +155,6 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           <span className="flex-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t("Chats")}</span>
           <button type="button" aria-label={t("Rechercher dans les conversations")} title={`${t("Rechercher dans les conversations")} (${MOD}+Shift+F)`} onClick={() => openSearch(query)} className="mr-1 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" data-open-search><TextSearchIcon className="size-4" /></button>
           <button type="button" aria-label={t("Nouveau chat")} title={t("Nouveau chat")} onClick={newChat} className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><PlusIcon className="size-4" /></button>
-        </div>
-        <div className="px-2 pb-2">
-          <SideButton active={route.view === 'temporary'} onClick={() => go({ view: 'temporary' })} icon={<MessagesSquareIcon />}>Chat temporaire</SideButton>
         </div>
         {chats.length > 0 && (
           <div className="relative mx-2 mb-1">
@@ -325,6 +322,22 @@ export function Shell() {
     setNavOpen(false);
   };
 
+  // #57: a new chat can become ephemeral (never saved, never listed). The empty durable chat that "new chat"
+  // created is deleted and dropped from the list first; switching back creates a fresh one.
+  const [ephemeralModel, setEphemeralModel] = useState<ModelConfig | null>(null);
+  const enterEphemeral = async (chat: ChatDTO) => {
+    try {
+      await api.deleteChat(chat.id);
+      setStoreChats(getState().chats.filter((c) => c.id !== chat.id));
+      setEphemeralModel(chat.effectiveModel);
+      navigate({ view: 'ephemeral' });
+    } catch (e) { toast.error((e as Error).message); }
+  };
+  const leaveEphemeral = () => void api.createChat().then((chat) => {
+    setStoreChats([chat, ...getState().chats.filter((c) => c.id !== chat.id)]);
+    navigate({ view: 'chat', id: chat.id });
+  }).catch((e) => toast.error(e.message));
+
   const sidebar = <Sidebar route={route} go={navigate} />;
 
   return (
@@ -342,8 +355,11 @@ export function Shell() {
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label={t("Menu")}>
             <MenuIcon />
           </Button>
-          {route.view === 'temporary' ? (
-            <span className="font-medium">Chat temporaire</span>
+          {route.view === 'ephemeral' ? (
+            <>
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"><GhostIcon className="size-3.5 text-muted-foreground" /></span>
+              <p className="truncate font-medium text-sm">{t("Chat éphémère")}</p>
+            </>
           ) : route.view === "settings" ? (
             <span className="font-medium">{t("Paramètres")}</span>
           ) : route.view === "chat" ? (
@@ -395,13 +411,10 @@ export function Shell() {
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <TemporaryChat visible={route.view === 'temporary'} onStartNormalChat={async () => {
-            const chat = await api.createChat();
-            setStoreChats([chat, ...chats.filter(c => c.id !== chat.id)]);
-            navigate({ view: 'chat', id: chat.id });
-          }} />
           <Suspense fallback={<div className="flex-1" />}>
-          {route.view === 'temporary' ? null : route.view === 'settings' ? (
+          {route.view === 'ephemeral' ? (
+            <EphemeralChatView initialModel={ephemeralModel} onNormalChat={leaveEphemeral} />
+          ) : route.view === 'settings' ? (
             <SettingsPage section={route.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : route.view === 'chat' ? (
             currentChat && <>
               <div className="flex min-w-0 flex-1 flex-col">
@@ -412,7 +425,7 @@ export function Shell() {
                   </div>
                 )}
                 {threadSearch && <ThreadSearchBar key={currentChat.id} conversationId={currentChat.id} onClose={() => setThreadSearch(false)} />}
-                <GeneralChatView chat={currentChat} />
+                <GeneralChatView chat={currentChat} onEphemeral={enterEphemeral} />
               </div>
               {panelOpen && !codeTask && (
                 <aside className="hidden w-[340px] shrink-0 border-l lg:block">

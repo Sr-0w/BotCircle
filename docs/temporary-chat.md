@@ -3,13 +3,35 @@
 ## Delivery status
 
 This is a restricted **Web + backend first increment**, not completion of #57.
-Rebased onto production commit `e1c8498`, which includes independent normal chats
-(#29/#38) and the native Android module. The Web shell preserves all production
-routes, chat history/archive controls, settings and Code workspace. Temporary
-chat is a separate destination in its Chats section. **Start normal chat**
-creates a new empty general chat through the production API without copying or
-converting the temporary transcript; returning to Temporary Chat retains its
-in-session context until close/expiry. Native Android now has a dedicated
+
+### Web UX (ephemeral mode of a new chat)
+
+Ephemeral chat is a **mode of a new, empty general chat**, not a separate page:
+
+- A ghost icon ("Chat éphémère") appears on a new chat that has no message yet.
+  Clicking it switches to ephemeral mode (route `#/chat/ephemeral`); clicking it
+  again, still before any message, goes back to a normal chat. Once a message is
+  sent, the icon disappears: there is no conversion in either direction.
+- The ephemeral chat reuses the normal chat components (conversation, message
+  bubbles, floating composer, streaming orb, stop button) through a custom
+  `ChatTransport` over `/api/temporary-chats`. It shows a persistent
+  "Éphémère · non sauvegardé" badge and one short empty-state sentence (not
+  saved, gone when you leave, the provider still processes messages).
+- The model defaults to the new chat's effective model when it is OpenRouter or
+  Ollama and can be changed with the usual model menu; Codex is listed but
+  disabled. Attachments, `@Circle` mentions, slash commands, web search, edit and
+  regenerate are not offered.
+- The empty normal chat created by "New chat" is deleted when switching to
+  ephemeral mode (and removed from the sidebar); switching back creates a fresh
+  one. The server session is created lazily on the first send, so toggling costs
+  nothing. It never appears in the chat list, archive or search.
+- Leaving the view (another chat, a Circle, settings, new chat), reloading or
+  closing the tab sends `DELETE` and drops all local state. A non-empty chat shows
+  the toast "Chat éphémère effacé" on leave; closing the tab with a non-empty
+  ephemeral chat triggers the browser's `beforeunload` warning. A stopped or
+  failed turn is not kept by the server and is dropped from the view as well.
+
+Native Android now has a dedicated
 temporary page and session implementation, compiled and tested with JUnit,
 Compose and emulator startup in GitHub Actions (see `apps/android/README.md`).
 Testing on a physical phone and with live providers remains manual.
@@ -28,22 +50,23 @@ deliberately unsupported.
   authentication and same-origin mutation checks still apply. IDs are random,
   opaque capabilities but do not replace authorization. Logout/revocation purges
   associated data immediately and aborts active inference.
-- Expiry is **10 minutes after creation or the last accepted send**, and at most
-  **30 minutes after creation**. Reads, navigation, polling and streaming do not
-  renew it. Access checks enforce expiry immediately; a 15-second sweep removes
-  otherwise unaccessed entries and aborts their requests. A busy process/event-loop
-  stall can delay the sweep. Expiry is not a secure memory-erasure guarantee.
+- A session lives as long as the user stays in it. Expiry is an **idle timeout of
+  30 minutes renewed by any authenticated access** (`GET`, which the Web client
+  sends as a heartbeat every 30 s while the chat is open, as well as `turn`), plus
+  a **12-hour absolute safety cap**. Access checks enforce expiry immediately; a
+  15-second sweep removes otherwise unaccessed entries and aborts their requests.
+  A busy process/event-loop stall can delay the sweep. Expiry is not a secure
+  memory-erasure guarantee.
 - Explicit close aborts inference and removes messages and the store entry.
-  Browser `pagehide` makes a best-effort authenticated `DELETE` with keepalive;
-  browser close/reload warns if there is an active temporary session. A crash,
-  offline device, killed browser or lost DELETE relies on server expiry.
-  Graceful server shutdown purges and aborts; restart loses all temporary data.
-- The Web component stays mounted during SPA navigation, including when visiting
-  a Circle or settings. Return using **Chat temporaire**. No transcript, draft or
-  session ID goes to localStorage, sessionStorage, the URL, the normal chat store,
-  analytics or a service worker. Hard reload/browser Back after leaving the
-  document cannot recover the session. BFCache restoration clears local state.
-  A browser can retain page/process memory; we cannot guarantee forensic erasure.
+  Leaving the Web view or `pagehide` makes a best-effort authenticated `DELETE`
+  with keepalive. A crash, offline device, killed browser or lost DELETE relies on
+  the idle timeout. Graceful server shutdown purges and aborts; restart loses all
+  temporary data (the Web client notices on its next heartbeat and clears the view).
+- The Web view is unmounted on any navigation, so the session cannot be resumed.
+  No transcript, draft or session ID goes to localStorage, sessionStorage, the
+  URL, the normal chat store, analytics or a service worker. Reload or browser
+  Back cannot recover the session. A browser can retain page/process memory; we
+  cannot guarantee forensic erasure.
 - Within the same open document/login, reconnect fetches only completed turns
   until expiry. A disconnected/stopped/failed turn is not committed, and can be
   retried. If the completion was committed just before a lost network response,
@@ -63,7 +86,7 @@ deliberately unsupported.
 
 OpenRouter and Ollama use the normal account model gateway and credentials;
 model choice belongs to each send, with the effective model recorded only in
-the RAM response. The user must select a model explicitly. Their API operators
+the RAM response. Web defaults to the new chat's model when supported. Their API operators
 can retain inputs, outputs and metadata under their own policies, including when
 an Ollama endpoint is remotely configured. No zero-retention provider agreement
 is asserted or automatically negotiated. Codex is rejected server-side until
@@ -96,7 +119,7 @@ Responses, including SSE, are `Cache-Control: no-store`.
 | Method/path | Behavior |
 | --- | --- |
 | `POST /` | Create RAM session; return `{id, expiresAt, messages, busy}` |
-| `GET /:id` | Snapshot of completed turns; no TTL extension |
+| `GET /:id` | Snapshot of completed turns; renews the 30 min idle window (keepalive) |
 | `POST /:id/turn` | Strict `{text, model: {provider, model, reasoning?}}`; OpenRouter/Ollama only |
 | `POST /:id/stop` | Abort this session's inference only |
 | `DELETE /:id` | Abort and purge; unknown/expired/foreign IDs return 404 |
@@ -122,8 +145,11 @@ npx --yes pnpm@10.28.0 --filter @opendots/server exec vitest run --exclude test/
 
 The smoke script serves the actual built Web client and authenticated backend on
 loopback, intercepts inference with a local Ollama fixture and uses system
-Chromium (`OPENDOTS_CHROMIUM_PATH` can override `/usr/bin/chromium`).
-It creates/removes only its own `/tmp/opencode/temporary-chat-smoke-*` directory.
+Chromium (`OPENDOTS_CHROMIUM_PATH` can override `/usr/bin/chromium`; on Windows
+point it at Chrome or Edge). It covers the icon on a new chat, toggling on/off,
+removal and re-creation of the empty normal chat, streaming, stop, absence from
+list/archive/search, and deletion of the session on navigation and reload.
+It creates/removes only its own temporary directory under the OS temp folder.
 No production service, external model account or paid inference is used.
 
 ### Production-baseline rebase validation, 2026-11-16

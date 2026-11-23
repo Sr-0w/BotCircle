@@ -32,21 +32,23 @@ describe('RAM lifecycle', () => {
     store.close();
   });
 
-  it('never extends the absolute lifetime, and GET does not renew idle retention', () => {
+  it('renews idle retention on every authenticated access (GET keepalive included) but never past the safety cap', () => {
     let now = 0;
     const store = new TemporaryStore(() => now);
-    const session = store.create('user');
+    const idle = store.create('user');
     now = IDLE_MS - 1;
-    store.get(session.id, 'user');
-    now++;
-    expect(() => store.get(session.id, 'user')).toThrow();
+    store.get(idle.id, 'user'); // keepalive renews
+    now += IDLE_MS - 1;
+    expect(store.get(idle.id, 'user').id).toBe(idle.id);
+    now += IDLE_MS; // a whole idle window without keepalive
+    expect(() => store.get(idle.id, 'user')).toThrow();
+    expect(LIFETIME_MS).toBe(12 * 60 * 60_000);
     now = 0;
-    const active = store.create('user');
-    for (now = 0; now < LIFETIME_MS; now += IDLE_MS - 1) {
-      store.begin(active, 'hello'); active.active = undefined;
-    }
+    const kept = store.create('user');
+    for (now = 0; now < LIFETIME_MS - IDLE_MS; now += IDLE_MS - 1) store.get(kept.id, 'user');
+    expect(store.get(kept.id, 'user').id).toBe(kept.id); // alive well beyond the old 30 min cap
     now = LIFETIME_MS;
-    expect(() => store.get(active.id, 'user')).toThrow();
+    expect(() => store.get(kept.id, 'user')).toThrow();
   });
 
   it('caps context without silently truncating or converting it to a summary', () => {

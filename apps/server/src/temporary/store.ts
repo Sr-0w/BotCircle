@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import type { ModelConfig } from '@opendots/shared';
 
-export const IDLE_MS = 10 * 60_000;
-export const LIFETIME_MS = 30 * 60_000;
+export const IDLE_MS = 30 * 60_000;
+/** Safety cap only: the Web client deletes the session as soon as the user leaves the chat. */
+export const LIFETIME_MS = 12 * 60 * 60_000;
 export const MAX_TEXT = 100_000;
 export type TemporaryMessage = { role: 'user' | 'assistant'; content: string; model?: ModelConfig };
 export type TemporarySession = {
@@ -20,7 +21,8 @@ export class TemporaryError extends Error {
 
 /**
  * RAM only: no conversation repository, event bus, memory, audit or job queue.
- * Expiry is absolute (30 min) and idle (10 min), checked on access and every 15s.
+ * Expiry is idle (30 min, renewed by any authenticated access: GET keepalive, turn)
+ * and absolute (12 h safety cap), checked on access and every 15s. The Web client DELETEs the session on leave.
  * Logical deletion does not promise secure erasure from runtime/OS/provider memory.
  */
 export class TemporaryStore {
@@ -42,6 +44,8 @@ export class TemporaryStore {
     this.sweep();
     const session = this.sessions.get(id);
     if (!session || session.owner !== owner) throw new TemporaryError(404, 'Chat temporaire fermé ou expiré.');
+    // Any authenticated access (GET keepalive included) renews the idle window, never past the absolute cap.
+    session.idleUntil = Math.min(session.expiresAt, this.now() + IDLE_MS);
     return session;
   }
   begin(session: TemporarySession, text: string) {

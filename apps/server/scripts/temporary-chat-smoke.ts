@@ -1,11 +1,12 @@
 /** Real HTTP + desktop/mobile Chromium; local mocked Ollama, no paid inference. */
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { serve } from '@hono/node-server';
 
-const dir = await mkdtemp('/tmp/opencode/temporary-chat-smoke-');
+const dir = await mkdtemp(join(tmpdir(), 'temporary-chat-smoke-'));
 process.env.OPENDOTS_DATA_DIR = dir;
 const nativeFetch = globalThis.fetch;
 let inferenceCalls = 0;
@@ -64,6 +65,7 @@ const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
 await new Promise<void>(resolve => server.listening ? resolve() : server.once('listening', resolve));
 const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 const browser = await chromium.launch({ executablePath: process.env.OPENDOTS_CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+const EPHEMERAL = 'Chat éphémère';
 try {
   for (const viewport of [{ width: 1365, height: 1000 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport, locale: 'fr-FR' });
@@ -71,68 +73,106 @@ try {
     const page = await context.newPage();
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${origin}/#/chats/temporary`);
-    const section = page.getByRole('region', { name: 'Chat temporaire', exact: true });
-    await section.getByRole('button', { name: 'Démarrer un chat temporaire', exact: true }).click();
-    await section.getByRole('button', { name: 'Choisir un modèle', exact: true }).click();
-    await section.getByLabel('Fournisseur').selectOption('ollama');
-    await section.getByRole('button', { name: /temporary-fixture/ }).click();
-    await section.getByLabel('Message temporaire', { exact: true }).fill('Prompt sensible de test');
-    await section.getByRole('button', { name: 'Envoyer', exact: true }).click();
-    await section.getByText('Réponse temporaire de test', { exact: true }).waitFor();
-    assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('Prompt sensible')), false);
-    // SPA navigation keeps the same temporary context, including on mobile Web.
-    await page.evaluate(() => { location.hash = '/settings/general'; });
-    await page.getByRole('heading', { name: 'Chat temporaire · sans historique' }).waitFor({ state: 'hidden' });
-    await page.evaluate(() => { location.hash = '/chats/temporary'; });
-    await section.getByText('Réponse temporaire de test', { exact: true }).waitFor();
-    await section.getByLabel('Message temporaire', { exact: true }).fill('Et ensuite ?');
-    await section.getByRole('button', { name: 'Envoyer', exact: true }).click();
-    await section.getByText('Contexte temporaire retrouvé', { exact: true }).waitFor();
-    // Real HTTP cancellation reaches the provider abort signal; no partial turn.
-    await section.getByLabel('Message temporaire', { exact: true }).fill('slow fixture');
-    await section.getByRole('button', { name: 'Envoyer', exact: true }).click();
-    await section.getByText('Début interrompu', { exact: true }).waitFor();
-    await section.getByRole('button', { name: 'Arrêter', exact: true }).click();
-    await section.getByRole('button', { name: 'Arrêter', exact: true }).waitFor({ state: 'hidden' });
-    assert.equal(await section.locator('article').count(), 4);
-    const snapshots = await withAccount(account, () => db().select().from(schema.messages));
-    assert.equal(snapshots.length, 1);
-    // Production now has real general chats. The explicit action creates a new,
-    // empty durable chat, never a copy/conversion of this temporary transcript.
-    assert.deepEqual(await (await context.request.get(`${origin}/api/chats?q=Prompt%20sensible`)).json(), []);
-    const archives = await (await context.request.get(`${origin}/api/chats?archived=1`)).json();
-    assert.deepEqual(archives, []);
-    await section.getByRole('button', { name: 'Démarrer un chat normal', exact: true }).click();
-    await page.waitForFunction(() => /^#\/chat\/[^/]+$/.test(location.hash));
-    const normalId = new URL(page.url()).hash.split('/').at(-1)!;
-    const normal = await (await context.request.get(`${origin}/api/chats/${normalId}/messages`)).json();
-    assert.deepEqual(normal.messages, []);
-    assert.deepEqual(normal.tasks, []);
-    await page.evaluate(() => { location.hash = '/chats/temporary'; });
-    await section.getByText('Contexte temporaire retrouvé', { exact: true }).waitFor();
-    // Cancelling close must preserve the temporary chat.
-    page.once('dialog', dialog => void dialog.dismiss());
-    await section.getByRole('button', { name: 'Fermer et oublier' }).click();
-    await section.getByText('Contexte temporaire retrouvé', { exact: true }).waitFor();
-    page.once('dialog', dialog => void dialog.accept());
-    await section.getByRole('button', { name: 'Fermer et oublier' }).click();
-    await section.getByRole('button', { name: 'Démarrer un chat temporaire', exact: true }).waitFor();
-    assert.equal(await section.getByText('Contexte temporaire retrouvé', { exact: true }).count(), 0);
-    // A new temporary chat starts clean. Reload also cannot resurrect it.
-    await section.getByRole('button', { name: 'Démarrer un chat temporaire', exact: true }).click();
-    await section.getByLabel('Message temporaire', { exact: true }).waitFor();
-    assert.equal(await section.locator('article').count(), 0);
-    page.once('dialog', dialog => void dialog.accept());
-    await page.reload();
-    await section.getByRole('button', { name: 'Démarrer un chat temporaire', exact: true }).waitFor();
+    page.on('dialog', dialog => void dialog.accept()); // beforeunload on reload
+    const sessionIds: string[] = [];
+    page.on('request', request => {
+      const match = /\/api\/temporary-chats\/(tmp_[0-9a-f]+)\/turn$/.exec(request.url());
+      if (match && !sessionIds.includes(match[1])) sessionIds.push(match[1]);
+    });
+    const api = async (path: string) => context.request.get(`${origin}/api${path}`, { headers: { 'x-opendots-client': '1' } });
+    const chatsList = async () => (await (await api('/chats')).json()) as { id: string }[];
+    const newChat = async () => {
+      if (viewport.width < 768) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+      await page.getByRole('button', { name: 'Nouveau chat', exact: true }).first().click();
+    };
+    const toggle = page.locator('[data-ephemeral-toggle]');
+    const expectGone = async (id: string) => {
+      for (let i = 0; i < 40; i++) { if ((await api(`/temporary-chats/${id}`)).status() === 404) return; await page.waitForTimeout(100); }
+      assert.fail(`ephemeral session ${id} still alive`);
+    };
     await page.goto(`${origin}/#/agent/${agentId}`);
     await page.locator('#message-normal-smoke').getByText('Historique normal conservé', { exact: true }).waitFor();
+    assert.deepEqual(await chatsList(), []);
+
+    // 1. New (empty) chat: the icon is there; it turns the chat ephemeral and the empty normal chat disappears.
+    await newChat();
+    await page.waitForFunction(() => /^#\/chat\/(?!ephemeral$)[^/]+$/.test(location.hash));
+    await toggle.waitFor();
+    assert.equal((await chatsList()).length, 1);
+    await toggle.click();
+    await page.waitForFunction(() => location.hash === '#/chat/ephemeral');
+    await page.locator('[data-ephemeral-badge]').waitFor();
+    assert.deepEqual(await chatsList(), []);
+    assert.equal(await page.locator('[data-chat-row]').count(), 0);
+
+    // 2. Toggle back before sending: a fresh normal chat is created; and again to ephemeral (the empty one is deleted).
+    await toggle.click();
+    await page.waitForFunction(() => /^#\/chat\/(?!ephemeral$)[^/]+$/.test(location.hash));
+    await toggle.waitFor();
+    assert.equal((await chatsList()).length, 1);
+    await toggle.click();
+    await page.waitForFunction(() => location.hash === '#/chat/ephemeral');
+    assert.deepEqual(await chatsList(), []);
+    assert.equal(sessionIds.length, 0, 'toggling must not create a server session');
+
+    // 3. Chat like a normal chat: streaming, context, no toggle once a message is sent, nothing in browser storage.
+    const input = page.getByLabel('Écrire un message éphémère…', { exact: true });
+    await input.fill('Prompt sensible de test');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Réponse temporaire de test', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).waitFor();
+    assert.equal(await toggle.count(), 0);
+    assert.equal(sessionIds.length, 1);
+    assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('Prompt sensible')), false);
+    await input.fill('Et ensuite ?');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Contexte temporaire retrouvé', { exact: true }).waitFor();
+    // Stop reaches the provider abort signal; the interrupted turn is dropped on both sides.
+    await input.fill('slow fixture');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Début interrompu', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Arrêter', exact: true }).click();
+    await page.getByRole('button', { name: 'Arrêter', exact: true }).waitFor({ state: 'hidden' });
+    await page.getByText('Début interrompu', { exact: true }).waitFor({ state: 'detached' });
+    // Never saved, never listed.
+    assert.equal((await withAccount(account, () => db().select().from(schema.messages))).length, 1);
+    assert.deepEqual(await chatsList(), []);
+    assert.deepEqual(await (await api('/chats?q=Prompt%20sensible')).json(), []);
+    assert.deepEqual(await (await api('/chats?archived=1')).json(), []);
+    assert.equal((await api(`/temporary-chats/${sessionIds[0]}`)).status(), 200);
+
+    // 4. Leaving = gone: another new chat deletes the session; a toast says so; nothing comes back.
+    await newChat();
+    await page.waitForFunction(() => /^#\/chat\/(?!ephemeral$)[^/]+$/.test(location.hash));
+    await page.getByText('Chat éphémère effacé', { exact: true }).waitFor();
+    await expectGone(sessionIds[0]);
+    assert.equal((await chatsList()).length, 1);
+    assert.equal(await page.getByText('Prompt sensible de test').count(), 0);
+    assert.equal(await page.getByText('Chat temporaire', { exact: true }).count(), 0); // the old sidebar entry is gone
+
+    // 5. Navigating to a Circle also deletes the session; the second session lists nowhere.
+    await toggle.click();
+    await page.waitForFunction(() => location.hash === '#/chat/ephemeral');
+    await page.getByLabel('Écrire un message éphémère…', { exact: true }).fill('Deuxième');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Réponse temporaire de test', { exact: true }).waitFor();
+    await page.evaluate((id) => { location.hash = `/agent/${id}`; }, agentId);
+    await expectGone(sessionIds[1]);
+    await page.locator('#message-normal-smoke').getByText('Historique normal conservé', { exact: true }).waitFor();
+
+    // 6. Reload also deletes it and does not resurrect it.
+    await page.goto(`${origin}/#/chat/ephemeral`);
+    await page.getByLabel('Écrire un message éphémère…', { exact: true }).fill('Troisième');
+    await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+    await page.getByText('Réponse temporaire de test', { exact: true }).waitFor();
+    await page.reload();
+    await expectGone(sessionIds[2]);
+    await page.getByText('Réponse temporaire de test', { exact: true }).waitFor({ state: 'detached' });
     assert.deepEqual(errors, []);
     await context.close();
-    console.log(`PASS Chromium ${viewport.width}x${viewport.height}: start, model, streaming, context, SPA navigation, HTTP stop, search/archive exclusion, new normal chat isolation, close cancel/confirm, reload, clean restart`);
+    console.log(`PASS Chromium ${viewport.width}x${viewport.height}: icon on new chat, toggle on/off, empty normal chat removed/recreated, streaming, context, stop, never listed/saved, leave/reload deletes session`);
   }
-  assert.equal(inferenceCalls, 6);
+  assert.equal(inferenceCalls, 10);
   assert.equal(abortedCalls, 2);
   await withAccount(account, async () => assert.equal((await loadMessages(conversation)).messages.length, 1));
 } finally {
