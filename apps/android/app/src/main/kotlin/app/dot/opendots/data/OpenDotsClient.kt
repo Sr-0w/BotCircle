@@ -370,6 +370,8 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         files.forEach { (name, body) -> form.addFormDataPart("file", name, body) }
         return OdJson.decodeFromJsonElement(raw("POST", "/opencode/tasks/$taskId/prompt", form.build()))
     }
+    /** #69: renames a Code session (server title; also upstream on OpenCode 1.x). Never sends anything to the session. */
+    suspend fun renameCodeSession(taskId: String, title: String) { json("PATCH", "/opencode/tasks/$taskId", buildJsonObject { put("title", title) }) }
     suspend fun codeAutoResume(taskId: String, enabled: Boolean) { json("POST", "/opencode/tasks/$taskId/auto-resume", buildJsonObject { put("enabled", enabled) }) }
     suspend fun codeModels(taskId: String): OpencodeModels = get("/opencode/tasks/$taskId/models")
     suspend fun codeSetModel(taskId: String, model: OpencodeModel, variant: String?): OpencodeCurrentModel =

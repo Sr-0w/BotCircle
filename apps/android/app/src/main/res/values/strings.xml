@@ -826,4 +826,6 @@
         <item quantity="one">Worked for %d s</item>
         <item quantity="other">Worked for %d s</item>
     </plurals>
+    <string name="code_rename_title">Rename session</string>
+    <string name="code_rename_label">Session name</string>
 </resources>

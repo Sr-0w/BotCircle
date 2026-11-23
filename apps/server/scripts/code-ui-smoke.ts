@@ -27,6 +27,7 @@ function fakeOpencode(url: URL, init?: RequestInit) {
   if (path === '/session' && method === 'POST') { const id = `ses_new${++created}`; sessions[id] = { id, title: 'Nouvelle session', directory: '/home/dev/botcircle', time: { created: Date.now(), updated: Date.now() } }; return json(sessions[id]); }
   if (path === '/session' && method === 'GET') return json(Object.values(sessions));
   const one = /^\/session\/([^/]+)$/.exec(path);
+  if (one && sessions[one[1]] && method === 'PATCH') { sessions[one[1]].title = JSON.parse(String(init?.body)).title; return json(sessions[one[1]]); }
   if (one && sessions[one[1]]) return json(sessions[one[1]]);
   if (path === '/session/status') return json({ ses_ari: { type: 'busy' } });
   if (/^\/session\/[^/]+\/message$/.test(path)) return json([]);
@@ -130,6 +131,30 @@ try {
       await page.getByRole('button', { name: 'Fermer l’espace de code' }).click();
       await page.waitForFunction(() => location.hash === '#/code');
       await page.locator(`[data-code-session="${newId}"][data-code-origin="user"]`).waitFor();
+      // #69: rename from the list row (menu), Escape cancels, an empty name is refused, Enter validates.
+      const row = page.locator(`[data-code-row="${newId}"]`);
+      await row.locator('[data-code-row-menu]').click();
+      await page.getByRole('menuitem', { name: 'Renommer' }).click();
+      const box = row.getByRole('textbox', { name: 'Nom de la session' });
+      assert.equal(await box.inputValue(), 'Nouvelle session');
+      await box.fill('Annulé'); await box.press('Escape');
+      await row.locator(`[data-code-session="${newId}"]`).getByText('Nouvelle session', { exact: true }).waitFor();
+      await row.locator('[data-code-row-menu]').click();
+      await page.getByRole('menuitem', { name: 'Renommer' }).click();
+      await box.fill('   '); await box.press('Enter');
+      await row.getByRole('alert').waitFor({ state: 'attached' });
+      await box.fill('Implémentation des chats éphémères'); await box.press('Enter');
+      await row.locator(`[data-code-session="${newId}"]`).getByText('Implémentation des chats éphémères', { exact: true }).waitFor();
+      // …and from the open session's header, without leaving it.
+      await row.locator(`[data-code-session="${newId}"]`).click();
+      await page.locator('[data-code-title]').getByText('Implémentation des chats éphémères').waitFor();
+      await page.locator('[data-code-rename-open]').click();
+      const headerBox = page.locator('[data-code-workspace] [data-code-rename] input');
+      await headerBox.fill('Titre depuis l’en-tête'); await headerBox.press('Enter');
+      await page.locator('[data-code-title]').getByText('Titre depuis l’en-tête').waitFor();
+      assert(new RegExp(`#/code/${newId}$`).test(await page.evaluate(() => decodeURIComponent(location.hash))), 'rename keeps the same session URL');
+      await page.getByRole('button', { name: 'Fermer l’espace de code' }).click();
+      await page.waitForFunction(() => location.hash === '#/code');
       // Attaching the OpenCode-only session creates one canonical task, opened directly.
       await page.locator('[data-outside-session="ses_outside"]').click();
       await page.waitForFunction(() => /^#\/code\/.+/.test(location.hash));

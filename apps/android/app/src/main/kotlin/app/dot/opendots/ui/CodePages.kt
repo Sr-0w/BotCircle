@@ -296,6 +296,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
     var draft by rememberSaveable(taskId) { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
     // While OpenCode works, a message is folded into the current work (steer) or handled after it (queue).
     var delivery by rememberSaveable(taskId) { mutableStateOf("steer") }
     // Files to send with the next instruction: read from the phone when sent, straight to OpenCode.
@@ -329,6 +330,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
     val pending = (space?.permissions?.size ?: 0) + (space?.questions?.size ?: 0)
     val exchangeState = androidx.compose.runtime.key(taskId) { rememberLazyListState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    if (renaming && task != null) RenameSessionDialog(app, taskId, task.title) { renaming = false; revision++ }
 
     // The session scrolls under the floating glass composer, which leaves it room at the end.
     var composerHeight by remember { mutableStateOf(0.dp) }
@@ -353,6 +355,7 @@ fun CodeWorkspacePage(app: AppState, ui: AppUiState, taskId: String, onBack: () 
                         Box(Modifier.align(Alignment.TopEnd)) {
                             DotIconButton(Icons.Outlined.MoreVert, stringResource(R.string.more), onClick = { menu = true })
                             DotMenu(menu, { menu = false }) {
+                                DotMenuItem(stringResource(R.string.rename), androidx.compose.material.icons.Icons.Outlined.Edit) { menu = false; renaming = true }
                                 DotMenuItem(stringResource(R.string.code_tab_changes) + (space?.diffs?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""), Icons.Outlined.Difference) { menu = false; tab = CodeTab.Changes }
                                 DotMenuItem(stringResource(R.string.files), Icons.Outlined.Folder) { menu = false; tab = CodeTab.Files }
                                 DotMenuItem(stringResource(R.string.code_tab_exchanges), Icons.Outlined.SwapHoriz) { menu = false; tab = CodeTab.Exchanges }
