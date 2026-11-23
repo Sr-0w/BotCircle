@@ -13,6 +13,7 @@ import { useServerEvent, useStore } from '@/lib/store';
 import { cn, formatDateTime } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 import { taskAction } from '../chat/attachments';
+import { RenameTitle } from './rename-title';
 
 /**
  * L'espace de code d'une tâche OpenCode, la session exacte en direct, disposée comme un agent de code : la prose
@@ -29,7 +30,8 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
   const fileInput = useRef<HTMLInputElement>(null);
   const agents = useStore((s) => s.agents);
   const reload = useCallback(() => { api.codeWorkspace(taskId).then((value) => { setData(value); setError(''); }).catch((e) => setError(e.message)); }, [taskId]);
-  useEffect(() => { setData(null); setView('session'); reload(); }, [reload]);
+  const [renaming, setRenaming] = useState(false);
+  useEffect(() => { setData(null); setView('session'); setRenaming(false); reload(); }, [reload]);
   const active = data ? ACTIVE_TASK_STATUSES.includes(data.task.status) : true;
   // Tant que la session travaille, l'état est relu ; au repos, seuls les événements le rafraîchissent.
   useEffect(() => { if (!active) return; const timer = setInterval(reload, 3000); return () => clearInterval(timer); }, [active, reload]);
@@ -59,10 +61,13 @@ export function CodeWorkspace({ taskId, expanded, onToggleExpand, onClose }: { t
           ? <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Retour à la session')} onClick={() => setView('session')}><ArrowLeftIcon /></Button>
           : <OpencodeLogo size={16} className="mx-2" />}
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate font-medium text-sm">{titles[view]}</p>
+          {view === 'session' && renaming && task
+            ? <RenameTitle taskId={taskId} value={task.title} onDone={() => { setRenaming(false); reload(); }} />
+            : <p className="truncate font-medium text-sm" data-code-title>{titles[view]}</p>}
           <p className="truncate text-muted-foreground text-xs">{[task?.external?.instanceName, project].filter(Boolean).join(' · ') || 'OpenCode'}</p>
         </div>
         {view === 'session' && (<>
+          {task && !renaming && <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Renommer la session')} title={t('Renommer la session')} onClick={() => setRenaming(true)} data-code-rename-open><PencilIcon /></Button>}
           <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Fichiers')} title={t('Fichiers')} onClick={() => setView('files')}><FolderIcon /></Button>
           <Button size="icon" variant="ghost" className={iconButton} aria-label={t('Échanges')} title={t('Échanges')} onClick={() => setView('exchanges')}><ArrowLeftRightIcon /></Button>
         </>)}

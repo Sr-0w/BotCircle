@@ -4,7 +4,7 @@ import { isActionToolPart } from '@opendots/shared';
 import { openDatabase, closeDatabase, db, schema } from '../src/db/client.ts';
 import { createAgent, mainConversationId } from '../src/agents/repo.ts';
 import { cancelTask, getTask, pauseTask, sendInstruction, taskEvents, toTaskDTO } from '../src/tasks/service.ts';
-import { allSessions, attachSession, resumeAfterQuota, setAutoResume, startDirectSession } from '../src/opencode/service.ts';
+import { allSessions, attachSession, renameTask, resumeAfterQuota, setAutoResume, startDirectSession } from '../src/opencode/service.ts';
 import { resumeTask } from '../src/tasks/service.ts';
 import { checkBaseUrl, deleteInstance, instructOpencode, listExchanges, OpencodeError, replyPermission, saveInstance, setOpencodeFetch, startOpencodeTask, syncTask, toInstanceDTO, workspace } from '../src/opencode/service.ts';
 import { opencodeTools } from '../src/opencode/tools.ts';
@@ -20,6 +20,7 @@ class FakeOpencode {
   diffs = new Map<string, any[]>();
   calls: { method: string; path: string; directory: string | null; body: any }[] = [];
   errorData: Record<string, unknown> = {};
+  renameStatus = 200;
   private n = 0;
   fetch: typeof fetch = async (input, init) => {
     if (this.down) throw new TypeError('fetch failed');
@@ -42,6 +43,7 @@ class FakeOpencode {
     if (!m) return json({ error: 'not found' }, 404);
     const session = this.sessions.get(m[1]);
     if (!session) return json({ error: 'not found' }, 404);
+    if (!m[2] && method === 'PATCH') { if (this.renameStatus !== 200) return json({ error: 'nope' }, this.renameStatus); session.title = body.title; return json(session); }
     if (!m[2]) return json(session);
     if (m[2] === 'message') return json(this.messages.get(session.id));
     if (m[2] === 'diff') return json(this.diffs.get(session.id) ?? []);
@@ -373,6 +375,65 @@ describe('OpenCode', () => {
       fake.finish(task.external!.sessionId, '', 'Tool bash failed: exit code 1');
       await syncTask((await getTask(task.id))!);
       expect((await getTask(task.id))!.status).toBe('failed');
+    });
+  });
+
+  describe('#69 : renommer une session Code', () => {
+    it('renomme pendant l’exécution sans rien envoyer, garde l’identité de la session et renomme aussi chez OpenCode', async () => {
+      const { task } = await start('Rename');
+      const sessionId = task.external!.sessionId;
+      const prompts = fake.calls.filter((c) => c.path.endsWith('/prompt_async')).length;
+      expect(task.status).toBe('running');
+      const out = await renameTask((await getTask(task.id))!, '  Implémentation   des chats éphémères ');
+      expect(out).toEqual({ title: 'Implémentation des chats éphémères', upstream: true });
+      const after = (await getTask(task.id))!;
+      expect(after).toMatchObject({ id: task.id, status: 'running', title: 'Implémentation des chats éphémères', external: { sessionId, titleManual: true } });
+      expect(fake.sessions.get(sessionId)!.title).toBe('Implémentation des chats éphémères');
+      expect(fake.calls.filter((c) => c.path.endsWith('/prompt_async')).length).toBe(prompts);
+      const [conv] = await db().select().from(schema.conversations).where(eq(schema.conversations.id, after.workConversationId!));
+      expect(conv.title).toBe('Implémentation des chats éphémères');
+      // A later sync of the running/finished session keeps the manual title.
+      fake.work(sessionId, [{ tool: 'edit', status: 'completed' }]); fake.finish(sessionId, 'Fini.');
+      await syncTask((await getTask(task.id))!);
+      expect((await getTask(task.id))!).toMatchObject({ status: 'completed', title: 'Implémentation des chats éphémères' });
+    });
+
+    it('refuse un nom vide, d’espaces ou trop long, sans rien changer', async () => {
+      const { task } = await start('RenameBad');
+      for (const bad of ['', '   \n\t ', 'x'.repeat(201)]) await expect(renameTask((await getTask(task.id))!, bad)).rejects.toThrow(OpencodeError);
+      expect((await getTask(task.id))!.title).toBe('Refactor des réglages');
+      expect(fake.calls.some((c) => c.method === 'PATCH')).toBe(false);
+    });
+
+    it('si OpenCode refuse ou est injoignable, le titre reste local et on ne prétend pas le contraire', async () => {
+      const { task } = await start('RenameDown');
+      fake.renameStatus = 400;
+      expect(await renameTask((await getTask(task.id))!, 'Titre local')).toEqual({ title: 'Titre local', upstream: false });
+      fake.down = true;
+      expect(await renameTask((await getTask(task.id))!, 'Titre local 2')).toEqual({ title: 'Titre local 2', upstream: false });
+      expect((await getTask(task.id))!.title).toBe('Titre local 2');
+    });
+
+    it('un nom choisi sur une session vide n’est pas remplacé par son premier message ; pas de doublon après rattachement', async () => {
+      const row = await instance();
+      const task = await startDirectSession({ instanceId: row.id, directory: '/home/dev/opendots', instruction: '' });
+      await renameTask(task, 'Mon chantier');
+      await sendInstruction(task.id, 'Corrige le test du parseur.');
+      expect((await getTask(task.id))!).toMatchObject({ title: 'Mon chantier', instruction: 'Corrige le test du parseur.' });
+      const again = await attachSession({ instanceId: row.id, sessionId: task.external!.sessionId });
+      expect(again.id).toBe(task.id);
+      expect(again.title).toBe('Mon chantier');
+    });
+
+    it('renomme une session importée depuis OpenCode, deux machines gardent chacune la leur', async () => {
+      const a = await instance(), b = await instance();
+      fake.sessions.set('ses_ext', { id: 'ses_ext', title: 'Depuis le terminal', directory: '/home/dev/opendots', time: { created: Date.now(), updated: Date.now() } });
+      fake.messages.set('ses_ext', []);
+      const ta = await attachSession({ instanceId: a.id, sessionId: 'ses_ext' }), tb = await attachSession({ instanceId: b.id, sessionId: 'ses_ext' });
+      expect(ta.id).not.toBe(tb.id);
+      await renameTask(ta, 'Nom A');
+      expect((await getTask(ta.id))!.title).toBe('Nom A');
+      expect((await getTask(tb.id))!.title).toBe('Depuis le terminal');
     });
   });
 

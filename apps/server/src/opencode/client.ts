@@ -73,6 +73,8 @@ export class OpencodeV1Client {
   });
   providers = () => this.call<{ providers: { id: string; name?: string; models: Record<string, { id?: string; name?: string; attachment?: boolean; modalities?: { input?: string[] } }> }[]; default?: Record<string, string> }>('GET', '/config/providers');
   abort = (id: string, directory?: string | null) => this.call<boolean>('POST', `/session/${encodeURIComponent(id)}/abort`, { directory });
+  /** 1.x: `PATCH /session/:id` with `{ title }` (session.update). */
+  rename = (id: string, title: string, directory?: string | null) => this.call<RawSession>('PATCH', `/session/${encodeURIComponent(id)}`, { directory, body: { title } });
   diff = (id: string, directory?: string | null) => this.call<RawDiff[]>('GET', `/session/${encodeURIComponent(id)}/diff`, { directory });
   permissions = (directory?: string | null) => this.call<RawPermission[]>('GET', '/permission', { directory });
   replyPermission = (requestId: string, reply: 'once' | 'always' | 'reject', directory?: string | null) => this.call<boolean>('POST', `/permission/${encodeURIComponent(requestId)}/reply`, { directory, body: { reply } });
@@ -105,6 +107,8 @@ export interface OpencodeApi {
   /** Switches the session's model where the server keeps one (2.x); 1.x takes the model with each prompt. */
   setModel(sessionId: string, model: ModelRef, directory?: string | null): Promise<void>;
   abort(id: string, directory?: string | null): Promise<unknown>;
+  /** #69: renames the session on the instance; `false` when this API version has no documented way to (the caller keeps a local title). */
+  renameSession(id: string, title: string, directory?: string | null): Promise<boolean>;
   diff(id: string, directory?: string | null): Promise<RawDiff[]>;
   permissions(sessionId: string, directory?: string | null): Promise<RawPermission[]>;
   replyPermission(sessionId: string, requestId: string, reply: 'once' | 'always' | 'reject', directory?: string | null): Promise<unknown>;
@@ -136,6 +140,7 @@ export class V1Api implements OpencodeApi {
   };
   setModel = async () => {};
   abort = (id: string, directory?: string | null) => this.c.abort(id, directory);
+  renameSession = async (id: string, title: string, directory?: string | null) => { await this.c.rename(id, title, directory); return true; };
   diff = (id: string, directory?: string | null) => this.c.diff(id, directory);
   permissions = async (sessionId: string, directory?: string | null) => (await this.c.permissions(directory)).filter((p) => p.sessionID === sessionId);
   replyPermission = (_sessionId: string, requestId: string, reply: 'once' | 'always' | 'reject', directory?: string | null) => this.c.replyPermission(requestId, reply, directory);
@@ -259,6 +264,8 @@ export class OpencodeV2Client implements OpencodeApi {
   };
   setModel = async (sessionId: string, model: ModelRef) => { await this.call<void>('POST', `/api/session/${encodeURIComponent(sessionId)}/model`, { body: { model: { id: model.id, providerID: model.providerID, ...(model.variant ? { variant: model.variant } : {}) } } }); };
   abort = (id: string) => this.call<{ interrupted: boolean }>('POST', `/api/session/${encodeURIComponent(id)}/interrupt`);
+  // The 2.x session API has no documented title update: the title stays local to BotCircle (never claimed upstream).
+  renameSession = async () => false;
   /** The whole session, from its first request to its latest one (2.x diffs one turn by default). */
   diff = async (id: string) => {
     const users = (await this.call<{ data: { id: string }[] }>('GET', `/api/session/${encodeURIComponent(id)}/message`, { query: { type: 'user', order: 'asc', limit: 200 } })).data;

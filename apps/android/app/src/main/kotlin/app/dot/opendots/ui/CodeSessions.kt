@@ -8,6 +8,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import app.dot.design.components.DotSpinner
 import app.dot.design.components.DotTextField
+import app.dot.design.components.DotDialog
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import app.dot.design.components.DotIconButton
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.clickable
@@ -98,7 +101,7 @@ fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, on
         groups.forEach { (group, list) ->
             item(key = "g$group") { SectionLabel(stringResource(listOf(R.string.today, R.string.yesterday, R.string.earlier)[group]), Modifier.padding(top = DotSpacing.l)) }
             items(list, key = { it.id }) { task ->
-                CodeSessionRow(task, ui, onOpen = { onOpen(task.id) })
+                CodeSessionRow(app, task, ui, onOpen = { onOpen(task.id) })
                 Hairline(inset = DotSpacing.gutter)
             }
         }
@@ -129,9 +132,33 @@ fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, on
     }
 }
 
+/** #69: the title as typed becomes the session's name; blank or over-long titles are refused before any request. */
+internal fun cleanSessionTitle(raw: String): String? = raw.replace(Regex("\\s+"), " ").trim().takeIf { it.isNotEmpty() && it.length <= 200 }
+
+/** #69: small rename dialog (pre-filled, selected, Done on the keyboard validates); the new title arrives through the task event. */
 @Composable
-private fun CodeSessionRow(task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
+fun RenameSessionDialog(app: AppState, taskId: String, current: String, onDismiss: () -> Unit) {
+    var value by remember(taskId) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(current, androidx.compose.ui.text.TextRange(0, current.length))) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    val clean = cleanSessionTitle(value.text)
+    val submit = { if (clean != null) { if (clean == current) onDismiss() else app.run { try { app.client.renameCodeSession(taskId, clean); onDismiss() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; failed = e.message ?: "" } } } }
+    DotDialog(
+        title = stringResource(R.string.code_rename_title), onDismiss = onDismiss, confirmLabel = stringResource(R.string.rename), onConfirm = { submit() }, dismissLabel = stringResource(R.string.cancel),
+    ) {
+        DotTextField(
+            value.text, { value = value.copy(text = it.take(220)) }, label = stringResource(R.string.code_rename_label),
+            imeAction = androidx.compose.ui.text.input.ImeAction.Done, onImeAction = { submit() },
+            isError = failed != null || (value.text.isNotBlank() && clean == null), supporting = failed,
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun CodeSessionRow(app: AppState, task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
     val c = Dot.colors
+    var renaming by remember { mutableStateOf(false) }
+    if (renaming) RenameSessionDialog(app, task.id, task.title.ifBlank { task.instruction }) { renaming = false }
     val circle = if (task.requestedBy == "agent") ui.agents.firstOrNull { it.id == task.agentId } else null
     val by = when {
         circle != null -> stringResource(R.string.code_by, agentDisplayName(circle))
@@ -141,7 +168,7 @@ private fun CodeSessionRow(task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
     }
     val changes = task.external?.changes?.takeIf { it.files > 0 && (it.additions > 0 || it.deletions > 0) }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button, onClick = onOpen).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("code-session"),
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).combinedClickable(role = Role.Button, onLongClickLabel = stringResource(R.string.code_rename_title), onLongClick = { renaming = true }, onClick = onOpen).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("code-session"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         OpencodeLogo(width = 18.dp)
