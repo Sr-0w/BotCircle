@@ -115,7 +115,7 @@ class ScreensTest {
 
     private val chats = """[{"id":"ch1","title":"Friday meeting","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"createdAt":"2026-11-13T09:00:00Z","updatedAt":"2026-11-13T09:05:00Z","lastMessagePreview":"Here is the summary."}]"""
     private val task = """{"id":"tk1","agentId":"a3","conversationId":"ch1","title":"Summarise the Friday meeting","instruction":"@Dev summarise the Friday meeting","status":"completed","completedSteps":4,"result":"Here is the summary.","artifacts":[{"id":"art_r1","name":"summary.pdf","mediaType":"application/pdf","size":48213,"url":"/api/artifacts/art_r1/content"}],"createdAt":"2026-11-13T09:01:00Z","finishedAt":"2026-11-13T09:05:00Z","events":[{"seq":1,"kind":"status","summary":"Started","createdAt":"2026-11-13T09:01:00Z"},{"seq":2,"kind":"step","summary":"Reads the meeting notes","createdAt":"2026-11-13T09:02:00Z"}]}"""
-    private val codeTask = """{"id":"tk2","agentId":"a1","conversationId":"c1","title":"Refactor the settings","instruction":"Group OAuth with the providers.","status":"running","completedSteps":3,"currentActionSummary":"Runs the tests","provider":"opencode","external":{"instanceId":"oc1","instanceName":"Dev PC","sessionId":"ses_1","directory":"/home/dev/opendots","unreachable":false,"changes":{"files":4,"additions":128,"deletions":36}},"createdAt":"2026-11-13T10:00:00Z"}"""
+    private val codeTask = """{"id":"tk2","agentId":"a1","conversationId":"c1","title":"Refactor the settings","instruction":"Group OAuth with the providers.","status":"running","completedSteps":3,"currentActionSummary":"Runs the tests","provider":"opencode","external":{"instanceId":"oc1","instanceName":"Dev PC","sessionId":"ses_1","directory":"/home/dev/botcircle","unreachable":false,"changes":{"files":4,"additions":128,"deletions":36}},"createdAt":"2026-11-13T10:00:00Z"}"""
     private val chatHistory = """{"conversationId":"ch1","cursor":null,"active":false,"tasks":[],"messages":[
       {"id":"g1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"@Dev summarise the Friday meeting"},{"type":"file","url":"/api/artifacts/art_n1/content","filename":"meeting notes.md","mediaType":"text/markdown"}]},
       {"id":"g2","role":"assistant","metadata":{"kind":"chat"},"parts":[{"type":"tool-invoke_agent","toolCallId":"i1","state":"output-available","input":{"agent":"Dev","instruction":"summarise"},"output":{"ok":true,"status":"queued","taskId":"tk1","agentId":"a3","agentName":"Dev"}}]},
@@ -941,7 +941,7 @@ class ScreensTest {
         // The whole card opens that exact session.
         compose.onNodeWithText("Refactor the settings").performClick()
         waitFor("Grouping the provider settings.")
-        waitFor("Dev PC · opendots")
+        waitFor("Dev PC · botcircle")
         // Work between two paragraphs is one quiet line; the step running now is shown live.
         waitFor("Ran 3 commands, read 2 files")
         waitFor("Runs the tests")

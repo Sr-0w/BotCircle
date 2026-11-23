@@ -137,8 +137,8 @@ and the companions' shared computer. Without Docker the app still starts; choose
 Mwmbl in search settings to use its smaller hosted index.
 
 ```bash
-git clone https://github.com/Sr-0w/OpenDots.git
-cd OpenDots
+git clone https://github.com/Sr-0w/BotCircle.git
+cd BotCircle
 pnpm install
 pnpm dev          # engine on :4317, UI on http://127.0.0.1:5173
 ```
