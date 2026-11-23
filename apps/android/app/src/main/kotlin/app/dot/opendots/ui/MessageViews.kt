@@ -64,6 +64,8 @@ import app.dot.design.components.DotMenu
 import app.dot.design.components.DotMenuItem
 import app.dot.design.components.DotQuote
 import app.dot.design.components.DotReplyBubble
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.offset
 import app.dot.design.components.DotReactionChip
 import app.dot.design.components.DotSpinner
 import app.dot.design.components.DotUserBubble
@@ -167,7 +169,7 @@ private fun UserMessage(message: ChatMessage, env: MessageEnv, modifier: Modifie
     val haptics = LocalHapticFeedback.current
     val answered = message.meta.answer != null
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-        Box {
+        Box(Modifier.padding(bottom = if (message.meta.reactions.isEmpty()) 0.dp else REACTION_OVERHANG)) {
             DotUserBubble(
                 Modifier
                     .widthIn(max = 320.dp)
@@ -191,11 +193,12 @@ private fun UserMessage(message: ChatMessage, env: MessageEnv, modifier: Modifie
                 files.filter { it.mediaType.startsWith("image/") }.forEach { file -> AttachedImage(file, env) }
             }
             MessageMenu(menu, { menu = false }, text, message.id, "user", env, onEdit = env.onEdit?.takeIf { text.isNotEmpty() && !env.busy }?.let { edit -> { edit(message.id, text) } })
+            ReactionsOverlay(message.id, message.meta.reactions, env)
         }
         // Files sit under the bubble, at full width: inside it their names and sizes would be cut.
         files.filterNot { it.mediaType.startsWith("image/") }.takeIf { it.isNotEmpty() }?.let { FileGroup(it, env.fileActions, Modifier.padding(top = DotSpacing.xs).widthIn(max = 360.dp), onAccess = env.onFileAccess) }
         message.meta.edited?.let { EditedNote(it) }
-        Reactions(message.id, message.meta.reactions, env)
+
     }
 }
 
@@ -223,6 +226,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
     var menu by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val firstText = turn.bubbles.firstOrNull { it is Bubble.Text }?.key
+    val lastTextKey = turn.bubbles.lastOrNull { it is Bubble.Text }?.key
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(DotSpacing.s)) {
         if (env.attribution && turn.bubbles.isNotEmpty()) Author(message, env)
         if (turn.bubbles.isNotEmpty()) {
@@ -241,7 +245,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                         // Files sent one after the other share one surface.
                         if (item is List<*>) { @Suppress("UNCHECKED_CAST") val files = item as List<Bubble.File>; FileGroup(files.map { it.file }, env.fileActions, sizes = files.map { it.size }, captions = files.map { it.caption }, onAccess = env.onFileAccess); return@forEach }
                         when (val bubble = item as Bubble) {
-                            is Bubble.Text -> DotReplyBubble {
+                            is Bubble.Text -> ReactionAnchor(message.id, message.meta.reactions.takeIf { bubble.key == lastTextKey }.orEmpty(), env) { DotReplyBubble {
                                 if (bubble.key == firstText) message.meta.replyTo?.let { ReplyQuote(it, env) }
                                 DotMarkdown(
                                     bubble.text, onCopyCode = env.onCopy, resolveUrl = env.resolveUrl,
@@ -250,7 +254,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                                         else Text(alt.ifBlank { url }, style = Dot.type.caption, color = Dot.colors.textSecondary)
                                     },
                                 )
-                            }
+                            } }
                             is Bubble.Image -> AttachedImage(bubble.file, env)
                             is Bubble.File -> FileCard(bubble.file, env.fileActions, size = bubble.size, caption = bubble.caption, onAccess = env.onFileAccess)
                         }
@@ -265,7 +269,7 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
             else ActionCard(item as Part.Tool, message, env)
         }
         if (message.meta.setup) SetupHint(env)
-        Reactions(message.id, message.meta.reactions, env)
+        if (lastTextKey == null) Reactions(message.id, message.meta.reactions, env)
         if (showActions && !streaming && turn.plainText.isNotEmpty()) {
             Row(Modifier.padding(start = 0.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
                 val tint = Dot.colors.textTertiary
@@ -461,6 +465,20 @@ private fun AttachedImage(file: Part.File, env: MessageEnv) {
     }
 }
 
+/** #76: how far a reaction chip hangs below the bubble it is attached to (space reserved, so nothing moves). */
+private val REACTION_OVERHANG = 14.dp
+
+/** The reactions of a message on the bottom-right corner of its own bubble, overlapping its border a little. */
+@Composable
+private fun BoxScope.ReactionsOverlay(messageId: String, reactions: List<Reaction>, env: MessageEnv) {
+    if (reactions.isEmpty()) return
+    Box(Modifier.align(Alignment.BottomEnd).offset(x = (-DotSpacing.s), y = 20.dp)) { Reactions(messageId, reactions, env) }
+}
+
+@Composable
+private fun ReactionAnchor(messageId: String, reactions: List<Reaction>, env: MessageEnv, bubble: @Composable () -> Unit) {
+    Box(Modifier.padding(bottom = if (reactions.isEmpty()) 0.dp else REACTION_OVERHANG)) { bubble(); ReactionsOverlay(messageId, reactions, env) }
+}
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Reactions(messageId: String, reactions: List<Reaction>, env: MessageEnv) {
