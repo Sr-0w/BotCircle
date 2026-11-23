@@ -162,7 +162,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
+private class PendingImage(val uri: Uri, val file: PickedFile? = null, /** A file picked in a draft: uploaded to the chat once its first message creates it. */ val deferred: Boolean = false) {
     var attachment by mutableStateOf<Attachment?>(null)
     var failed by mutableStateOf(false)
 }
@@ -171,6 +171,8 @@ private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
 fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}, workRequest: Int = 0, onEphemeral: (() -> Unit)? = null, screenVisible: Boolean = true) {
     // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
     val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
+    // New chat created on first message: a draft is this same screen with nothing on the server until it is sent.
+    val isDraft = general?.id == AppState.DRAFT_CHAT_ID
     LaunchedEffect(session) { session.open() }
     val chat by session.state.collectAsStateWithLifecycle()
 
@@ -192,7 +194,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     val deleteLabel = stringResource(if (general != null) R.string.delete_ellipsis else R.string.delete_thread)
     var finding by remember(agent.id) { mutableStateOf(false) }
     val findLabel = stringResource(R.string.search_in_thread)
-    val headerMenu = listOf(Triple(findLabel, Icons.Outlined.Search) { finding = true }) + if (general != null) {
+    val headerMenu = if (isDraft) emptyList() else listOf(Triple(findLabel, Icons.Outlined.Search) { finding = true }) + if (general != null) {
         val ref = ConversationRef.Chat(general.id, general.title)
         listOf(
             if (general.archived) Triple(restoreLabel, Icons.Outlined.Unarchive) { lifecycle.restore(ref) {} } else Triple(archiveLabel, Icons.Outlined.Archive) { lifecycle.archive(ref, onBack) },
@@ -225,6 +227,8 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         uris.take(FILES_MAX_COUNT - images.size).forEach { uri ->
             val picked = describeFile(context, uri)
             if (!picked.isImage && picked.size > ARTIFACT_MAX_BYTES) { app.notify(tooLarge); return@forEach }
+            // A file belongs to its chat: in a draft it waits for the first message, which creates the chat.
+            if (isDraft && !picked.isImage) { images += PendingImage(uri, picked, deferred = true); return@forEach }
             val pending = PendingImage(uri, picked.takeUnless { it.isImage }).also(images::add)
             scope.launch {
                 try {
@@ -288,7 +292,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
     }
     // #57: only a chat without any message can become ephemeral (and back); after the first message the icon is gone.
     // Not keyed on the title: the server names every new chat ("Nouveau chat") at creation.
-    val canEphemeral = general != null && !general.archived && !chat.loading && chat.loadError == null && chat.messages.isEmpty() && !chat.busy
+    val canEphemeral = isDraft && general != null && !general.archived && !chat.loading && chat.loadError == null && chat.messages.isEmpty() && !chat.busy
     val atLatest by remember(listState) { derivedStateOf { !listState.canScrollBackward } }
 
     // Older history loads when the user nears the top.
@@ -398,7 +402,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
             onDismiss = { clearing = false },
         ) {
             clearing = false
-            if (general != null) app.restartChat(general) {} else session.clear()
+            if (general != null) app.restartChat(general) else session.clear()
         }
         editing?.let { (id, original) -> EditMessageSheet(original, onDismiss = { editing = null }) { text -> editing = null; session.edit(id, text) } }
         taskSheet?.let { id -> TaskSheet(app, ui, id) { taskSheet = null } }
@@ -444,7 +448,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         val suggestions = remember(mentionQuery, mentionNames) { mentionQuery?.let { q -> mentionNames.filter { it.startsWith(q, ignoreCase = true) }.take(5) }.orEmpty() }
 
         // The composer floats in the same glass as the header's buttons: the messages pass under it, blurred.
-        val ready = images.all { it.attachment != null || it.failed }
+        val ready = images.all { it.attachment != null || it.failed || it.deferred }
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .onSizeChanged { size -> with(density) { size.height.toDp() }.let { if (it != composerHeight) composerHeight = it } }
@@ -463,11 +467,33 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 backdrop = backdrop,
                 placeholder = if (general != null) stringResource(R.string.write_chat) else if (agent.named) stringResource(R.string.write_to, agent.name) else stringResource(R.string.write_to_companion),
                 busy = chat.busy,
-                canSend = ready && (draft.isNotBlank() || images.any { it.attachment != null }),
+                canSend = ready && (draft.isNotBlank() || images.any { it.attachment != null || it.deferred }),
                 onStop = session::stop,
                 onSend = {
                     // `/clear` typed alone is a command, not a message: it asks before starting over.
                     if (images.isEmpty() && runSlash(draft)) { draft = ""; return@DotComposer }
+                    if (images.any { it.deferred }) {
+                        // A draft's first message with files: the chat is created, its files uploaded to it, then sent.
+                        val text = draft; val picked = images.toList(); val replying = reply
+                        draft = ""; reply = null; images.clear()
+                        scope.launch {
+                            val created = try { app.createDraftChat() } catch (e: Exception) {
+                                if (e is kotlin.coroutines.cancellation.CancellationException) throw e
+                                draft = text; images.addAll(picked); app.notify(e.message?.takeIf { it.isNotBlank() } ?: uploadFailed); return@launch
+                            }
+                            val files = picked.mapNotNull { p ->
+                                p.attachment ?: if (!p.deferred || p.file == null) null else try {
+                                    val artifact = app.client.uploadArtifact(fileBody(context, p.file), p.file.name, agentId = null, conversationId = created.id)
+                                    Attachment(artifact.id, artifact.url, artifact.name, artifact.mediaType)
+                                } catch (e: Exception) {
+                                    if (e is kotlin.coroutines.cancellation.CancellationException) throw e
+                                    app.notify(e.message?.takeIf { it.isNotBlank() } ?: uploadFailed); null
+                                }
+                            }
+                            session.send(text, files, replying)
+                        }
+                        return@DotComposer
+                    }
                     session.send(draft, images.mapNotNull { it.attachment }, reply)
                     draft = ""; reply = null; images.clear()
                 },
@@ -667,7 +693,7 @@ private fun FileThumb(pending: PendingImage, onRemove: () -> Unit) {
         Modifier.heightIn(min = 64.dp).widthIn(max = 220.dp).clip(DotShapes.medium).border(DotSpacing.hairline * 2, if (pending.failed) c.danger else c.border, DotShapes.medium).padding(start = DotSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (pending.attachment == null && !pending.failed) DotSpinner(size = 16.dp) else Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(18.dp), tint = if (pending.failed) c.danger else c.textSecondary)
+        if (pending.attachment == null && !pending.failed && !pending.deferred) DotSpinner(size = 16.dp) else Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(18.dp), tint = if (pending.failed) c.danger else c.textSecondary)
         Column(Modifier.padding(horizontal = DotSpacing.s).weight(1f, fill = false)) {
             Text(file.name, style = Dot.type.label, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
             Text(formatBytes(file.size), style = Dot.type.caption, color = c.textSecondary, maxLines = 1)
@@ -860,8 +886,8 @@ private fun slashCommands(app: AppState, agent: Agent, general: GeneralChat?, bu
         }
     }
     if (general != null) return listOf(
-        SlashCommand("new", stringResource(R.string.cmd_new_chat)) { app.createChat {} },
-        SlashCommand("clear", stringResource(R.string.cmd_clear_chat)) { onClear() },
+        SlashCommand("new", stringResource(R.string.cmd_new_chat)) { app.newChat() },
+        SlashCommand("clear", stringResource(R.string.cmd_clear_chat), unavailable = if (general.id == AppState.DRAFT_CHAT_ID) stringResource(R.string.cmd_clear_draft) else null) { onClear() },
         SlashCommand("model", stringResource(R.string.cmd_model)) { onModel() },
         SlashCommand("web", stringResource(if (general.webSearch) R.string.cmd_web_state_on else R.string.cmd_web_state_off), listOf("on" to webOn, "off" to webOff)) { arg ->
             app.updateChat(general.id, buildJsonObject { put("webSearch", arg != "off") }) { app.notify(if (arg == "off") webOff else webOn) }

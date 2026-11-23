@@ -290,6 +290,8 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
     BackHandler(enabled = page == Page.None && tab != Tab.Circles) { tab = Tab.Circles }
     // #57: leaving the ephemeral chat by any route (back, another chat, a tab, settings, a notification...) erases it.
     LaunchedEffect(page, ui.ephemeral) { if (ui.ephemeral && page != Page.GeneralChat) app.exitEphemeral() }
+    // New chat created on first message: leaving a draft that was never sent leaves nothing behind.
+    LaunchedEffect(page, ui.currentChatId) { if (ui.draftChat != null && (page != Page.GeneralChat || ui.currentChatId != AppState.DRAFT_CHAT_ID)) app.discardDraft() }
 
     AnimatedContent(
         targetState = page,
@@ -359,10 +361,13 @@ private fun MainScreens(app: AppState, ui: AppUiState) {
                 ChatScreen(app, ui, agent, onBack = ::back, onOpenCompanion = { page = Page.Profile }, onOpenDesktop = { id -> app.selectAgent(id); desktopFromChat = true; page = Page.Desktop }, onOpenCode = openCode, onOpenChat = { id -> app.selectChat(id); page = Page.GeneralChat }, workRequest = workRequest, screenVisible = current == page)
             }
             current == Page.GeneralChat && ui.ephemeral -> EphemeralChatScreen(app, ui, onBack = ::back, onNormal = { app.stopEphemeral() })
-            current == Page.GeneralChat -> chatState.SaveableStateProvider("chat:" + chat!!.id) {
+            // A draft and the chat its first message created share one state slot: the screen is not rebuilt (the send in
+            // flight, the first answer streaming and the composer survive the switch to the chat's id).
+            current == Page.GeneralChat -> chatState.SaveableStateProvider(if (chat!!.id == AppState.DRAFT_CHAT_ID || chat.id == ui.draftBornId) "draft:${ui.draftSlot}" else "chat:" + chat.id) {
                 ChatScreen(
                     app, ui, Agent(id = chat.id, name = chat.title.ifBlank { stringResource(R.string.new_chat) }, named = true, color = "#8E8E93", effectiveModel = chat.effectiveModel),
-                    onBack = ::back, onOpenCompanion = { page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
+                    // A draft has no settings page yet (nothing to rename, archive or delete).
+                    onBack = ::back, onOpenCompanion = { if (chat.id != AppState.DRAFT_CHAT_ID) page = Page.ChatSettings }, general = chat, onOpenCode = openCode,
                     onEphemeral = { app.startEphemeral(chat) }, screenVisible = current == page,
                 )
             }

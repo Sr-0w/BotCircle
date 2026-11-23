@@ -383,6 +383,7 @@ S = {
  "cmd_web_state_on": ('Web search: on', 'Recherche web : activée'),
  "cmd_web_state_off": ('Web search: off', 'Recherche web : coupée'),
  "cmd_new_chat": ('New chat (this one stays in the list)', 'Nouveau chat (celui-ci reste dans la liste)'),
+ "cmd_clear_draft": ('This chat is already blank.', 'Ce chat est déjà vierge.'),
  "cmd_clear_chat": ('Start over with the same settings', 'Repartir de zéro avec les mêmes réglages'),
  "cmd_model": ('Change the model', 'Changer le modèle'),
  "cmd_tasks": ('Tasks and interventions', 'Tâches et interventions'),

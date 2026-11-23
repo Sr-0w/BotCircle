@@ -92,7 +92,7 @@ fun ChatsPage(app: AppState, ui: AppUiState, onSearch: (String) -> Unit = {}, on
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = DotSpacing.gutter).padding(bottom = DotSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                 if (ui.chats.isNotEmpty()) SearchField(query, { query = it }, Modifier.weight(1f).padding(end = DotSpacing.m), placeholder = stringResource(R.string.search_chats)) else Spacer(Modifier.weight(1f))
-                DotButton(stringResource(R.string.new_chat), { app.createChat { app.state.value.currentChat?.let(onOpen) } }, icon = Icons.Outlined.Add, compact = true)
+                DotButton(stringResource(R.string.new_chat), { app.newChat(); app.state.value.currentChat?.let(onOpen) }, icon = Icons.Outlined.Add, compact = true)
             }
         }
         // #58: the field filters chats; the full search covers every message of chats and Circles.
