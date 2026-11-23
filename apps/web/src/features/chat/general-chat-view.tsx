@@ -128,7 +128,7 @@ function Inner({ chat: info, initial, onEphemeral }: { chat: ChatDTO; initial: O
             </Tooltip>
           </div>
         )}
-      <Conversation className="min-h-0 flex-1">
+      <Conversation timelineId={info.id} className="min-h-0 flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">

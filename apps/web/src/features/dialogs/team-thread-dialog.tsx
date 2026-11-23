@@ -60,13 +60,13 @@ export function TeamThreadDialog({ agentA, agentB, onClose }: { agentA: string; 
         ) : !items.length ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">{t("Aucun message pour l’instant")}</div>
         ) : (
-          <Conversation className="min-h-0 flex-1">
+          <Conversation timelineId={agentA + ":" + agentB} className="min-h-0 flex-1">
             <ConversationContent className="mx-auto w-full gap-6 px-4 py-6 sm:px-6">
               {items.map(({ m, text }) => {
                 const author = agents.find((a) => a.id === m.metadata?.agentId);
                 const mine = m.metadata?.agentId === agentA;
                 return (
-                  <div key={m.id} className={cn("flex flex-col gap-1.5", mine ? "items-end" : "items-start")}>
+                  <div key={m.id} data-scroll-key={m.id} className={cn("flex flex-col gap-1.5", mine ? "items-end" : "items-start")}>
                     <div className={cn("flex items-center gap-2 text-muted-foreground text-xs", mine && "flex-row-reverse")}>
                       <DotAvatar color={author?.color ?? "#999"} shape={author?.avatar} size={20} />
                       <span className="font-medium text-foreground">{author?.name ?? t("Circle")}</span>
@@ -129,7 +129,7 @@ export function ArchiveThreadDialog({ agentId, conversationId, archivedAt, focus
         ) : !items.length ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">{t("Aucun message")}</div>
         ) : (
-          <Conversation className="min-h-0 flex-1">
+          <Conversation timelineId={conversationId} className="min-h-0 flex-1">
             <ConversationContent className="mx-auto w-full gap-6 px-4 py-6 sm:px-6">
               {items.map(({ m, text }) => (
                 <div key={m.id} id={`message-${m.id}`} className="scroll-mt-24 rounded-2xl [&[data-flash]]:ring-2 [&[data-flash]]:ring-ring">

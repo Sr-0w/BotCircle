@@ -11,6 +11,7 @@ export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'
 export function scrollToMessage(id: string) {
   const el = document.getElementById(`message-${id}`);
   if (!el) return;
+  el.dispatchEvent(new Event("od:stop-stick", { bubbles: true }));
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.setAttribute('data-flash', '');
   window.setTimeout(() => el.removeAttribute('data-flash'), 1400);

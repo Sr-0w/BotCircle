@@ -166,7 +166,7 @@ function ChatInner({ agent, initial }: { agent: AgentDTO; initial: ODMessage[] }
     <ChatActionsContext.Provider value={actions}>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col"><div className="quiet-top-blur" aria-hidden />
-      <Conversation className="min-h-0 flex-1">
+      <Conversation timelineId={agent.id} className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-[calc(var(--composer-h,6rem)+1.5rem)] sm:px-6">
           {empty && <EmptyState agent={agent} />}
           {messages.map((m, i) => (

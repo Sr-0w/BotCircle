@@ -27,7 +27,6 @@
     "streamdown": "^2.7.1",
     "tailwind-merge": "^3.7.0",
     "thinking-orbs": "0.3.2",
-    "use-stick-to-bottom": "^1.1.6",
     "zod": "^4.6.7"
   },
   "devDependencies": {
