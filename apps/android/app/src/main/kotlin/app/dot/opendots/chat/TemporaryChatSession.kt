@@ -29,14 +29,18 @@ data class TemporaryChatState(
     val partial: String = "",
     val sending: Boolean = false,
     val problem: TemporaryProblem? = null,
+    /** The message being sent, shown as sent while the snapshot does not hold it yet (until it has more than [pendingBase] messages). */
+    val pending: String? = null,
+    val pendingBase: Int = 0,
 ) {
     val busy get() = sending || snapshot?.busy == true
 }
 
 /**
- * Owned by AppState's ViewModel, never SessionStore/SavedStateHandle/normal chats.
- * Configuration and in-app navigation retain it. Background stops inference and
- * polling, not completed context. Process death abandons it (server TTL safety net).
+ * Owned by AppState's ViewModel, never SessionStore/SavedStateHandle/normal chats (#57: the ephemeral mode of a new
+ * chat). Configuration changes retain it; leaving the chat discards it. A short background keeps it (completed context
+ * only; a live reply is stopped). While it is open and visible a GET every [HEARTBEAT_MS] renews the server's idle timeout.
+ * Process death abandons it: the server expires it once the heartbeat stops.
  */
 class TemporaryChatSession(
     private val api: TemporaryChatApi,
@@ -51,12 +55,20 @@ class TemporaryChatSession(
     private var stopping = false
     private var lastRead = 0
     private var work: Job? = null
+    /** The creation request: not cancelled by [discard], so a chat created meanwhile is deleted instead of leaked. */
+    private var creating: Job? = null
     private val poll = scope.launch {
         while (true) {
-            delay(5_000)
+            delay(HEARTBEAT_MS)
             if (foreground && _state.value.snapshot != null) refresh()
         }
     }
+
+    /** True once something was typed, sent or received: leaving it is worth saying out loud. */
+    val hasContent: Boolean
+        get() = _state.value.let { it.snapshot?.messages?.isNotEmpty() == true || it.partial.isNotEmpty() || (it.snapshot != null && it.sending) }
+
+    fun dismissProblem() { _state.update { it.copy(problem = null) } }
 
     fun draft(text: String) { if (!_state.value.busy) _state.update { it.copy(draft = text.take(16_000)) } }
     fun model(config: ModelConfig) {
@@ -68,16 +80,17 @@ class TemporaryChatSession(
         if (!foreground || _state.value.busy || _state.value.snapshot != null) return
         val version = generation
         _state.update { it.copy(sending = true, problem = null) }
-        work = scope.launch {
+        creating = scope.launch {
             try {
                 val snapshot = api.createTemporaryChat()
                 if (version == generation) _state.update { it.copy(snapshot = snapshot) }
+                else cleanup(snapshot.id) // discarded while it was being created: do not leave it behind
             } catch (e: Exception) { fail(e, version) }
             finally { if (version == generation) _state.update { it.copy(sending = false) } }
         }
     }
 
-    /** A read never renews the server TTL. Network failures retain the in-memory ID for reconnect. */
+    /** Also the heartbeat: any authenticated read renews the idle timeout. Network failures retain the in-memory ID for reconnect. */
     private suspend fun refresh() {
         val snapshot = _state.value.snapshot ?: return
         val version = generation
@@ -94,7 +107,7 @@ class TemporaryChatSession(
         val model = current.model ?: return
         if (current.busy || current.draft.isBlank() || !foreground) return
         val version = generation
-        _state.update { it.copy(sending = true, partial = "", problem = null) }
+        _state.update { it.copy(sending = true, partial = "", problem = null, pending = current.draft, pendingBase = snapshot.messages.size) }
         work = scope.launch {
             var completed = false
             try {
@@ -118,7 +131,7 @@ class TemporaryChatSession(
                 if (version == generation) {
                     withContext(NonCancellable) { withTimeoutOrNull(5_000) { refresh() } }
                     if (version == generation) _state.update {
-                        it.copy(sending = false, partial = "", draft = if (completed) "" else it.draft)
+                        it.copy(sending = false, partial = "", pending = null, draft = if (completed) "" else it.draft)
                     }
                 }
             }
@@ -131,7 +144,7 @@ class TemporaryChatSession(
         generation++
         work?.cancel()
         stopping = true
-        _state.update { it.copy(sending = true, partial = "", problem = TemporaryProblem.Interrupted) }
+        _state.update { it.copy(sending = true, partial = "", pending = null, problem = TemporaryProblem.Interrupted) }
         val version = generation
         scope.launch {
             try {
@@ -149,7 +162,7 @@ class TemporaryChatSession(
         foreground = visible
         if (!visible) {
             if (_state.value.snapshot == null) {
-                generation++; work?.cancel()
+                generation++; creating?.cancel()
                 _state.update { it.copy(sending = false) }
             } else if (_state.value.busy) stop()
         } else {
@@ -165,16 +178,25 @@ class TemporaryChatSession(
         stopping = false
         work?.cancel(); work = null
         _state.value = TemporaryChatState()
-        if (id != null) {
-            // Bounded best effort, independent of a ViewModel that may be clearing.
-            // UNDISPATCHED builds the authenticated request before a server/logout switch.
-            val cleanup = CoroutineScope(Dispatchers.IO)
-            cleanup.launch(start = CoroutineStart.UNDISPATCHED) {
-                try { withTimeoutOrNull(5_000) { api.deleteTemporaryChat(id) } }
-                catch (_: Exception) { /* server expiry/revocation is the safety net */ }
-                finally { cleanup.cancel() }
-            }
+        if (id != null) cleanup(id)
+    }
+
+    /**
+     * Bounded best effort, independent of a ViewModel that may be clearing.
+     * UNDISPATCHED builds the authenticated request before a server/logout switch.
+     */
+    private fun cleanup(id: String) {
+        val cleanup = CoroutineScope(Dispatchers.IO)
+        cleanup.launch(start = CoroutineStart.UNDISPATCHED) {
+            try { withTimeoutOrNull(5_000) { api.deleteTemporaryChat(id) } }
+            catch (_: Exception) { /* server expiry/revocation is the safety net */ }
+            finally { cleanup.cancel() }
         }
+    }
+
+    companion object {
+        /** The server renews its 30-minute idle timeout on any authenticated access, this read included. */
+        const val HEARTBEAT_MS = 30_000L
     }
 
     fun dispose() { poll.cancel(); discard() }

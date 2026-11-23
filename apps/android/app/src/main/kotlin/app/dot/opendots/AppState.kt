@@ -74,6 +74,8 @@ data class AppUiState(
     /** Secure sign-in requests seen by the app, by id. */
     val secureLogins: Map<String, SecureLogin> = emptyMap(),
     val currentChatId: String? = null,
+    /** #57: the new chat on screen is ephemeral (see [AppState.temporaryChat]): in no list, never saved. */
+    val ephemeral: Boolean = false,
     /** #58: a conversation to open at a message (from search): its agent or chat id, and the message. */
     val focus: Pair<String, String>? = null,
     /** #56: archived chats (hidden from the list, restorable). */
@@ -105,7 +107,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     val notices: SharedFlow<String> = _notices.asSharedFlow()
 
     private val sessions = HashMap<String, ChatSession>()
-    /** Separate RAM-only state. Never inserted into chats, archives or SessionStore. */
+    /** Separate RAM-only state (#57: the ephemeral mode of a new chat). Never inserted into chats, archives or SessionStore. */
     val temporaryChat = TemporaryChatSession(client, viewModelScope, onUnauthorized = ::unauthorized)
     private var eventsJob: Job? = null
     private var foreground = true
@@ -152,7 +154,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     }
 
     fun changeServer() {
-        temporaryChat.discard()
+        dropEphemeral()
         stopListening()
         setStage(Stage.Server)
     }
@@ -160,7 +162,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun signIn(email: String, password: String, register: Boolean) = form { enter(client.signIn(email, password, register)) }
 
     fun signOut() {
-        temporaryChat.discard()
+        dropEphemeral()
         stopListening()
         sessions.clear()
         viewModelScope.launch {
@@ -197,7 +199,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     private fun unauthorized() {
         if (_state.value.stage !is Stage.Main) return
-        temporaryChat.discard()
+        dropEphemeral()
         stopListening()
         sessions.clear()
         client.forgetSession()
@@ -310,7 +312,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     private fun loadWork() {
         viewModelScope.launch {
             runCatching { client.tasks() }.onSuccess { list -> _state.update { s -> s.copy(tasks = list.associate { it.id to it.copy(events = s.tasks[it.id]?.events.orEmpty()) }) } }
-            runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
+            runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list.filterNot { c -> c.id in vanishing }) } }
             runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
             runCatching { client.secureLogins(pending = true) }.onSuccess { list -> _state.update { s -> s.copy(secureLogins = s.secureLogins.filterValues { !it.pending } + list.associateBy { it.id }) } }
         }
@@ -372,6 +374,58 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
 
     fun selectChat(chatId: String) = _state.update { it.copy(currentChatId = chatId) }
 
+    // --- #57: ephemeral chat ------------------------------------------------------------------------
+
+    /** Chats being deleted for the switch to ephemeral: a list refresh racing the delete must not show them again. */
+    private val vanishing = HashSet<String>()
+
+    /** Drops the ephemeral chat silently (sign-out, server change, expired session). */
+    private fun dropEphemeral() {
+        temporaryChat.discard()
+        _state.update { if (it.ephemeral) it.copy(ephemeral = false) else it }
+    }
+
+    /**
+     * The icon on a new, empty chat: it becomes ephemeral. The empty chat the server just created is deleted and leaves
+     * the list at once; the temporary conversation takes its place on screen and is never saved.
+     */
+    fun startEphemeral(chat: GeneralChat) {
+        if (_state.value.ephemeral) return
+        sessions.remove(chat.id)
+        vanishing += chat.id
+        _state.update { s -> s.copy(ephemeral = true, chats = s.chats.filterNot { it.id == chat.id }, currentChatId = s.currentChatId.takeIf { it != chat.id }) }
+        val model = chat.effectiveModel
+        // Codex and a blank model stay unselected: the screen then asks for an OpenRouter or Ollama model.
+        temporaryChat.model(model)
+        temporaryChat.start()
+        viewModelScope.launch {
+            try { client.deleteChat(chat.id, false, false) } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (e is ApiException && e.status == 401) unauthorized()
+            } finally { vanishing -= chat.id }
+            refreshChats()
+        }
+    }
+
+    /** The icon again, before any message: back to a normal chat, which is created fresh. */
+    fun stopEphemeral(onCreated: () -> Unit = {}) {
+        if (!_state.value.ephemeral) return
+        act {
+            val chat = client.createChat()
+            temporaryChat.discard()
+            _state.update { s -> s.copy(ephemeral = false, chats = listOf(chat) + s.chats.filterNot { it.id == chat.id }, currentChatId = chat.id) }
+            onCreated()
+        }
+    }
+
+    /** Leaving the ephemeral chat (back, another chat or tab, settings...): gone, with a short word if it had content. */
+    fun exitEphemeral() {
+        if (!_state.value.ephemeral) return
+        val had = temporaryChat.hasContent
+        dropEphemeral()
+        if (had) _notices.tryEmit(EPHEMERAL_ERASED)
+    }
+
     /** #47: the Circle whose avatar stands for Circles in the dock. */
     fun setPrimaryAgent(agentId: String) = act { client.setPrimaryAgent(agentId) }
     suspend fun avatarPresets(): List<AvatarPreset> = runCatching { client.avatarPresets() }.getOrDefault(emptyList())
@@ -413,7 +467,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
     fun clearFocus() = _state.update { it.copy(focus = null) }
 
     private fun refreshChats() = viewModelScope.launch {
-        runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list) } }
+        runCatching { client.chats() }.onSuccess { list -> _state.update { it.copy(chats = list.filterNot { c -> c.id in vanishing }) } }
         runCatching { client.archivedChats() }.onSuccess { list -> _state.update { it.copy(archivedChats = list) } }
     }
 
@@ -548,6 +602,7 @@ class AppState(private val store: SessionStore, val client: OpenDotsClient) : Vi
         /** Sentinels the UI maps to localized text. */
         const val INVALID_URL = "invalid-url"
         const val FAILED = "failed"
+        const val EPHEMERAL_ERASED = "ephemeral-erased"
     }
 }
 

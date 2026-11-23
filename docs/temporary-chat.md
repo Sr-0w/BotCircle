@@ -9,9 +9,8 @@ routes, chat history/archive controls, settings and Code workspace. Temporary
 chat is a separate destination in its Chats section. **Start normal chat**
 creates a new empty general chat through the production API without copying or
 converting the temporary transcript; returning to Temporary Chat retains its
-in-session context until close/expiry. Native Android now has a dedicated
-temporary page and session implementation, compiled and tested with JUnit,
-Compose and emulator startup in GitHub Actions (see `apps/android/README.md`).
+in-session context until close/expiry. Native Android reaches it as the ephemeral mode of a new chat (an icon on an
+empty chat, same chat screen; see `apps/android/README.md`), not as a separate page.
 Testing on a physical phone and with live providers remains manual.
 Existing Circle history is unchanged. Circle temporary conversations remain
 deliberately unsupported.
@@ -103,8 +102,9 @@ Responses, including SSE, are `Cache-Control: no-store`.
 
 SSE events: `delta` (JSON string), `done`, `stopped`, `failure` (fixed JSON string).
 Concurrent sends return 409. Expired, discarded or inaccessible sessions return
-404, never fall back to a normal conversation. The native Android temporary page
-uses this same contract, including named SSE events and cancellation.
+404, never fall back to a normal conversation. The native Android ephemeral chat
+uses this same contract, including named SSE events and cancellation, and polls `GET /:id`
+every 30 s while open as a heartbeat.
 
 ## Validation and remaining acceptance work
 

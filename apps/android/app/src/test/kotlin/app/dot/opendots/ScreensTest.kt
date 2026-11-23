@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTextInput
 import app.dot.design.DotTheme
 import app.dot.design.ThemeMode
@@ -74,6 +76,11 @@ class ScreensTest {
     private var temporaryFixture = false
     private val temporaryId = "tmp_" + "b".repeat(48)
     @Volatile private var temporaryMessages = "[]"
+    /** Chats created during a test ("New chat"): chn1, chn2... until the app deletes them. */
+    private val newChats = CopyOnWriteArrayList<String>()
+    private val sentChats = CopyOnWriteArrayList<String>()
+    private val newChatSeq = java.util.concurrent.atomic.AtomicInteger()
+    private fun newChatJson(id: String) = """{"id":"$id","title":"","model":null,"effectiveModel":{"provider":"ollama","model":"llama4"},"createdAt":"2026-11-13T10:00:00Z","updatedAt":"2026-11-13T10:00:00Z"}"""
     private var codeModel = """{"providerID":"openai","id":"gpt-5","variant":null,"name":"GPT-5","input":["text","image"]}"""
 
     private val agents = """[
@@ -165,7 +172,12 @@ class ScreensTest {
                     path == "/search" -> json("""{"hits":[{"messageId":"g1","conversationId":"ch1","seq":1,"role":"user","kind":"chat","agentId":null,"title":"Friday meeting","archived":false,"current":false,"snippet":"@Dev summarise the Friday meeting","highlights":[[5,14]],"createdAt":"2026-11-13T09:00:00Z"}],"more":false}""")
                     path == "/conversations/ch1/search" -> json("""[{"messageId":"g1","seq":1,"count":1}]""")
                     path == "/chats" && request.url.queryParameter("archived") == "1" -> json("""[{"id":"ch0","title":"Old trip","model":null,"effectiveModel":{"provider":"openrouter","model":"openai/gpt-5"},"archived":true,"archivedAt":"2026-11-10T09:00:00Z","createdAt":"2026-11-01T09:00:00Z","updatedAt":"2026-11-10T09:00:00Z","lastMessagePreview":"Rome in May"}]""")
-                    path == "/chats" -> json(chats)
+                    path == "/chats" && request.method == "POST" -> { val id = "chn${newChatSeq.incrementAndGet()}"; newChats += id; json(newChatJson(id)) }
+                    path == "/chats" -> json(chats.dropLast(1) + newChats.joinToString("") { "," + newChatJson(it) } + "]")
+                    path.startsWith("/chats/chn") && request.method == "DELETE" -> { newChats.remove(path.removePrefix("/chats/")); json("""{"ok":true}""") }
+                    Regex("/chats/chn\\d+/messages").matches(path) -> json("""{"conversationId":"${path.split("/")[2]}","cursor":null,"active":false,"tasks":[],"messages":[${if (path.split("/")[2] in sentChats) """{"id":"gn1","role":"user","metadata":{"kind":"chat"},"parts":[{"type":"text","text":"Hello"}]}""" else ""}]}""")
+                    Regex("/chats/chn\\d+/stream").matches(path) -> MockResponse.Builder().code(204).build()
+                    Regex("/chats/chn\\d+/chat").matches(path) -> { sentChats += path.split("/")[2]; MockResponse.Builder().code(200).addHeader("Content-Type", "text/event-stream").body("data: {\"type\":\"start\",\"messageId\":\"gn9\"}\n\ndata: {\"type\":\"finish\"}\n\ndata: [DONE]\n\n").build() }
                     path == "/chats/ch1/archive" || path == "/chats/ch0/restore" -> json("""{"ok":true}""")
                     path == "/chats/ch1" && request.method == "DELETE" -> if ("confirmTasks" in (request.body?.utf8() ?: "")) json("""{"ok":true}""") else json("""{"error":"1 tâche(s) en cours","status":"active_tasks","tasks":[{"id":"tk9","title":"Expense sheet","status":"running"}]}""", 409)
                     path == "/chats/ch1/messages" -> json(chatHistory)
@@ -694,39 +706,87 @@ class ScreensTest {
         assertTrue(posts.none { it.first == "/agents/a3/chat" })
     }
 
-    @Test fun temporaryChatStreamsSurvivesNavigationAndClosesWithoutTouchingNormalChats() {
-        temporaryFixture = true
-        val app = launch(ThemeMode.DARK)
+    /** State flows update on the main looper: reading them alone never lets it run, a semantics query does. */
+    private fun pump() = compose.onAllNodesWithTag("pump").fetchSemanticsNodes()
+    private fun hasIcon() = compose.onAllNodesWithContentDescription("Ephemeral chat").fetchSemanticsNodes().isNotEmpty()
+    private fun waitIcon(visible: Boolean) = compose.waitUntil(10_000) { hasIcon() == visible }
+
+    /** Chats tab, "New chat": the new empty chat opens (the fake server creates it as chn1). */
+    private fun openNewChat(app: AppState) {
         waitFor("I drafted the reply")
         compose.onNodeWithContentDescription("Circles").performClick()
         tab("Chat")
         waitFor("Friday meeting")
-        val normalBefore = app.state.value.chats
-        tapUntil("Temporary chat", "Start temporary chat")
-        compose.onNodeWithText("Start temporary chat").performScrollTo().performClick()
-        waitFor("Choose a model")
-        compose.onNodeWithText("Choose a model").performScrollTo().performClick()
-        compose.onNodeWithText("Ollama").performScrollTo().performClick()
-        waitFor("Temporary fixture")
-        compose.onNodeWithText("Temporary fixture").performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Temporary message").performScrollTo().performTextInput("temporary test question")
-        compose.onNodeWithTag("temporary-send").performScrollTo().performClick()
+        // #57: no separate "temporary chat" entry in the list any more.
+        assertTrue(compose.onAllNodesWithText("Temporary chat").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithTag("temporary-chat-action").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithText("New chat").performClick()
+        compose.waitUntil(10_000) { pump(); app.state.value.currentChatId == "chn1" }
+        waitIcon(true)
+    }
+
+    @Test fun theIconSwitchesANewChatToEphemeralAndBack() {
+        temporaryFixture = true
+        val app = launch(ThemeMode.DARK)
+        openNewChat(app)
+        compose.onNodeWithContentDescription("Ephemeral chat").performClick()
+        // The empty normal chat is deleted and gone from the list; the screen says it is ephemeral and not saved.
+        waitFor("Ephemeral · not saved")
+        waitFor("Not saved, gone when you leave")
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/chn1" } }
+        assertTrue(app.state.value.ephemeral)
+        assertTrue(app.state.value.chats.none { it.id == "chn1" })
+        compose.waitUntil(10_000) { pump(); app.temporaryChat.state.value.snapshot != null }
+        assertEquals(1, posts.count { it.first == "/temporary-chats" })
+        // The same icon again, before any message: back to a normal chat, created fresh.
+        waitIcon(true)
+        compose.onNodeWithContentDescription("Ephemeral chat").performClick()
+        compose.waitUntil(10_000) { pump(); !app.state.value.ephemeral && app.state.value.currentChatId == "chn2" }
+        compose.waitUntil(10_000) { posts.any { it.first == "/temporary-chats/$temporaryId" } }
+        assertTrue(compose.onAllNodesWithText("Ephemeral · not saved").fetchSemanticsNodes().isEmpty())
+        assertEquals(null, app.temporaryChat.state.value.snapshot)
+        assertTrue(app.state.value.chats.any { it.id == "chn2" })
+        waitIcon(true)
+    }
+
+    @Test fun anEphemeralChatStreamsLikeANormalChatAndIsGoneWhenYouLeave() {
+        temporaryFixture = true
+        val app = launch(ThemeMode.DARK)
+        openNewChat(app)
+        compose.onNodeWithContentDescription("Ephemeral chat").performClick()
+        waitFor("Ephemeral · not saved")
+        compose.waitUntil(10_000) { pump(); posts.any { it.first == "/chats/chn1" } && app.temporaryChat.state.value.snapshot != null }
+        // The new chat's model (Ollama) is already chosen; no attachment, mention or web control is offered.
+        waitFor("llama4")
+        assertTrue(compose.onAllNodesWithContentDescription("Attach files").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithTag("chat-web").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithContentDescription("Message").performTextInput("temporary test question")
+        compose.onNodeWithContentDescription("Send").performClick()
         waitFor("Temporary answer")
-        shoot("temporary-chat-dark")
+        waitFor("temporary test question")
+        shoot("ephemeral-chat-dark")
+        // After the first message the icon is gone: no conversion either way.
+        waitIcon(false)
+        // Leaving erases it: the server is told, nothing is listed, and a short word says so.
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         waitFor("Friday meeting")
-        tapUntil("Temporary chat", "Temporary answer")
-        compose.onNodeWithText("Close and forget").performScrollTo().performClick()
-        waitFor("This temporary thread will be lost.")
-        compose.onNodeWithText("Cancel").performClick()
-        waitFor("Temporary answer")
-        compose.onNodeWithText("Close and forget").performScrollTo().performClick()
-        compose.onNode(hasText("Close and forget") and hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasClickAction()).performClick()
-        waitFor("Start temporary chat")
+        waitFor("Ephemeral chat erased")
         compose.waitUntil(10_000) { posts.any { it.first == "/temporary-chats/$temporaryId" } }
-        assertEquals(normalBefore, app.state.value.chats)
-        assertTrue(app.temporaryChat.state.value.snapshot == null)
-        assertTrue(posts.none { it.first == "/chats/ch1/chat" || it.first == "/agents/a1/chat" })
+        assertEquals(null, app.temporaryChat.state.value.snapshot)
+        assertTrue(!app.state.value.ephemeral)
+        assertEquals(listOf("ch1"), app.state.value.chats.map { it.id })
+        assertTrue(compose.onAllNodesWithText("Temporary answer").fetchSemanticsNodes().isEmpty())
+        assertTrue(posts.none { it.first.endsWith("/chat") })
+    }
+
+    @Test fun aNormalNewChatLosesTheIconAfterItsFirstMessage() {
+        val app = launch(ThemeMode.DARK)
+        openNewChat(app)
+        compose.onNodeWithContentDescription("Message, @ for a Circle…").performTextInput("Hello")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(10_000) { posts.any { it.first == "/chats/chn1/chat" } }
+        waitIcon(false)
+        assertTrue(posts.none { it.first.startsWith("/temporary-chats") })
     }
 
     @Test fun aTaskShowsItsRealStateAndJournal() {
