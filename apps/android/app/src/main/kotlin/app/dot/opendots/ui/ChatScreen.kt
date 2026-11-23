@@ -286,8 +286,9 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         listState.animateScrollToItem(before + index)
         flashId = id; kotlinx.coroutines.delay(1800); if (flashId == id) flashId = null
     }
-    // #57: only a new, empty, untitled chat can become ephemeral (and back); after the first message the icon is gone.
-    val canEphemeral = general != null && !general.archived && general.title.isBlank() && !chat.loading && chat.loadError == null && chat.messages.isEmpty() && !chat.busy
+    // #57: only a chat without any message can become ephemeral (and back); after the first message the icon is gone.
+    // Not keyed on the title: the server names every new chat ("Nouveau chat") at creation.
+    val canEphemeral = general != null && !general.archived && !chat.loading && chat.loadError == null && chat.messages.isEmpty() && !chat.busy
     val atLatest by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 200 } }
 
     // Sending always brings the conversation back to the latest message.

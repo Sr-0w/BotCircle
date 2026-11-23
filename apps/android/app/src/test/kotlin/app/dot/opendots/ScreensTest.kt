@@ -80,7 +80,8 @@ class ScreensTest {
     private val newChats = CopyOnWriteArrayList<String>()
     private val sentChats = CopyOnWriteArrayList<String>()
     private val newChatSeq = java.util.concurrent.atomic.AtomicInteger()
-    private fun newChatJson(id: String) = """{"id":"$id","title":"","model":null,"effectiveModel":{"provider":"ollama","model":"llama4"},"createdAt":"2026-11-13T10:00:00Z","updatedAt":"2026-11-13T10:00:00Z"}"""
+    // Like the real server (chats/repo.ts), a new chat already carries the default title.
+    private fun newChatJson(id: String) = """{"id":"$id","title":"Nouveau chat","model":null,"effectiveModel":{"provider":"ollama","model":"llama4"},"createdAt":"2026-11-13T10:00:00Z","updatedAt":"2026-11-13T10:00:00Z"}"""
     private var codeModel = """{"providerID":"openai","id":"gpt-5","variant":null,"name":"GPT-5","input":["text","image"]}"""
 
     private val agents = """[
