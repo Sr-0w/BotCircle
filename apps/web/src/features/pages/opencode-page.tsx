@@ -1,6 +1,5 @@
-import { CodeSessions } from '../code/code-sessions';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LinkIcon, LoaderIcon, PlusIcon, ScanQrCodeIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
+import { CodeXmlIcon, LinkIcon, LoaderIcon, PlusIcon, ScanQrCodeIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
 import type { OpencodeInstanceDTO } from '@opendots/shared';
 import { toast } from 'sonner';
@@ -44,7 +43,12 @@ export function OpencodePage() {
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><OpencodeLogo size={20} />OpenCode</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('Connecte une machine de développement : tes Circles autorisés pourront y déléguer du code à OpenCode, et tu suivras la session en direct.')}</p>
         </div>
-        {instances && <CodeSessions instances={instances} />}
+        {/* #72: sessions live in the Code destination; this page manages the machines. */}
+        {instances && instances.length > 0 && (
+          <a href="#/code" className="flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm hover:bg-accent/40" data-goto-code>
+            <CodeXmlIcon className="size-4 text-muted-foreground" /><span className="flex-1">{t('Voir et lancer les sessions dans Code')}</span><span aria-hidden>→</span>
+          </a>
+        )}
         {!instances ? <LoaderIcon className="animate-spin" /> : instances.length === 0 && !draft ? <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">{t('Aucune instance connectée.')}</div> : null}
         {instances?.map((instance) => (
           <section key={instance.id} className="space-y-2 rounded-2xl border bg-card p-4" aria-label={instance.name} data-instance-state={instance.state}>
