@@ -105,7 +105,7 @@ val LocalRootActions = staticCompositionLocalOf<RootActions?> { null }
  * leaves room for at the end, and its header carries the Settings button.
  */
 @Composable
-fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, subtitle: String? = null, actions: (@Composable () -> Unit)? = null, content: LazyListScope.() -> Unit) {
+fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, subtitle: String? = null, actions: (@Composable () -> Unit)? = null, listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(), content: LazyListScope.() -> Unit) {
     val shared = if (inTabs) LocalRootBackdrop.current else null
     val own = rememberQuietBackdrop()
     val backdrop = shared ?: own
@@ -137,7 +137,8 @@ fun QuietPage(title: String, onBack: (() -> Unit)?, inTabs: Boolean = false, sub
             },
         ) { padding ->
             LazyColumn(
-                Modifier.fillMaxSize().backdropSource(backdrop),
+                state = listState,
+                modifier = Modifier.fillMaxSize().backdropSource(backdrop),
                 contentPadding = PaddingValues(
                     top = padding.calculateTopPadding(),
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + DotSpacing.xxl + (if (inTabs && onBack == null) DockHeight + DockMargin else 0.dp),
@@ -241,21 +242,25 @@ private fun CountBadge(count: Int, modifier: Modifier = Modifier) {
 // --- Approvals ------------------------------------------------------------------------------------
 
 @Composable
-fun ApprovalsScreen(app: AppState, ui: AppUiState, onBack: (() -> Unit)? = null) {
+fun ApprovalsScreen(app: AppState, ui: AppUiState, onBack: (() -> Unit)? = null, onOpenCode: (String) -> Unit = {}) {
     val env = remember(ui.approvals, ui.agents) {
         MessageEnv(ui.agents, ui.approvals, emptyMap(), emptyMap(), false, { it }, {}, {}, { _, _ -> }, { id, approve -> app.decide(id, approve) }, { _, _, _ -> }, {}, {}, {}, {})
     }
     val pending = ui.pendingApprovals
+    val codeWaiting = remember(ui.tasks) { canonicalCodeTasks(ui.tasks.values).filter { it.status == "waiting_for_user" } }
     val recent = remember(ui.approvals) { ui.approvals.values.filter { it.status != "pending" }.sortedByDescending { it.createdAt }.take(20) }
     QuietPage(stringResource(R.string.inbox), onBack = onBack, inTabs = onBack == null) {
-        if (pending.isEmpty() && recent.isEmpty()) item { EmptyState(Icons.Outlined.Shield, stringResource(R.string.approvals_empty_title), stringResource(R.string.approvals_empty_body)) }
-        if (pending.isNotEmpty()) item { SectionLabel(stringResource(R.string.approvals_waiting)) }
+        if (pending.isEmpty() && recent.isEmpty() && codeWaiting.isEmpty()) item { EmptyState(Icons.Outlined.Shield, stringResource(R.string.approvals_empty_title), stringResource(R.string.approvals_empty_body)) }
+        if (pending.isNotEmpty() || codeWaiting.isNotEmpty()) item { SectionLabel(stringResource(R.string.approvals_waiting)) }
         items(pending, key = { it.id }) { approval ->
             Column(Modifier.padding(horizontal = DotSpacing.l, vertical = DotSpacing.xs)) {
                 val agent = ui.agents.firstOrNull { it.id == approval.agentId }
                 Text(listOfNotNull(agent?.let { agentDisplayName(it) }, formatWhen(approval.createdAt).ifBlank { null }).joinToString(" · "), style = Dot.type.caption, color = Dot.colors.textTertiary, modifier = Modifier.padding(start = DotSpacing.xs, bottom = DotSpacing.xs))
                 ApprovalCard(approval.id, null, env, approval = approval)
             }
+        }
+        items(codeWaiting, key = { it.id }) { task ->
+            ListRow(task.title, subtitle = "OpenCode · " + codeActivityStatusLabel(task.codeStatus(ui.connected && ui.tasksReady)), onClick = { onOpenCode(task.id) })
         }
         if (recent.isNotEmpty()) item { SectionLabel(stringResource(R.string.approvals_recent), Modifier.padding(top = DotSpacing.l)) }
         items(recent, key = { it.id }) { approval ->

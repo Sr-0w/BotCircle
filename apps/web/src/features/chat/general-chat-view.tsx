@@ -1,5 +1,6 @@
 import { useMessageFocus } from '@/lib/search-focus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CodeActivityCapsule } from '../code/code-activity';
 import { FloatingComposer } from '@/components/floating-composer';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
@@ -159,6 +160,7 @@ function Inner({ chat: info, initial, onEphemeral }: { chat: ChatDTO; initial: O
           <ConversationScrollButton className="bottom-[calc(var(--composer-h,6rem)+0.75rem)] z-20" />
         </Conversation>
         <FloatingComposer><div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-6 sm:pb-5">
+          <CodeActivityCapsule key={info.id} conversationId={info.id} />
           <Composer
             busy={busy}
             autoFocus

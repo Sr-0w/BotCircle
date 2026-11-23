@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,9 +60,9 @@ import java.time.ZoneId
  * first, grouped by day. Who started it is always visible: you, or a Circle.
  */
 @Composable
-fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, onOpenInstances: () -> Unit, onNew: () -> Unit) {
+fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, onOpenInstances: () -> Unit, onNew: () -> Unit, screenVisible: Boolean = true) {
     var filter by rememberSaveable { mutableStateOf("all") }
-    val sessions = remember(ui.tasks) { ui.tasks.values.filter { it.isCode }.sortedByDescending { it.createdAt } }
+    val sessions = remember(ui.tasks) { canonicalCodeTasks(ui.tasks.values) }
     val shown = remember(sessions, filter) {
         when (filter) {
             "mine" -> sessions.filter { it.requestedBy == "user" }
@@ -78,8 +80,16 @@ fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, on
     // Sessions started in OpenCode itself on a connected machine, not yet opened here.
     var machines by remember { mutableStateOf<List<OpencodeMachineSessions>?>(null) }
     LaunchedEffect(Unit) { machines = runCatching { app.client.opencodeSessions() }.getOrNull() }
-    val outside = remember(machines) { machines.orEmpty().flatMap { m -> m.sessions.filter { it.taskId == null }.map { m to it } } }
-    QuietPage(stringResource(R.string.code), onBack = null, inTabs = true, actions = { DotIconButton(Icons.Outlined.Add, stringResource(R.string.code_new), onClick = onNew) }) {
+    val outside = remember(machines, sessions) {
+        val known = sessions.map { it.codeSessionKey() }.toSet()
+        machines.orEmpty().flatMap { machine ->
+            machine.sessions.filter { it.taskId == null && (machine.instanceId to it.id) !in known }.map { machine to it }
+        }
+    }
+    val allowMotion = rememberCodeMotionAllowed(screenVisible)
+    val synchronized = ui.connected && ui.tasksReady
+    val listState = rememberLazyListState()
+    QuietPage(stringResource(R.string.code), onBack = null, inTabs = true, listState = listState, actions = { DotIconButton(Icons.Outlined.Add, stringResource(R.string.code_new), onClick = onNew) }) {
         if (sessions.isEmpty() && outside.isEmpty()) {
             item {
                 EmptyState(Icons.Outlined.Code, stringResource(R.string.code_empty_title), stringResource(R.string.code_empty_body)) {
@@ -98,7 +108,8 @@ fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, on
         groups.forEach { (group, list) ->
             item(key = "g$group") { SectionLabel(stringResource(listOf(R.string.today, R.string.yesterday, R.string.earlier)[group]), Modifier.padding(top = DotSpacing.l)) }
             items(list, key = { it.id }) { task ->
-                CodeSessionRow(task, ui, onOpen = { onOpen(task.id) })
+                val onScreen by remember(listState, task.id) { derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.key == task.id } } }
+                CodeSessionRow(task, ui, synchronized = synchronized, animate = allowMotion && onScreen, onOpen = { onOpen(task.id) })
                 Hairline(inset = DotSpacing.gutter)
             }
         }
@@ -130,7 +141,9 @@ fun CodeSessionsPage(app: AppState, ui: AppUiState, onOpen: (String) -> Unit, on
 }
 
 @Composable
-private fun CodeSessionRow(task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
+private fun CodeSessionRow(task: BgTask, ui: AppUiState, synchronized: Boolean, animate: Boolean, onOpen: () -> Unit) {
+    val status = task.codeStatus(synchronized)
+    val pulse = rememberCodePulse(status == "running" && !task.external?.sessionId.isNullOrBlank() && animate)
     val c = Dot.colors
     val circle = if (task.requestedBy == "agent") ui.agents.firstOrNull { it.id == task.agentId } else null
     val by = when {
@@ -144,22 +157,32 @@ private fun CodeSessionRow(task: BgTask, ui: AppUiState, onOpen: () -> Unit) {
         Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button, onClick = onOpen).padding(horizontal = DotSpacing.gutter, vertical = DotSpacing.m).testTag("code-session"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OpencodeLogo(width = 18.dp)
+        CodeActivityLogo(pulse, 18.dp)
         Spacer(Modifier.width(DotSpacing.l))
         Column(Modifier.weight(1f)) {
             Text(task.title.ifBlank { task.instruction }, style = Dot.type.body, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                 if (circle != null) { CompanionOrb(circle, size = 14.dp); Spacer(Modifier.width(DotSpacing.xs)) }
                 Text(
-                    listOfNotNull(by, task.external?.project, taskStatusLabel(task.status), formatWhen(task.createdAt).ifBlank { null }).joinToString(" · "),
+                    listOfNotNull(by, task.external?.project, formatWhen(task.createdAt).ifBlank { null }).joinToString(" · "),
                     style = Dot.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        Spacer(Modifier.width(DotSpacing.s))
+        CodeRowStatus(status, pulse)
         if (changes != null) {
             Spacer(Modifier.width(DotSpacing.s))
             Text("+${changes.additions}", style = Dot.type.caption, color = c.success)
             Text(" −${changes.deletions}", style = Dot.type.caption, color = c.danger)
         }
+    }
+}
+
+@Composable
+private fun CodeRowStatus(status: String, pulse: androidx.compose.runtime.State<Float>?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(codeActivityStatusLabel(status), style = Dot.type.caption, color = Dot.colors.textSecondary, maxLines = 1)
+        if (status == "running") CodeActivityIndicator(pulse)
     }
 }

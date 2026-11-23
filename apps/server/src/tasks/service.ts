@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
-import type { TaskDTO, TaskEventDTO, TaskStatus } from '@opendots/shared';
+import type { TaskDTO, TaskEventDTO, TaskProviderName, TaskStatus } from '@opendots/shared';
 import type { ModelConfig } from '@opendots/shared';
 import { ACTIVE_TASK_STATUSES } from '@opendots/shared';
 import { db, schema } from '../db/client.ts';
@@ -68,12 +68,14 @@ export async function getTask(id: string): Promise<TaskRow | null> {
   return row ?? null;
 }
 
-export async function listTasks(filter: { agentId?: string; conversationId?: string; active?: boolean; limit?: number } = {}): Promise<TaskRow[]> {
+export async function listTasks(filter: { agentId?: string; conversationId?: string; active?: boolean; provider?: TaskProviderName; limit?: number | null } = {}): Promise<TaskRow[]> {
   const where = [];
   if (filter.agentId) where.push(eq(schema.tasks.agentId, filter.agentId));
   if (filter.conversationId) where.push(eq(schema.tasks.conversationId, filter.conversationId));
+  if (filter.provider) where.push(eq(schema.tasks.provider, filter.provider));
   if (filter.active) where.push(inArray(schema.tasks.status, ACTIVE_TASK_STATUSES));
-  return db().select().from(schema.tasks).where(where.length ? and(...where) : undefined).orderBy(desc(schema.tasks.createdAt)).limit(filter.limit ?? 50);
+  const query = db().select().from(schema.tasks).where(where.length ? and(...where) : undefined).orderBy(desc(schema.tasks.createdAt));
+  return filter.limit === null ? query : query.limit(filter.limit ?? 50);
 }
 
 export async function taskEvents(taskId: string, limit = 200): Promise<TaskEventDTO[]> {

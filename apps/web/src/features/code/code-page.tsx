@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { ACTIVE_TASK_STATUSES, type OpencodeInstanceDTO, type TaskDTO } from '@opendots/shared';
+import { type OpencodeInstanceDTO, type TaskDTO } from '@opendots/shared';
 import { CheckIcon, LoaderIcon, PlusIcon, SearchIcon, ServerIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OpencodeLogo } from '@/components/brand/opencode-logo';
@@ -8,7 +8,9 @@ import { api } from '@/lib/api';
 import { useServerEvent, useStore } from '@/lib/store';
 import { t } from '@/lib/i18n';
 import { cn, relativeTime } from '@/lib/utils';
-import { CODE_STATUS } from '../chat/attachments';
+import { codeStatusLabel } from './code-activity';
+import { canonicalCodeTasks, codeStatus } from './code-activity-state';
+import { CodeActivityDots, CodeMotion } from './code-motion';
 
 import type { CodeFilter as Filter } from './code-live';
 
@@ -32,6 +34,7 @@ const GROUPS = ['Aujourd’hui', 'Hier', 'Plus tôt'] as const;
  */
 export function CodePage({ onOpen, filter, onFilter }: { onOpen: (taskId: string) => void; filter: Filter; onFilter: (f: Filter) => void }) {
   const tasks = useStore((s) => s.tasks), agents = useStore((s) => s.agents);
+  const synchronized = useStore((s) => s.connected && s.tasksReady);
   const [instances, setInstances] = useState<OpencodeInstanceDTO[] | null>(null);
   const [machines, setMachines] = useState<MachineSessions[] | null>(null);
   const [instanceId, setInstanceId] = useState(''), [projects, setProjects] = useState<string[]>([]), [directory, setDirectory] = useState('');
@@ -63,8 +66,7 @@ export function CodePage({ onOpen, filter, onFilter }: { onOpen: (taskId: string
   const matches = (...parts: (string | null | undefined)[]) => !q || parts.filter(Boolean).join(' ').toLowerCase().includes(q);
 
   // One logical session = one row: tasks are canonical; an OpenCode session already linked to a task is not repeated.
-  const sessions = useMemo(() => tasks
-    .filter((task) => task.provider === 'opencode')
+  const sessions = useMemo(() => canonicalCodeTasks(tasks)
     // Same taxonomy as Android's Code tab (CodeSessions.kt): Mine = started by you, Circles = delegated by a Circle.
     .filter((task) => filter === 'all' || (filter === 'mine' ? task.requestedBy === 'user' : task.requestedBy === 'agent'))
     .filter((task) => matches(task.title, task.external?.instanceName, task.external?.directory, origin(task)))
@@ -155,7 +157,7 @@ export function CodePage({ onOpen, filter, onFilter }: { onOpen: (taskId: string
           <section key={index} aria-label={t(GROUPS[index])}>
             <h2 className="px-1 pb-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wider">{t(GROUPS[index])}</h2>
             <div className="divide-y rounded-2xl border">
-              {list.map((task) => <SessionRow key={task.id} task={task} origin={origin(task)} onOpen={() => onOpen(task.id)} />)}
+              {list.map((task) => <SessionRow key={task.id} task={task} synchronized={synchronized} origin={origin(task)} onOpen={() => onOpen(task.id)} />)}
             </div>
           </section>
         ))}
@@ -172,7 +174,7 @@ export function CodePage({ onOpen, filter, onFilter }: { onOpen: (taskId: string
                     <span className="block truncate text-sm">{session.title || t('Session sans titre')}</span>
                     <span className="block truncate text-muted-foreground text-xs">{[t('Depuis OpenCode'), machine.instanceName, folder(session.directory), relativeTime(new Date(session.updatedAt).toISOString())].filter(Boolean).join(' · ')}</span>
                   </span>
-                  {session.busy && <StatusPill running label={t('En cours')} />}
+                  {synchronized && session.busy && machine.reachable && <StatusPill label={t('En cours')} />}
                 </button>
               ))}
             </div>
@@ -186,21 +188,21 @@ export function CodePage({ onOpen, filter, onFilter }: { onOpen: (taskId: string
 function StatusPill({ label, running, tone }: { label: string; running?: boolean; tone?: 'danger' | 'muted' }) {
   return (
     <span className={cn('flex shrink-0 items-center gap-1.5 text-xs', tone === 'danger' ? 'text-destructive' : 'text-muted-foreground')} data-code-status={label}>
-      {running && <span className="relative flex size-1.5"><span className="absolute inline-flex size-full animate-ping rounded-full bg-success/60 motion-reduce:animate-none" /><span className="relative inline-flex size-1.5 rounded-full bg-success" /></span>}
-      {label}
+      {label}{running && <CodeActivityDots />}
     </span>
   );
 }
 
-function SessionRow({ task, origin, onOpen }: { task: TaskDTO; origin: string; onOpen: () => void }) {
-  const disconnected = Boolean(task.external?.unreachable) && ACTIVE_TASK_STATUSES.includes(task.status);
-  const status = disconnected ? t('Déconnecté') : t(CODE_STATUS[task.status]);
+function SessionRow({ task, synchronized, origin, onOpen }: { task: TaskDTO; synchronized: boolean; origin: string; onOpen: () => void }) {
+  const status = codeStatusLabel(task, synchronized);
+  const current = codeStatus(task, synchronized);
+  const running = current === 'running' && Boolean(task.external?.sessionId);
   const changes = task.external?.changes;
   return (
     <button type="button" onClick={onOpen} data-code-session={task.id} data-code-origin={task.requestedBy}
       aria-label={[task.title, origin, status].join(', ')}
       className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring">
-      <OpencodeLogo size={16} />
+      <CodeMotion running={running} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{task.title}</span>
         <span className="block truncate text-muted-foreground text-xs">{[origin, task.external?.instanceName, folder(task.external?.directory), relativeTime(task.startedAt ?? task.createdAt)].filter(Boolean).join(' · ')}</span>
@@ -208,9 +210,9 @@ function SessionRow({ task, origin, onOpen }: { task: TaskDTO; origin: string; o
       {changes && changes.files > 0 && (changes.additions > 0 || changes.deletions > 0) && (
         <span className="shrink-0 text-xs"><span className="text-success">+{changes.additions}</span> <span className="text-destructive">−{changes.deletions}</span></span>
       )}
-      {task.status === 'completed' && !disconnected
+      {current === 'completed'
         ? <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs" data-code-status={status}><CheckIcon className="size-3" />{status}</span>
-        : <StatusPill label={status} running={task.status === 'running' && !disconnected} tone={task.status === 'failed' || task.status === 'waiting_for_user' || disconnected ? 'danger' : 'muted'} />}
+        : <StatusPill label={status} running={running} tone={task.status === 'failed' || task.status === 'waiting_for_user' || current === 'disconnected' ? 'danger' : 'muted'} />}
     </button>
   );
 }

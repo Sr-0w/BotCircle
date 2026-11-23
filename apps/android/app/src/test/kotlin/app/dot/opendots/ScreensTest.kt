@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.assertCountEquals
 import coil3.imageDecoderEnabled
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.hasText
@@ -922,6 +923,21 @@ class ScreensTest {
         assertEquals(offset, current.boundsInRoot.top, 1f)
         compose.onNodeWithContentDescription("Scroll to latest message").performClick()
         waitFor(reply)
+    }
+
+    @Test fun codeCapsuleOpensCanonicalWorkspaceAndKeepsChatDraft() {
+        launch(ThemeMode.DARK)
+        waitFor("I drafted the reply")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("code-activity-capsule").fetchSemanticsNodes().size == 1 }
+        val composer = androidx.compose.ui.test.hasSetTextAction()
+        compose.onAllNodes(composer)[0].performTextInput("Draft before Code")
+        compose.onNodeWithText("Refactor the settings").performClick()
+        waitFor("View in Code")
+        compose.onNodeWithText("View in Code").performClick()
+        waitFor("Grouping the provider settings.")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Draft before Code")
+        compose.onAllNodesWithTag("code-activity-capsule").assertCountEquals(1)
     }
 
     @Test fun anOpenCodeTaskOpensItsOwnLiveSession() {

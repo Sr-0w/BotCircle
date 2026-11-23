@@ -826,4 +826,12 @@
         <item quantity="one">Worked for %d s</item>
         <item quantity="other">Worked for %d s</item>
     </plurals>
+    <string name="code_activity_title">OpenCode activity</string>
+    <string name="code_activity_view">View in Code</string>
+    <string name="code_activity_quota">Usage limit</string>
+    <string name="code_activity_unknown">Unknown status</string>
+    <string name="code_activity_mixed">%1$d running · %2$s</string>
+    <plurals name="code_activity_running"><item quantity="one">%d running</item><item quantity="other">%d running</item></plurals>
+    <string name="code_activity_attention">Action required</string>
+    <string name="code_activity_question">Answer needed</string>
 </resources>
