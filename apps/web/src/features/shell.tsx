@@ -16,7 +16,8 @@ import { CodeXmlIcon, GhostIcon, ArchiveIcon, ArchiveRestoreIcon, TextSearchIcon
 import { AGENT_STATE_LABELS, type AgentDTO, type ChatDTO, type ModelConfig } from "@opendots/shared";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { GeneralChatView } from "./chat/general-chat-view";
+import { GeneralChatView, type DraftChat } from "./chat/general-chat-view";
+import { onNewChatRequested, openNewChat } from "@/lib/new-chat";
 import { ChatPanel } from "./panels/chat-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -40,6 +41,8 @@ import { useLiveCodeSessions, type CodeFilter } from "./code/code-live";
 const DialogHost = lazy(() => import("./dialogs/dialog-host").then((m) => ({ default: m.DialogHost })));
 
 type Route = { view: "agent"; id: string | null } | { view: "chat"; id: string } | { view: "settings"; section: SettingsSection; index?: boolean } | { view: "ephemeral" }
+  /** A new chat not created yet (it is, on its first message): nothing on the server, nothing in the list. */
+  | { view: "draft" }
   /** #72: Code, a first-class destination; `id` = the exact coding session (task id), stable and linkable. */
   | { view: "code"; id: string | null };
 const LEGACY_PAGES = ['team', 'tasks', 'skills', 'connectors', 'computer', 'approvals'];
@@ -47,6 +50,7 @@ function parseHash(): Route {
   // #64: a notification can add "?m=<message>" (open at that message); the route itself ignores it.
   const h = window.location.hash.replace(/^#\/?/, "").replace(/\?.*$/, "");
   if (h === 'chat/ephemeral') return { view: 'ephemeral' };
+  if (h === 'chat/new') return { view: 'draft' };
   if (h === 'code') return { view: 'code', id: null };
   const code = /^code\/(.+)$/.exec(h);
   if (code) return { view: 'code', id: decodeURIComponent(code[1]) };
@@ -63,7 +67,10 @@ function parseHash(): Route {
 function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => { const on = () => setRoute(parseHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
-  return [route, next => { window.location.hash = next.view === 'code' ? (next.id ? `/code/${encodeURIComponent(next.id)}` : '/code') : next.view === 'ephemeral' ? '/chat/ephemeral' : next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`; }];
+  return [route, next => { window.location.hash = routeHash(next); }];
+}
+function routeHash(next: Route): string {
+  return next.view === 'code' ? (next.id ? `/code/${encodeURIComponent(next.id)}` : '/code') : next.view === 'ephemeral' ? '/chat/ephemeral' : next.view === 'draft' ? '/chat/new' : next.view === 'agent' ? `/agent/${next.id}` : next.view === 'chat' ? `/chat/${next.id}` : next.index ? '/settings' : `/settings/${next.section}`;
 }
 
 const BUSY = ["thinking", "working", "collaborating", "awake"];
@@ -131,7 +138,8 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
-  const newChat = () => void api.createChat().then((chat) => { setStoreChats([chat, ...chats.filter((c) => c.id !== chat.id)]); go({ view: "chat", id: chat.id }); }).catch((e) => toast.error(e.message));
+  // A draft: the chat is created on the server only when its first message is sent.
+  const newChat = () => openNewChat();
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
@@ -320,8 +328,8 @@ export function Shell() {
     else { setCodeTask(null); go({ view: 'code', id: taskId }); setNavOpen(false); }
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
   // #72: going to Code keeps the last conversation mounted (hidden), so its draft and scroll position survive.
-  const [lastConversation, setLastConversation] = useState<Route | null>(route.view === 'agent' || route.view === 'chat' ? route : null);
-  useEffect(() => { if (route.view === 'agent' || route.view === 'chat') setLastConversation(route); else if (route.view !== 'code') setLastConversation(null); }, [route]);
+  const [lastConversation, setLastConversation] = useState<Route | null>(route.view === 'agent' || route.view === 'chat' || route.view === 'draft' ? route : null);
+  useEffect(() => { if (route.view === 'agent' || route.view === 'chat' || route.view === 'draft') setLastConversation(route); else if (route.view !== 'code') setLastConversation(null); }, [route]);
   useEffect(() => { if (route.view === 'code') setCodeTask(null); }, [route.view]);
   const inCode = route.view === 'code';
   const shown: Route = inCode ? lastConversation ?? route : route;
@@ -334,9 +342,11 @@ export function Shell() {
     return agents.find((a) => a.id === shown.id) ?? agents[0] ?? null;
   }, [agents, shown]);
 
+  // The draft new chat (no server chat yet) and the chat it became on its first message, shown by the same view.
+  const [draft, setDraft] = useState<DraftChat>({ key: 0 });
   const chats = useStore((s) => s.chats);
   const archived = useStore((s) => s.archivedChats);
-  const currentChat = shown.view === "chat" ? chats.find((chat) => chat.id === shown.id) ?? archived.find((chat) => chat.id === shown.id) ?? null : null;
+  const currentChat = shown.view === "chat" ? chats.find((chat) => chat.id === shown.id) ?? archived.find((chat) => chat.id === shown.id) ?? (draft.born?.id === shown.id ? draft.born : null) : null;
   // Chat supprimé (ici ou ailleurs) : retour aux compagnons.
   const chatsLoaded = useStore((s) => s.connected);
   useEffect(() => {
@@ -356,21 +366,26 @@ export function Shell() {
     setNavOpen(false);
   };
 
-  // #57: a new chat can become ephemeral (never saved, never listed). The empty durable chat that "new chat"
-  // created is deleted and dropped from the list first; switching back creates a fresh one.
-  const [ephemeralModel, setEphemeralModel] = useState<ModelConfig | null>(null);
-  const enterEphemeral = async (chat: ChatDTO) => {
-    try {
-      await api.deleteChat(chat.id);
-      setStoreChats(getState().chats.filter((c) => c.id !== chat.id));
-      setEphemeralModel(chat.effectiveModel);
-      navigate({ view: 'ephemeral' });
-    } catch (e) { toast.error((e as Error).message); }
-  };
-  const leaveEphemeral = () => void api.createChat().then((chat) => {
+  // New chat = a fresh draft. Nothing is created on the server until its first message.
+  useEffect(() => onNewChatRequested((seed) => { setDraft((d) => ({ key: d.key + 1, seed })); navigate({ view: 'draft' }); }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Leaving the chat a draft became ends that link: coming back loads it like any chat, a later draft starts fresh.
+  useEffect(() => {
+    setDraft((d) => (d.born && route.view !== 'code' && !(route.view === 'chat' && route.id === d.born.id) ? { key: d.key + 1 } : d));
+  }, [route]);
+  // First message of the draft: the chat now exists; it joins the list and the route follows it (same history
+  // entry: Back does not return to an empty draft), the view stays mounted so the answer keeps streaming.
+  const draftBorn = (chat: ChatDTO) => {
     setStoreChats([chat, ...getState().chats.filter((c) => c.id !== chat.id)]);
-    navigate({ view: 'chat', id: chat.id });
-  }).catch((e) => toast.error(e.message));
+    setDraft((d) => ({ ...d, born: chat }));
+    window.history.replaceState(null, '', `#${routeHash({ view: 'chat', id: chat.id })}`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  };
+
+  // #57: a draft can become ephemeral (never saved, never listed): there is nothing to delete; switching back
+  // opens a fresh draft.
+  const [ephemeralModel, setEphemeralModel] = useState<ModelConfig | null>(null);
+  const enterEphemeral = (model: ModelConfig) => { setEphemeralModel(model); navigate({ view: 'ephemeral' }); };
+  const leaveEphemeral = () => openNewChat();
 
   const sidebar = <Sidebar route={route} go={navigate} />;
 
@@ -398,6 +413,11 @@ export function Shell() {
             </>
           ) : route.view === "settings" ? (
             <span className="font-medium">{t("Paramètres")}</span>
+          ) : route.view === "draft" ? (
+            <>
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-3.5 text-muted-foreground" /></span>
+              <p className="truncate font-medium text-sm" data-draft-chat-title>{t("Nouveau chat")}</p>
+            </>
           ) : route.view === "chat" ? (
             currentChat && <>
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"><MessagesSquareIcon className="size-3.5 text-muted-foreground" /></span>
@@ -457,19 +477,20 @@ export function Shell() {
           {shown.view === 'code' ? null : shown.view === 'ephemeral' ? (
             <EphemeralChatView initialModel={ephemeralModel} onNormalChat={leaveEphemeral} />
           ) : shown.view === 'settings' ? (
-            <SettingsPage section={shown.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : shown.view === 'chat' ? (
-            currentChat && <>
+            <SettingsPage section={shown.section} onSectionChange={section => navigate({ view: 'settings', section })} />          ) : shown.view === 'chat' || shown.view === 'draft' ? (
+            // One branch for the draft and for chats, so the draft's view survives becoming its chat (no remount).
+            (shown.view === 'draft' || currentChat) && <>
               <div className="flex min-w-0 flex-1 flex-col">
-                {currentChat.archived && (
+                {currentChat?.archived && (
                   <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs" role="status" data-archived-banner>
                     <ArchiveIcon className="size-3.5 text-muted-foreground" /><span className="flex-1">{t("Chat archivé : il n’apparaît plus dans la liste. Écrire ici le restaure.")}</span>
                     <Button size="sm" variant="secondary" className="h-7" onClick={() => void restoreConversation({ kind: "chat", id: currentChat.id, title: currentChat.title })}>{t("Restaurer")}</Button>
                   </div>
                 )}
-                {threadSearch && <ThreadSearchBar key={currentChat.id} conversationId={currentChat.id} onClose={() => setThreadSearch(false)} />}
-                <GeneralChatView chat={currentChat} onEphemeral={enterEphemeral} />
+                {threadSearch && currentChat && <ThreadSearchBar key={currentChat.id} conversationId={currentChat.id} onClose={() => setThreadSearch(false)} />}
+                <GeneralChatView chat={currentChat} draft={draft} onBorn={draftBorn} onEphemeral={enterEphemeral} />
               </div>
-              {panelOpen && !codeTask && (
+              {panelOpen && !codeTask && currentChat && (
                 <ResizablePanel panel="chat" className="hidden border-l lg:block">
                   <ChatPanel chat={currentChat} onDeleted={() => navigate({ view: "agent", id: agents[0]?.id ?? null })} />
                 </ResizablePanel>
