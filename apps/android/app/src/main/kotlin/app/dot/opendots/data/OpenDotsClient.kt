@@ -17,6 +17,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.Call
 import okhttp3.Callback
@@ -125,15 +127,27 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
     override suspend fun deleteTemporaryChat(id: String) { json("DELETE", temporaryPath(id)) }
     override suspend fun stopTemporaryChat(id: String) { json("POST", "${temporaryPath(id)}/stop") }
 
-    override fun temporaryTurn(id: String, text: String, model: ModelConfig): Flow<TemporaryEvent> = callbackFlow {
+    /** A 400/413 carries the server's own limit message (attachments too many or too large): it is shown as is. Anything else stays generic. */
+    private fun rejectionMessage(code: Int, body: () -> String): String? {
+        if (code != 400 && code != 413) return null
+        return runCatching { OdJson.parseToJsonElement(body()).asObject()?.str("error") }.getOrNull()?.takeIf { it.isNotBlank() }?.take(300)
+    }
+
+    override fun temporaryTurn(id: String, text: String, model: ModelConfig, attachments: List<TemporaryAttachment>): Flow<TemporaryEvent> = callbackFlow {
         require(model.provider in setOf("openrouter", "ollama") && model.model.isNotBlank())
-        require(text.isNotBlank() && text.length <= 16_000)
-        // Explicit schema: do not accidentally send providerOrder, attachments, tools or mentions.
+        require((text.isNotBlank() || attachments.isNotEmpty()) && text.length <= 16_000)
+        require(attachments.size <= TEMPORARY_MAX_ATTACHMENTS)
+        // Explicit schema: do not accidentally send providerOrder, tools or mentions. Attachment bytes are base64 (no data: prefix).
         val body = buildJsonObject {
             put("text", text)
             putJsonObject("model") {
                 put("provider", model.provider); put("model", model.model)
                 model.reasoning?.let { put("reasoning", it) }
+            }
+            if (attachments.isNotEmpty()) putJsonArray("attachments") {
+                attachments.forEach { a ->
+                    addJsonObject { put("name", a.name); put("mediaType", a.mediaType); put("data", okio.ByteString.of(*a.data).base64()) }
+                }
             }
         }.toString().toRequestBody(JSON)
         val call = streaming.newCall(Request.Builder().url(url("${temporaryPath(id)}/turn"))
@@ -141,13 +155,13 @@ class OpenDotsClient(private val store: SessionStore, baseClient: OkHttpClient =
         val worker = Thread {
             try {
                 call.execute().use { response ->
-                    if (!response.isSuccessful) throw ApiException("Temporary request failed", response.code)
+                    if (!response.isSuccessful) throw ApiException(rejectionMessage(response.code) { response.peekBody(4_000).string() } ?: "Temporary request failed", response.code)
                     readTemporaryEvents(response.body.source()) { trySendBlocking(it).getOrThrow() }
                 }
                 close()
             } catch (e: Exception) {
                 // SDK, proxy and parse errors may embed input/output; never forward their diagnostics.
-                close(ApiException("Temporary stream interrupted", (e as? ApiException)?.status ?: 0))
+                close(if (e is ApiException && e.status in setOf(400, 413)) e else ApiException("Temporary stream interrupted", (e as? ApiException)?.status ?: 0))
             }
         }
         worker.isDaemon = true

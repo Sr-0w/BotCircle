@@ -59,7 +59,12 @@ private val PROVIDER_NAMES = mapOf("openrouter" to "OpenRouter", "ollama" to "Ol
  * top of every picker, on every device (an account setting). [onDefault] offers to go back to the default model.
  */
 @Composable
-fun ModelSheet(app: AppState, current: ModelConfig, onDismiss: () -> Unit, onDefault: (() -> Unit)? = null, onPick: (ModelInfo) -> Unit) {
+fun ModelSheet(
+    app: AppState, current: ModelConfig, onDismiss: () -> Unit, onDefault: (() -> Unit)? = null,
+    /** Providers shown but not selectable (an ephemeral chat cannot use Codex): [onUnavailable] says why when one is tapped. */
+    unavailable: Set<String> = emptySet(), onUnavailable: () -> Unit = {},
+    onPick: (ModelInfo) -> Unit,
+) {
     val c = Dot.colors
     var data by remember { mutableStateOf<AvailableModels?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -101,9 +106,11 @@ fun ModelSheet(app: AppState, current: ModelConfig, onDismiss: () -> Unit, onDef
                         item(key = "h-$title") { Text(title.uppercase(), style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = DotSpacing.gutter).padding(top = DotSpacing.m, bottom = DotSpacing.xs)) }
                         items(list, key = { "$title/${it.provider}/${it.id}" }) { m ->
                             val fav = fav(m)
-                            Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onPick(m) }.heightIn(min = 48.dp).padding(start = DotSpacing.gutter, end = DotSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
-                                Text(m.name.ifBlank { m.id }, style = Dot.type.body, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            val off = m.provider in unavailable
+                            Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { if (off) onUnavailable() else onPick(m) }.heightIn(min = 48.dp).padding(start = DotSpacing.gutter, end = DotSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                                Text(m.name.ifBlank { m.id }, style = Dot.type.body, color = if (off) c.textTertiary else c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 if (title == favoritesTitle) Text(PROVIDER_NAMES[m.provider] ?: m.provider, style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.padding(start = DotSpacing.s))
+                                if (off) Text(stringResource(R.string.ephemeral_model_off), style = Dot.type.caption, color = c.textTertiary, modifier = Modifier.padding(start = DotSpacing.s))
                                 if (m.vision) Icon(Icons.Outlined.Visibility, stringResource(R.string.code_reads_images), Modifier.padding(start = DotSpacing.s).size(15.dp), tint = c.textTertiary)
                                 if (m.reasoning) Icon(Icons.Outlined.Psychology, stringResource(R.string.reasoning), Modifier.padding(start = DotSpacing.s).size(15.dp), tint = c.textTertiary)
                                 if (current.provider == m.provider && current.model == m.id) Icon(Icons.Outlined.Check, null, Modifier.padding(start = DotSpacing.s).size(18.dp), tint = c.accent)

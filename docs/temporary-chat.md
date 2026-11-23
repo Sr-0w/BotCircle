@@ -3,6 +3,7 @@
 ## Delivery status
 
 This is a restricted **Web + backend first increment**, not completion of #57.
+<<<<<<< HEAD
 
 ### Web UX (ephemeral mode of a new chat)
 
@@ -32,9 +33,9 @@ Ephemeral chat is a **mode of a new, empty general chat**, not a separate page:
   ephemeral chat triggers the browser's `beforeunload` warning. A stopped or
   failed turn is not kept by the server and is dropped from the view as well.
 
-Native Android now has a dedicated
-temporary page and session implementation, compiled and tested with JUnit,
-Compose and emulator startup in GitHub Actions (see `apps/android/README.md`).
+Native Android reaches it the same way: as the ephemeral mode of a new chat (an
+icon on an empty chat, same chat screen, attachments with the same limits; see
+`apps/android/README.md`), not as a separate page.
 Testing on a physical phone and with live providers remains manual.
 Existing Circle history is unchanged. Circle temporary conversations remain
 deliberately unsupported.
@@ -144,8 +145,9 @@ external data); other binaries are mentioned by name/type only.
 
 SSE events: `delta` (JSON string), `done`, `stopped`, `failure` (fixed JSON string).
 Concurrent sends return 409. Expired, discarded or inaccessible sessions return
-404, never fall back to a normal conversation. The native Android temporary page
-uses this same contract, including named SSE events and cancellation.
+404, never fall back to a normal conversation. The native Android ephemeral chat
+uses this same contract, including named SSE events and cancellation, and polls `GET /:id`
+every 30 s while open as a heartbeat.
 
 ## Validation and remaining acceptance work
 

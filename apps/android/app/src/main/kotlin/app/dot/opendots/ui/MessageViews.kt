@@ -139,6 +139,10 @@ class MessageEnv(
     val onEdit: ((messageId: String, text: String) -> Unit)? = null,
     /** General chats: a new answer to the latest message. */
     val onRegenerate: (() -> Unit)? = null,
+    /** Reactions and replies need a saved message: an ephemeral chat (#57) has neither, so they are not offered. */
+    val interactive: Boolean = true,
+    /** Images in a reply are fetched from their address; an ephemeral chat shows their text instead (no remote side effect). */
+    val remoteMedia: Boolean = true,
 )
 
 @Composable
@@ -241,7 +245,10 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
                                 if (bubble.key == firstText) message.meta.replyTo?.let { ReplyQuote(it, env) }
                                 DotMarkdown(
                                     bubble.text, onCopyCode = env.onCopy, resolveUrl = env.resolveUrl,
-                                    image = { url, alt -> AttachedImage(Part.File(url, "image/*", alt.ifBlank { null }), env) },
+                                    image = { url, alt ->
+                                        if (env.remoteMedia) AttachedImage(Part.File(url, "image/*", alt.ifBlank { null }), env)
+                                        else Text(alt.ifBlank { url }, style = Dot.type.caption, color = Dot.colors.textSecondary)
+                                    },
                                 )
                             }
                             is Bubble.Image -> AttachedImage(bubble.file, env)
@@ -263,8 +270,10 @@ private fun AssistantMessage(message: ChatMessage, env: MessageEnv, streaming: B
             Row(Modifier.padding(start = 0.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
                 val tint = Dot.colors.textTertiary
                 DotIconButton(Icons.Outlined.ContentCopy, stringResource(R.string.copy), onClick = { env.onCopy(turn.plainText) }, tint = tint, modifier = Modifier.size(40.dp))
-                DotIconButton(Icons.AutoMirrored.Outlined.Reply, stringResource(R.string.reply), onClick = { env.onReply(ReplyRef(message.id, turn.plainText.take(180), "assistant")) }, tint = tint, modifier = Modifier.size(40.dp))
-                DotIconButton(Icons.Outlined.AddReaction, stringResource(R.string.react), onClick = { menu = true }, tint = tint, modifier = Modifier.size(40.dp))
+                if (env.interactive) {
+                    DotIconButton(Icons.AutoMirrored.Outlined.Reply, stringResource(R.string.reply), onClick = { env.onReply(ReplyRef(message.id, turn.plainText.take(180), "assistant")) }, tint = tint, modifier = Modifier.size(40.dp))
+                    DotIconButton(Icons.Outlined.AddReaction, stringResource(R.string.react), onClick = { menu = true }, tint = tint, modifier = Modifier.size(40.dp))
+                }
                 env.onRegenerate?.takeIf { message.meta.agentId == null }?.let { DotIconButton(Icons.Outlined.Refresh, stringResource(R.string.regenerate), onClick = it, tint = tint, modifier = Modifier.size(40.dp)) }
             }
         }
@@ -468,7 +477,7 @@ private fun Reactions(messageId: String, reactions: List<Reaction>, env: Message
 @Composable
 private fun MessageMenu(expanded: Boolean, onDismiss: () -> Unit, text: String, messageId: String, role: String, env: MessageEnv, onShowWork: (() -> Unit)? = null, onEdit: (() -> Unit)? = null, onRegenerate: (() -> Unit)? = null) {
     DotMenu(expanded, onDismiss) {
-        Row(Modifier.padding(horizontal = DotSpacing.s)) {
+        if (env.interactive) Row(Modifier.padding(horizontal = DotSpacing.s)) {
             QUICK_REACTIONS.forEach { emoji ->
                 Box(
                     Modifier.size(44.dp).clip(DotShapes.circle).clickable(role = Role.Button) { env.onReact(messageId, emoji); onDismiss() }.semantics { contentDescription = emoji },
@@ -478,7 +487,7 @@ private fun MessageMenu(expanded: Boolean, onDismiss: () -> Unit, text: String, 
         }
         if (text.isNotEmpty()) {
             DotMenuItem(stringResource(R.string.copy), Icons.Outlined.ContentCopy) { env.onCopy(text); onDismiss() }
-            DotMenuItem(stringResource(R.string.reply), Icons.AutoMirrored.Outlined.Reply) { env.onReply(ReplyRef(messageId, text.take(180), role)); onDismiss() }
+            if (env.interactive) DotMenuItem(stringResource(R.string.reply), Icons.AutoMirrored.Outlined.Reply) { env.onReply(ReplyRef(messageId, text.take(180), role)); onDismiss() }
         }
         if (onEdit != null) DotMenuItem(stringResource(R.string.edit), Icons.Outlined.Edit) { onEdit(); onDismiss() }
         if (onRegenerate != null) DotMenuItem(stringResource(R.string.regenerate), Icons.Outlined.Refresh) { onRegenerate(); onDismiss() }

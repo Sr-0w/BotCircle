@@ -63,52 +63,51 @@ Settings → Quiet UI catalog shows every token and component, plus a scrolling 
 
 The tests drive the real app against a fake BotCircle engine and write a PNG of each screen to `app/build/shots`.
 
-## Temporary general chats (#57)
+## Ephemeral chat (#57)
 
-Chats → **Temporary chat** opens a separate native page, with a persistent
-temporary/no-history header and an explanation before starting. OpenRouter and
-Ollama can be selected independently for each send. Completed turns and streaming
-text use only the temporary API; no hidden Circle or normal chat is created.
-**Start normal chat** explicitly creates a new, empty durable chat and never
-copies/converts the temporary transcript.
+A **new, empty** general chat has a discreet icon (eye-off, "Ephemeral chat") in
+its top bar. Tap it and the chat becomes ephemeral: you chat as usual, but the
+conversation is never saved and never listed. Tap it again before any message
+to go back to a normal chat. After the first message, in either mode, the icon
+is gone: there is no conversion in either direction.
 
-- Server contract: `POST /api/temporary-chats`, `GET`/`DELETE /:id`,
-  `POST /:id/turn` (`text`, `model`) and `POST /:id/stop`. The turn stream uses
-  named `delta`/`done`/`stopped`/`failure` SSE events, not the normal AI SDK stream.
-  The ordinary account cookie and client header apply; the server also scopes
-  each temporary ID to that exact login session.
+- It is the same screen as a normal chat (`EphemeralChatScreen`): same header,
+  bubbles, streaming, composer and stop. A small persistent badge says
+  "Ephemeral · not saved" and the empty state has one line: not saved, gone when
+  you leave, the provider still processes the messages, not anonymous. The model
+  is the new chat's default when it is OpenRouter/Ollama; the model sheet is the
+  normal one, with Codex shown as unavailable. The "+" attaches images and files
+  (up to 5 per turn, 10 MB each, 20 MB per turn; the server also caps a session):
+  they are read into memory, sent base64 in the turn (`attachments`), never written
+  to app storage, and drawn under the message (thumbnails from the in-memory bytes,
+  file chips); the server answers limit errors with its own message, shown as is.
+  @mentions, `/` commands, web search, replies and reactions are not offered, and
+  replies show image links as text (no automatic remote request).
+- Switching on deletes the empty normal chat that "New chat" had just created
+  (`DELETE /api/chats/:id`) and removes it from the list at once; switching back
+  creates a fresh one. The ephemeral chat itself is never in the Chats list, the
+  archive or search.
+- Server contract (unchanged): `POST /api/temporary-chats`, `GET`/`DELETE /:id`,
+  `POST /:id/turn` (`text`, `model`) and `POST /:id/stop`; named
+  `delta`/`done`/`stopped`/`failure` SSE events. OpenRouter and Ollama only.
 - Transcript, partial answer, draft, model and ID live only in the AppState
-  ViewModel's dedicated `TemporaryChatSession`. They never enter SessionStore,
-  saved instance state, normal chat/archived lists, search, uploads, global
-  message events or analytics. The navigation enum may restore the *empty page*
-  after process death, never an old transcript or ordinary conversation.
-- Back/in-app navigation and configuration changes keep the RAM session.
-  Backgrounding cancels a live turn and pauses polling. On foreground/reconnect,
-  only completed turns are fetched; sends are never replayed automatically.
-  Inspect the authoritative context before retrying after an uncertain network
-  completion. Stop targets only this temporary session.
-- Explicit **Close and forget** requires confirmation and clears local state
-  immediately, cancels inference and attempts authenticated deletion. The final
-  Android Back exit also warns if a temporary session remains. ViewModel
-  disposal, logout, an unauthorized session or changing server clears it.
-  Deletion is best effort with a five-second bound; process death, no network
-  or a lost cleanup request relies on the server's expiry.
-- Actual server retention is RAM-only: 10 minutes after creation/last accepted
-  send, at most 30 minutes from creation, with a 15-second sweep (which process
-  stalls can delay). Reads do not prolong it. Background/suspended Android
-  processes may retain stale RAM until resumed; expiry is checked on return.
-  This is logical deletion, not forensic erasure from runtime/OS memory.
-- Tools, Web search, Circle/plugin mentions, jobs, memory writes, uploads,
-  sharing, export and Codex are unavailable, just like the restricted Web mode.
-  Replies render as plain text (no automatic remote image requests). The
-  temporary page sets Android `FLAG_SECURE` for screenshots/recents and restores
-  the prior flag on leaving. OS/IME/third-party software are outside a secure
-  erasure guarantee.
-- Providers, proxies and configured remote Ollama operators can retain data under
-  their own policies. The mode is not anonymous and promises no third-party
-  zero retention. Neither upstream error bodies nor prompt fragments are shown
-  as diagnostics; the UI uses fixed localized error categories.
-
+  ViewModel's `TemporaryChatSession`. They never enter SessionStore, saved
+  instance state, chat lists, search, uploads or analytics.
+- **Leaving it erases it**: Back, another chat, tab, Circle, settings or a
+  notification, a new chat, logout, an unauthorized session or a server change
+  discard it (`DELETE`, best effort, five-second bound) and drop the local state. Leaving a
+  non-empty one shows a short "Ephemeral chat erased" snackbar; there is no
+  confirmation dialog. Configuration changes keep it.
+- **Briefly in the background it is kept** (a live reply is stopped, completed
+  turns stay); sends are never replayed. While it is open and visible the app
+  reads `GET /:id` every 30 s as a heartbeat: the server renews its 30-minute
+  idle timeout on any authenticated access. Process death or a long absence
+  relies on that expiry (the heartbeat stops), checked again on return.
+- Release builds set Android `FLAG_SECURE` on this screen (not debug builds) (screenshots/recents) and restores the
+  prior flag on leaving. Logical deletion, not forensic erasure from runtime/OS
+  memory. Providers, proxies and remote Ollama operators can retain data under
+  their own policies; the mode is not anonymous. Errors use fixed localized
+  categories, never upstream bodies or prompt fragments.
 ### Validation of this increment
 
 The server baseline `72a0811` was tested in an isolated clone on SRV03:
@@ -127,10 +126,9 @@ GitHub Actions subsequently provided the real Android build/test environment.
 ran `:app:assembleDebug`, `:app:compileReleaseKotlin` and
 `:app:testDebugUnitTest`: **58 tests passed, zero failures/errors/skips** (10
 temporary protocol/session tests, 14 protocol tests and 34 Compose screen tests).
-The temporary-chat Compose scenario opens the real native page against a mock
-HTTP engine, selects a model, streams a reply, returns after navigation, cancels
-then confirms close, and checks that normal chats remain untouched. Its screenshot
-is included in the workflow's `android-validation` artifact.
+That alpha's temporary-chat Compose scenario used the former separate page (replaced by the
+ephemeral mode above; its tests now cover the icon, the switch, streaming, leaving and
+the untouched Chats list).
 
 The same workflow installed and cold-started the APK on an **Android 36 emulator**:
 `am start -W` returned `Status: ok`, the connection screen contained `Server

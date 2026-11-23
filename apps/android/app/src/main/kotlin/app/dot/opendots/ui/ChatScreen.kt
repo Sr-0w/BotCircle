@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -167,7 +168,7 @@ private class PendingImage(val uri: Uri, val file: PickedFile? = null) {
 }
 
 @Composable
-fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}, workRequest: Int = 0) {
+fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, onOpenCompanion: () -> Unit, general: GeneralChat? = null, onOpenDesktop: (agentId: String) -> Unit = {}, onOpenCode: (taskId: String) -> Unit = {}, onOpenChat: (chatId: String) -> Unit = {}, workRequest: Int = 0, onEphemeral: (() -> Unit)? = null) {
     // A general chat reuses the whole conversation screen: [agent] then only carries its title for the header.
     val session = remember(agent.id, general != null) { app.session(if (general != null) ChatTarget.General(general.id) else ChatTarget.Companion(agent.id)) }
     LaunchedEffect(session) { session.open() }
@@ -285,6 +286,9 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
         listState.animateScrollToItem(before + index)
         flashId = id; kotlinx.coroutines.delay(1800); if (flashId == id) flashId = null
     }
+    // #57: only a chat without any message can become ephemeral (and back); after the first message the icon is gone.
+    // Not keyed on the title: the server names every new chat ("Nouveau chat") at creation.
+    val canEphemeral = general != null && !general.archived && !chat.loading && chat.loadError == null && chat.messages.isEmpty() && !chat.busy
     val atLatest by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 200 } }
 
     // Sending always brings the conversation back to the latest message.
@@ -307,7 +311,7 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
                 backdrop = backdrop,
                 header = {
                     Column {
-                        ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null, archived = general?.archived == true, menuItems = headerMenu)
+                        ChatHeader(agent, ui, chat.reconnecting, onBack, onOpenCompanion, onOpenComputer = { onOpenDesktop(agent.id) }, onOpenWork = { workSheet = true }, general = general != null, archived = general?.archived == true, menuItems = headerMenu, onEphemeral = onEphemeral.takeIf { canEphemeral })
                         if (finding) ThreadFindBar(app, { session.conversation }, onFocus = session::focus) { finding = false }
                     }
                 },
@@ -516,7 +520,12 @@ fun ChatScreen(app: AppState, ui: AppUiState, agent: Agent, onBack: () -> Unit, 
  * other, and in the middle the companion itself - its dot, with its name on a small glass pill underneath.
  */
 @Composable
-private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: () -> Unit, onOpenComputer: () -> Unit, onOpenWork: () -> Unit, general: Boolean = false, archived: Boolean = false, menuItems: List<Triple<String, ImageVector, () -> Unit>> = emptyList()) {
+internal fun ChatHeader(
+    agent: Agent, ui: AppUiState, reconnecting: Boolean, onBack: () -> Unit, onOpenCompanion: (() -> Unit)?, onOpenComputer: () -> Unit, onOpenWork: () -> Unit,
+    general: Boolean = false, archived: Boolean = false, menuItems: List<Triple<String, ImageVector, () -> Unit>> = emptyList(),
+    /** #57: the ephemeral icon of a new chat. [ephemeral]: the chat is ephemeral (badge, no work or menu). */
+    onEphemeral: (() -> Unit)? = null, ephemeral: Boolean = false,
+) {
     val c = Dot.colors
     val elsewhere = ui.agents.any { it.id != agent.id && it.unread > 0 } || ui.pendingApprovals.isNotEmpty()
     val name = agentDisplayName(agent)
@@ -534,7 +543,7 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
         }
         Column(
             Modifier.align(Alignment.TopCenter).padding(horizontal = 112.dp).clip(DotShapes.large)
-                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.companion_details), onClick = onOpenCompanion),
+                .then(if (onOpenCompanion != null) Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.companion_details), onClick = onOpenCompanion) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // A general chat is a conversation, not a companion: no dot, only its title.
@@ -549,18 +558,23 @@ private fun ChatHeader(agent: Agent, ui: AppUiState, reconnecting: Boolean, onBa
                 Text(name, style = Dot.type.label, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).semantics { heading() })
                 if (status != null) Text("  ·  $status", style = Dot.type.caption, color = if (agent.state == "error" && ui.connected) c.danger else c.textTertiary, maxLines = 1)
             }
+            if (ephemeral) Row(Modifier.padding(top = 4.dp).testTag("ephemeral-badge"), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(13.dp), tint = c.accent)
+                Text(" " + stringResource(R.string.ephemeral_badge), style = Dot.type.caption, color = c.accent, maxLines = 1)
+            }
         }
-        DotFloatingCapsule(Modifier.align(Alignment.TopEnd)) {
+        if (onEphemeral != null || !ephemeral) DotFloatingCapsule(Modifier.align(Alignment.TopEnd)) {
             // The Circle's computer is one tap away; its work lives in Data & connections (and the live status line).
             // A general chat has no computer: its work stays here.
-            if (general) DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
-            else DotCapsuleButton(Icons.Outlined.DesktopWindows, stringResource(R.string.computer_row), onOpenComputer)
+            if (onEphemeral != null) DotCapsuleButton(Icons.Outlined.VisibilityOff, stringResource(R.string.ephemeral_chat), onEphemeral, tint = if (ephemeral) c.accent else c.textPrimary, modifier = Modifier.testTag("ephemeral-toggle"))
+            if (general && !ephemeral && onEphemeral == null) DotCapsuleButton(Icons.Outlined.Checklist, stringResource(R.string.work), onOpenWork)
+            else if (!general) DotCapsuleButton(Icons.Outlined.DesktopWindows, stringResource(R.string.computer_row), onOpenComputer)
             // #56: details, archive, previous threads and delete sit behind one discreet menu.
-            Box {
+            if (!ephemeral) Box {
                 var open by remember { mutableStateOf(false) }
                 DotCapsuleButton(Icons.Outlined.MoreHoriz, stringResource(if (general) R.string.chat_actions else R.string.thread_actions), { open = true }, modifier = Modifier.testTag("header-menu"))
                 DotMenu(open, { open = false }) {
-                    DotMenuItem(stringResource(if (general) R.string.chat_settings else R.string.companion_details), Icons.Outlined.Tune) { open = false; onOpenCompanion() }
+                    DotMenuItem(stringResource(if (general) R.string.chat_settings else R.string.companion_details), Icons.Outlined.Tune) { open = false; onOpenCompanion?.invoke() }
                     menuItems.forEachIndexed { index, (label, icon, action) ->
                         DotMenuItem(label, icon, color = if (index == menuItems.lastIndex) c.danger else c.textPrimary) { open = false; action() }
                     }
@@ -624,7 +638,7 @@ private fun EmptyConversation(agent: Agent, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TurnError(title: String, message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TurnError(title: String, message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     DotCard(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.Top) {
             Icon(Icons.Outlined.ErrorOutline, null, Modifier.padding(top = 2.dp).size(18.dp), tint = Dot.colors.danger)
@@ -682,7 +696,7 @@ private fun ImageThumb(image: PendingImage, onRemove: () -> Unit) {
 }
 
 /** The orb follows what the request is really doing, read from the streamed parts, never from the text. */
-private fun orbStateOf(last: ChatMessage?, status: ChatStatus): OrbState {
+internal fun orbStateOf(last: ChatMessage?, status: ChatStatus): OrbState {
     if (status == ChatStatus.Submitted || last == null || last.isUser) return OrbState.Working
     val part = last.parts.lastOrNull() ?: return OrbState.Working
     return when {
@@ -789,7 +803,7 @@ private fun EditMessageSheet(original: String, onDismiss: () -> Unit, onSend: (S
 
 /** "+" holds the less frequent actions: attach files, and in a general chat, ask a companion (no separate @ button). */
 @Composable
-private fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?, askLabel: Int = R.string.ask_companion) {
+internal fun PlusMenu(canAttach: Boolean, onAttach: () -> Unit, onAsk: (() -> Unit)?, askLabel: Int = R.string.ask_companion) {
     var open by remember { mutableStateOf(false) }
     if (onAsk == null) { DotIconButton(Icons.Outlined.Add, stringResource(R.string.attach_files), onClick = onAttach, tint = Dot.colors.textSecondary, enabled = canAttach); return }
     Box {

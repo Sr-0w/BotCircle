@@ -13,7 +13,7 @@ src = root / "app/src/main/kotlin/app/dot/opendots"
 test = root / "app/src/test/kotlin/app/dot/opendots/TemporaryChatTest.kt"
 files = [
     src / "data/TemporaryChat.kt", src / "data/OpenDotsClient.kt",
-    src / "chat/TemporaryChatSession.kt", src / "ui/TemporaryChatPage.kt",
+    src / "chat/TemporaryChatSession.kt", src / "ui/EphemeralChatScreen.kt", src / "ui/ChatScreen.kt",
     src / "ui/ChatsPages.kt", src / "AppState.kt", src / "MainActivity.kt", test,
     root / "app/src/test/kotlin/app/dot/opendots/ScreensTest.kt",
 ]
@@ -25,14 +25,20 @@ used = set()
 for path in files:
     used.update(re.findall(r"\bR\.string\.(\w+)", path.read_text()))
 assert not used - resources[0], f"Missing resources: {used - resources[0]}"
-assert len([r for r in resources[0] if r.startswith("temporary_")]) == 19
+assert not [r for r in resources[0] if r.startswith("temporary_")], "old temporary_* strings must be gone"
+assert len([r for r in resources[0] if r.startswith("ephemeral_")]) == 13
 print("PASS static: English/French resource parity and referenced strings")
 
-for path in [src / "chat/TemporaryChatSession.kt", src / "ui/TemporaryChatPage.kt"]:
+for path in [src / "chat/TemporaryChatSession.kt", src / "ui/EphemeralChatScreen.kt"]:
     code = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(), flags=re.S)
     assert not re.search(r"\b(rememberSaveable|SavedStateHandle|SessionStore|SharedPreferences|println)\b|\bLog\.", code), path
     assert not re.search(r"\.(uploadImage|uploadArtifact|createChat|chat|messages|react|regenerate)\(", code), path
-print("PASS static: dedicated temporary state/screen has no durable store, logging, upload or normal-chat calls")
+print("PASS static: ephemeral state/screen has no durable store, logging, upload or normal-chat calls")
+assert not (src / "ui/TemporaryChatPage.kt").exists(), "the separate temporary page must stay removed"
+assert "TemporaryChat" not in (src / "ui/ChatsPages.kt").read_text() and "temporary-chat-action" not in (src / "ui/ChatsPages.kt").read_text()
+main = (src / "MainActivity.kt").read_text()
+assert "Page.TemporaryChat" not in main and "confirmTemporaryExit" not in main and "app.exitEphemeral()" in main
+print("PASS static: no separate temporary entry, page or exit dialog; leaving the ephemeral chat discards it")
 
 client = (src / "data/OpenDotsClient.kt").read_text()
 section = client.split("// --- Temporary chat:", 1)[1].split("// --- Server & account", 1)[0]
@@ -42,7 +48,12 @@ assert 'setOf("openrouter", "ollama")' in section
 assert 'put("providerOrder"' not in section
 state = (src / "AppState.kt").read_text()
 for start, end in [("fun changeServer()", "fun signIn"), ("fun signOut()", "fun saveKey"), ("private fun unauthorized()", "// --- Realtime")]:
-    assert "temporaryChat.discard()" in state.split(start, 1)[1].split(end, 1)[0]
+    assert "dropEphemeral()" in state.split(start, 1)[1].split(end, 1)[0]
+assert "temporaryChat.discard()" in state.split("private fun dropEphemeral()", 1)[1].split("fun startEphemeral", 1)[0]
+start = state.split("fun startEphemeral", 1)[1].split("fun stopEphemeral", 1)[0]
+assert "client.deleteChat(chat.id" in start and "chats.filterNot { it.id == chat.id }" in start, "the empty normal chat must be deleted and unlisted"
+assert "client.createChat()" in state.split("fun stopEphemeral", 1)[1].split("fun exitEphemeral", 1)[0]
+assert "HEARTBEAT_MS = 30_000L" in (src / "chat/TemporaryChatSession.kt").read_text()
 assert "temporaryChat.dispose()" in state and "temporaryChat.foreground(visible)" in state
 print("PASS static: temporary endpoint family, named SSE cancellation, restricted providers and auth/lifecycle cleanup")
 

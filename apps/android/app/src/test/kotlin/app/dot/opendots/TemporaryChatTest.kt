@@ -7,11 +7,15 @@ import app.dot.opendots.data.MemorySessionStore
 import app.dot.opendots.data.ModelConfig
 import app.dot.opendots.data.OdJson
 import app.dot.opendots.data.OpenDotsClient
+import app.dot.opendots.data.TemporaryAttachment
 import app.dot.opendots.data.TemporaryChatApi
 import app.dot.opendots.data.TemporaryEvent
 import app.dot.opendots.data.TemporaryMessage
 import app.dot.opendots.data.TemporarySnapshot
 import app.dot.opendots.data.readTemporaryEvents
+import app.dot.opendots.ui.ephemeralMessages
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
@@ -23,7 +27,9 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okio.Buffer
@@ -91,6 +97,82 @@ class TemporaryChatTest {
         }
     }
 
+    @Test fun attachmentsAreSentAsBase64AndTextMayBeEmpty() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val client = OpenDotsClient(MemorySessionStore(serverUrl = server.url("/").toString(), sessionCookie = "c"))
+            server.enqueue(MockResponse.Builder().addHeader("Content-Type", "text/event-stream").body("event: done\ndata: {}\n\n").build())
+            val bytes = byteArrayOf(1, 2, 3, 4, 5)
+            client.temporaryTurn(id, "", model, listOf(TemporaryAttachment("a.png", "image/png", bytes), TemporaryAttachment("n.txt", "text/plain", "hello".toByteArray()))).toList()
+            val body = OdJson.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
+            assertEquals(setOf("text", "model", "attachments"), body.keys)
+            val list = body.getValue("attachments").jsonArray
+            assertEquals(2, list.size)
+            assertEquals(setOf("name", "mediaType", "data"), list[0].jsonObject.keys)
+            assertEquals("a.png", list[0].jsonObject.getValue("name").jsonPrimitive.content)
+            assertEquals("image/png", list[0].jsonObject.getValue("mediaType").jsonPrimitive.content)
+            assertEquals(java.util.Base64.getEncoder().encodeToString(bytes), list[0].jsonObject.getValue("data").jsonPrimitive.content)
+            assertEquals("aGVsbG8=", list[1].jsonObject.getValue("data").jsonPrimitive.content) // no data: prefix
+        }
+    }
+
+    @Test fun aTurnWithoutTextOrAttachmentsAndTooManyAttachmentsAreRefusedLocally() = runBlocking {
+        val client = OpenDotsClient(MemorySessionStore(serverUrl = "http://127.0.0.1:1/"))
+        try { client.temporaryTurn(id, " ", model).toList(); fail() } catch (_: IllegalArgumentException) {}
+        val six = List(6) { TemporaryAttachment("f$it", "text/plain", byteArrayOf(1)) }
+        try { client.temporaryTurn(id, "x", model, six).toList(); fail() } catch (_: IllegalArgumentException) {}
+    }
+
+    @Test fun aLimitRejectionKeepsTheServersMessageButOtherErrorsStayGeneric() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val client = OpenDotsClient(MemorySessionStore(serverUrl = server.url("/").toString(), sessionCookie = "c"))
+            server.enqueue(MockResponse.Builder().code(413).body("{\"error\":\"Attachments exceed 20 MB per turn\"}").build())
+            server.enqueue(MockResponse.Builder().code(500).body("{\"error\":\"secret upstream detail\"}").build())
+            val a = listOf(TemporaryAttachment("big.bin", "application/octet-stream", byteArrayOf(1)))
+            val first = try { client.temporaryTurn(id, "x", model, a).toList(); null } catch (e: ApiException) { e }
+            assertEquals(413, first!!.status); assertEquals("Attachments exceed 20 MB per turn", first.message)
+            val second = try { client.temporaryTurn(id, "x", model, a).toList(); null } catch (e: ApiException) { e }
+            assertFalse(second!!.message.orEmpty().contains("secret"))
+        }
+    }
+
+    @Test fun attachmentsStayInMemoryUntilSentThenOnlyDrawTheThumbnail() = runTest {
+        val api = FakeApi()
+        val session = TemporaryChatSession(api, backgroundScope, now = { 0 })
+        session.start(); runCurrent(); session.model(model)
+        val big = TemporaryAttachment("big", "application/pdf", ByteArray(11 * 1024 * 1024))
+        val ok = List(5) { TemporaryAttachment("f$it", "text/plain", ByteArray(100)) }
+        assertEquals(0, session.attach(listOf(big)))                 // over 10 MB
+        assertEquals(5, session.attach(ok + TemporaryAttachment("six", "text/plain", ByteArray(1)))) // 5 per turn
+        assertEquals(5, session.state.value.attachments.size)
+        session.removeAttachment(0)
+        assertEquals(4, session.state.value.attachments.size)
+        session.send(); runCurrent()                                  // attachments alone are enough
+        assertEquals(4, api.lastAttachments.size)
+        assertTrue(session.state.value.attachments.isEmpty())
+        assertEquals(4, session.state.value.sentAttachments.getValue(0).size)
+        session.discard()
+        assertTrue(session.state.value.sentAttachments.isEmpty()) // gone with the chat
+        session.dispose()
+    }
+
+    @Test fun aRejectedTurnShowsTheServerMessageAndKeepsTheFilesToAdjust() = runTest {
+        val api = FakeApi().apply { reject = "Session attachments exceed 50 MB" }
+        val session = TemporaryChatSession(api, backgroundScope, now = { 0 })
+        session.start(); runCurrent(); session.model(model)
+        session.attach(listOf(TemporaryAttachment("f", "text/plain", ByteArray(10)))); session.draft("look")
+        session.send(); runCurrent()
+        assertEquals(TemporaryProblem.Rejected, session.state.value.problem)
+        assertEquals("Session attachments exceed 50 MB", session.state.value.problemMessage)
+        assertEquals(1, session.state.value.attachments.size)
+        assertEquals("look", session.state.value.draft)
+        assertNull(session.state.value.pending)
+        session.dismissProblem()
+        assertNull(session.state.value.problemMessage)
+        session.dispose()
+    }
+
     @Test fun codexIsRejectedBeforeAnyNetworkRequest() = runBlocking {
         MockWebServer().use { server ->
             server.start()
@@ -111,10 +193,13 @@ class TemporaryChatTest {
         var unauthorized = false
         var sends = 0
         var stopped = 0
+        var reads = 0
+        var createGate: CompletableDeferred<Unit>? = null
         val deleted = CompletableDeferred<String>()
         val aborted = CompletableDeferred<Unit>()
-        override suspend fun createTemporaryChat() = snapshot
+        override suspend fun createTemporaryChat(): TemporarySnapshot { createGate?.await(); return snapshot }
         override suspend fun temporaryChat(id: String): TemporarySnapshot {
+            reads++
             if (unauthorized) throw ApiException("sensitive unauthorized diagnostic", 401)
             if (missing) throw ApiException("content-bearing error must not be shown", 404)
             if (failReads) throw IOException("sensitive diagnostic")
@@ -122,8 +207,12 @@ class TemporaryChatTest {
         }
         override suspend fun deleteTemporaryChat(id: String) { deleted.complete(id) }
         override suspend fun stopTemporaryChat(id: String) { stopped++ }
-        override fun temporaryTurn(id: String, text: String, model: ModelConfig): Flow<TemporaryEvent> = flow {
+        var reject: String? = null
+        var lastAttachments: List<TemporaryAttachment> = emptyList()
+        override fun temporaryTurn(id: String, text: String, model: ModelConfig, attachments: List<TemporaryAttachment>): Flow<TemporaryEvent> = flow {
             sends++
+            lastAttachments = attachments
+            reject?.let { throw ApiException(it, 413) }
             emit(TemporaryEvent.Delta("partial"))
             if (slow) {
                 try { awaitCancellation() } finally { aborted.complete(Unit) }
@@ -146,13 +235,80 @@ class TemporaryChatTest {
         assertEquals(2, session.state.value.snapshot?.messages?.size)
         assertEquals(TemporaryProblem.Connection, session.state.value.problem)
         api.failReads = false
-        advanceTimeBy(5_001); runCurrent()
+        advanceTimeBy(30_001); runCurrent()
         assertEquals(1, api.sends) // snapshot reconnect, never an automatic POST replay
         session.discard()
         assertNull(session.state.value.snapshot); assertEquals("", session.state.value.draft)
         api.snapshot = TemporarySnapshot(id, 100_000)
         session.start(); runCurrent()
         assertTrue(session.state.value.snapshot!!.messages.isEmpty())
+        session.dispose()
+    }
+
+    @Test fun heartbeatReadsEveryThirtySecondsWhileOpenAndVisibleOnly() = runTest {
+        val api = FakeApi()
+        val session = TemporaryChatSession(api, backgroundScope, now = { 0 })
+        session.start(); runCurrent()
+        val before = api.reads
+        advanceTimeBy(29_000); runCurrent()
+        assertEquals(before, api.reads)
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(before + 1, api.reads) // any authenticated read renews the server idle timeout
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(before + 2, api.reads)
+        session.foreground(false); runCurrent()
+        val background = api.reads
+        advanceTimeBy(120_000); runCurrent()
+        assertEquals(background, api.reads) // briefly in the background: kept, but no heartbeat
+        assertNotNull(session.state.value.snapshot)
+        session.dispose()
+        val closed = api.reads
+        advanceTimeBy(120_000); runCurrent()
+        assertEquals(closed, api.reads)
+    }
+
+    @Test fun discardingWhileTheChatIsBeingCreatedDeletesItAnyway() = runTest {
+        val api = FakeApi().apply { createGate = CompletableDeferred() }
+        val session = TemporaryChatSession(api, backgroundScope, now = { 0 })
+        session.start(); runCurrent()
+        assertTrue(session.state.value.sending)
+        session.discard() // the user switched back to a normal chat before the server answered
+        api.createGate!!.complete(Unit); runCurrent()
+        assertNull(session.state.value.snapshot)
+        assertEquals(id, withContext(Dispatchers.Default) { withTimeout(5_000) { api.deleted.await() } })
+        session.dispose()
+    }
+
+    @Test fun theMessageBeingSentIsShownAsSentAndTheReplyStreamsAsAnAssistantMessage() = runTest {
+        val api = FakeApi().apply { slow = true }
+        val session = TemporaryChatSession(api, backgroundScope, now = { 0 })
+        session.start(); runCurrent()
+        assertFalse(session.hasContent)
+        session.model(model); session.draft("private"); session.send(); runCurrent()
+        assertTrue(session.hasContent)
+        val live = ephemeralMessages(session.state.value)
+        assertEquals(listOf("user" to "private", "assistant" to "partial"), live.map { it.role to (it.parts.single() as app.dot.opendots.data.Part.Text).text })
+        assertEquals("fixture", live.last().meta.model)
+        session.foreground(false); runCurrent()
+        assertNull(session.state.value.pending)
+        assertTrue(ephemeralMessages(session.state.value).isEmpty())
+        session.discard()
+        assertFalse(session.hasContent)
+        session.dispose()
+    }
+
+    @Test fun aCompletedTurnIsListedOnceAndAProblemCanBeDismissed() = runTest {
+        val api = FakeApi()
+        val session = TemporaryChatSession(api, backgroundScope, now = { 0 })
+        session.start(); runCurrent()
+        session.model(model); session.draft("private"); session.send(); runCurrent()
+        assertNull(session.state.value.pending)
+        assertEquals(listOf("e0", "e1"), ephemeralMessages(session.state.value).map { it.id })
+        api.failReads = true
+        session.foreground(false); session.foreground(true); runCurrent()
+        assertEquals(TemporaryProblem.Connection, session.state.value.problem)
+        session.dismissProblem()
+        assertNull(session.state.value.problem)
         session.dispose()
     }
 
